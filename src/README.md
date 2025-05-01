@@ -1,13 +1,84 @@
 # SAAS FGTS
 
-## Testes Automatizados e Boas Práticas
+## Visão Geral
 
-Este projeto segue as melhores práticas de desenvolvimento moderno, incluindo:
+Plataforma completa para gestão de agentes, automação de atendimento, integrações e operações financeiras, com backend Node.js (Express), autenticação Supabase, dashboard React, testes automatizados e CI/CD.
 
-- **Testes unitários e de integração** com Jest e Supertest
-- **CI/CD automatizado** via GitHub Actions
-- **Sanitização e validação de dados**
-- **Rotas protegidas por autenticação**
+---
+
+## Principais Funcionalidades
+- API RESTful para gerenciamento de agentes, leads, propostas, clientes, mensagens, base de conhecimento e integrações.
+- Autenticação e autorização robustas (Supabase, JWT, RLS).
+- Dashboard administrativo em React (src/dashboard-react).
+- Sanitização, validação e limitação de requisições para segurança.
+- Scripts utilitários para manutenção, integração e subworkflows n8n.
+- Testes automatizados (unitários e integração) com Jest e Supertest.
+- CI/CD com GitHub Actions.
+
+---
+
+## Estrutura do Projeto
+
+```
+src/
+  app.js                # App Express principal
+  server.js             # Inicialização do servidor
+  config/               # Configurações (Supabase, Redis, etc)
+  controllers/          # Lógica de negócio (agentes, auth, dashboard, etc)
+  models/               # Modelos de dados
+  routes/               # Rotas da API e web
+  services/             # Integrações externas e lógica de serviço
+  middleware/           # Middlewares (auth, sanitização, etc)
+  tests/
+    unit/               # Testes unitários
+    integration/        # Testes de integração
+  dashboard-react/      # Frontend React (dashboard)
+  scripts/              # Scripts utilitários (ex: subworkflow-manager)
+  public/               # Assets públicos (js, css, imagens)
+  views/                # Templates EJS para páginas web
+  utils/                # Funções utilitárias
+  logs/                 # Logs de execução
+```
+
+---
+
+## Tecnologias Utilizadas
+- Node.js + Express
+- Supabase (PostgreSQL, Auth, Storage)
+- React (dashboard)
+- Jest e Supertest (testes)
+- GitHub Actions (CI/CD)
+- Docker e docker-compose (opcional)
+- Helmet, CORS, Rate Limit, Slow Down (segurança)
+
+---
+
+## Testes Automatizados
+- **Unitários:** Funções utilitárias, validação, sanitização.
+- **Integração:** Autenticação, rotas protegidas, APIs principais.
+
+### Exemplos reais:
+
+**Validação de e-mail e campo obrigatório:**
+```js
+expect(validator.validate({ email: 'invalido' }, schema)).toEqual([
+  { field: 'email', message: 'O campo email deve ser um e-mail válido' }
+]);
+```
+
+**Login inválido:**
+```js
+const res = await request(app)
+  .post('/auth/login')
+  .send({ email: 'naoexiste@email.com', password: 'senhaerrada' });
+expect(res.statusCode).toBe(401);
+```
+
+**Rota protegida:**
+```js
+const res = await request(app).get('/api/agents');
+expect([401, 403]).toContain(res.statusCode);
+```
 
 ### Como rodar os testes
 
@@ -15,20 +86,21 @@ Este projeto segue as melhores práticas de desenvolvimento moderno, incluindo:
 npm test
 ```
 
-#### Exemplos de testes implementados:
-- Validação de dados (e-mail, campos obrigatórios)
-- Middleware de sanitização
-- Autenticação (login)
-- Rotas protegidas (exigem autenticação)
+---
 
-Os testes estão localizados em:
-- `src/tests/unit/` — Testes unitários
-- `src/tests/integration/` — Testes de integração
+## CI/CD
+- Pipeline automatizado no GitHub Actions:
+  - Instala dependências, executa lint, testes e build.
+  - Só permite deploy se todos os testes passarem.
+  - Roda em todo push/pull request na branch `main`.
 
-### CI/CD
-- O pipeline roda automaticamente em cada push/pull request na branch `main`.
-- Executa lint, testes e build.
-- Falha o deploy se algum teste falhar.
+---
+
+## Scripts Utilitários
+- **subworkflow-manager.js:** Gerencia subworkflows do n8n via CLI (ver `src/scripts/README.md`).
+- Outros scripts para manutenção e integração podem estar disponíveis em `src/scripts/`.
+
+---
 
 ## Configuração do Ambiente
 
@@ -39,106 +111,37 @@ SUPABASE_URL=https://sua-instancia.supabase.co
 SUPABASE_SERVICE_KEY=sua-chave-de-serviço
 ```
 
-## Estrutura do Banco de Dados
+---
 
-O sistema utiliza as seguintes tabelas principais:
+## Estrutura do Banco de Dados (Supabase)
 
-1. `agent_templates` - Armazena os templates disponíveis para criar agentes
-2. `client_agents` - Armazena os agentes criados para os clientes
+### Tabelas principais
+- **clients:** Clientes da plataforma (relaciona com user_profiles, leads, proposals, etc)
+- **user_profiles:** Perfis de usuários (relaciona com clients)
+- **evolution_credentials:** Instâncias de integração Evolution (WhatsApp)
+- **partner_credentials:** Credenciais de parceiros para integrações
+- **leads:** Leads capturados (relaciona com clients, balance, proposals)
+- **proposals:** Propostas comerciais (relaciona com leads, clients)
+- **balance:** Consultas de saldo e simulações (relaciona com clients, leads)
+- **knowledge_base:** Base de conhecimento para agentes (vetorização para IA)
+- **messages:** Mensagens trocadas via agentes (relaciona com evolution_credentials)
+- **long_term_memory:** Memória de longo prazo dos agentes
+- **agent_memories:** Memória temporária dos agentes
 
-## Notas Importantes
-- Sempre mantenha os testes atualizados ao adicionar novas funcionalidades.
-- O deploy só é realizado se todos os testes passarem no CI.
-- Para contribuir, crie uma branch, adicione testes para suas mudanças e abra um Pull Request.
+### Observações
+- **RLS (Row Level Security):** Ativado em várias tabelas para segurança multi-tenant.
+- **Campos de metadados:** Uso extensivo de campos `metadata` (jsonb) para flexibilidade.
+- **Relacionamentos:** Estrutura relacional bem definida entre clientes, leads, propostas, agentes, etc.
+- **Vetorização:** Campo `embedding` (vector) na knowledge_base para IA/Busca semântica.
 
-# Scripts para Gerenciamento de Agentes
+---
 
-Este diretório contém scripts para gerenciar a criação e consulta de agentes no sistema. Os scripts interagem com a API Supabase para criar agentes a partir de templates predefinidos.
+## Contribuição
+- Sempre crie uma branch para suas alterações.
+- Adicione testes para novas funcionalidades ou correções.
+- Abra um Pull Request para revisão.
 
-## Configuração
+---
 
-Antes de utilizar os scripts, certifique-se de que o arquivo `.env` está configurado corretamente com as seguintes variáveis:
-
-```
-SUPABASE_URL=https://sua-instancia.supabase.co
-SUPABASE_SERVICE_KEY=sua-chave-de-serviço
-```
-
-## Scripts Disponíveis
-
-### 1. `create-agent.js`
-
-Cria novos agentes a partir de templates disponíveis. O script:
-- Verifica se o usuário existe e tem acesso à organização
-- Lista os templates disponíveis
-- Cria os agentes para cada template disponível
-- Configura as permissões necessárias
-
-**Uso:**
-```bash
-node src/create-agent.js
-```
-
-### 2. `list-agents.js`
-
-Lista todos os agentes criados no sistema. O script:
-- Consulta a tabela `client_agents` via API Supabase
-- Tenta executar consultas SQL alternativas se necessário
-- Mostra informações detalhadas sobre cada agente
-
-**Uso:**
-```bash
-node src/list-agents.js
-```
-
-### 3. `list-templates.js`
-
-Lista todos os templates disponíveis no sistema. O script:
-- Consulta a tabela `agent_templates` via API Supabase
-- Mostra informações detalhadas sobre cada template, incluindo IDs de workflow do n8n
-
-**Uso:**
-```bash
-node src/list-templates.js
-```
-
-### 4. `test-rpc.js`
-
-Testa a funcionalidade RPC (Remote Procedure Call) para executar consultas SQL diretas. O script:
-- Testa a função `exec_sql` com consultas simples
-- Lista tabelas disponíveis no esquema público
-- Verifica funções SQL disponíveis
-
-**Uso:**
-```bash
-node src/test-rpc.js
-```
-
-### 5. `summary.js`
-
-Gera um resumo completo e organizado de todos os templates e agentes no sistema. O script:
-- Lista todos os templates disponíveis com detalhes
-- Lista todos os agentes criados com associação aos seus templates
-- Fornece estatísticas gerais do sistema
-- Agrupa agentes por organização
-
-**Uso:**
-```bash
-node src/summary.js
-```
-
-## Estrutura do Banco de Dados
-
-O sistema utiliza as seguintes tabelas principais:
-
-1. `agent_templates` - Armazena os templates disponíveis para criar agentes
-   - Campos principais: id, name, description, n8n_workflow_id, is_active
-
-2. `client_agents` - Armazena os agentes criados para os clientes
-   - Campos principais: id, name, description, template_id, organization_id, created_by, is_active
-
-## Notas Importantes
-
-- O script de criação de agentes pode encontrar erros ao tentar criar funções SQL. Nesses casos, as funções são criadas manualmente.
-- Para visualizar os detalhes completos dos agentes e templates, use o script `summary.js`.
-- Os IDs de usuário, organização e templates são específicos para cada ambiente. 
+## Documentação Técnica
+Veja `src/documentacao-tecnica.md` para detalhes sobre nomenclatura de workflows, subworkflows e integrações com n8n. 

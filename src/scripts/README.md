@@ -26,4 +26,4 @@ npm run subworkflows test
 
 ## Estrutura
 
-- `subworkflow-manager.js` - CLI para gerenciar subworkflows do n8n 
+- `` - CLI para gerenciar subworkflows do n8n 

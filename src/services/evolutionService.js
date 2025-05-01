@@ -36,7 +36,8 @@ class EvolutionService {
       baseUrl: config.evolutionApi.url,
       apiKey: cred.partner_secret || config.evolutionApi.apiKey,
       instanceName: cred.instance_name,
-      instanceId: cred.id
+      instanceId: cred.id,
+      agentName: cred.agent_name
     });
   }
 

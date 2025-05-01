@@ -16612,3 +16612,249 @@ Require stack:
 2025-05-01 12:58:49 info: Usuário final: ID=b01ae214-8c3a-4335-8671-3153fe758af8, Email=fgtsbot@gmail.com, DisplayName="luiz"
 2025-05-01 12:58:49 info: Usuário autenticado: fgtsbot@gmail.com, ID: b01ae214-8c3a-4335-8671-3153fe758af8
 2025-05-01 12:58:49 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /agents
+2025-05-01 13:38:27 info: Verificando tabelas do sistema...
+2025-05-01 13:38:27 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:38:27 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:38:27 info: Token do cookie: encontrado
+2025-05-01 13:38:27 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:38:27 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:38:27 info: Verificando tabelas do sistema...
+2025-05-01 13:38:27 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:38:27 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:38:27 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:38:27 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:38:27 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:38:27 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:38:27 info: prepareUserData: res.locals.user definido com sucesso na rota /chat
+2025-05-01 13:38:29 info: Verificando tabelas do sistema...
+2025-05-01 13:38:29 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:38:29 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:38:29 info: Token do cookie: encontrado
+2025-05-01 13:38:29 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:38:29 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:38:29 info: Verificando tabelas do sistema...
+2025-05-01 13:38:29 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:38:29 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:38:29 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:38:29 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:38:29 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:38:29 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:38:29 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /agents
+2025-05-01 13:38:30 info: Verificando tabelas do sistema...
+2025-05-01 13:38:30 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:38:30 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:38:30 info: Token do cookie: encontrado
+2025-05-01 13:38:30 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:38:30 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:38:30 info: Verificando tabelas do sistema...
+2025-05-01 13:38:30 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:38:30 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:38:30 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:38:30 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:38:30 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:38:30 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:38:30 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 13:38:31 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20vai
+2025-05-01 13:38:31 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Teste
+2025-05-01 13:38:31 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Tt
+2025-05-01 13:38:34 info: Verificando tabelas do sistema...
+2025-05-01 13:38:34 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:38:34 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:38:34 info: Token do cookie: encontrado
+2025-05-01 13:38:34 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:38:34 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:38:34 info: Verificando tabelas do sistema...
+2025-05-01 13:38:34 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:38:34 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:38:34 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:38:34 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:38:34 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:38:34 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:38:34 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 13:38:34 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20vai
+2025-05-01 13:38:34 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Teste
+2025-05-01 13:38:34 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Tt
+2025-05-01 13:40:21 info: Verificando tabelas do sistema...
+2025-05-01 13:40:21 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:40:21 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:40:21 info: Token do cookie: encontrado
+2025-05-01 13:40:21 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:40:21 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:40:21 info: Verificando tabelas do sistema...
+2025-05-01 13:40:21 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:40:21 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:40:21 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:40:21 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:40:21 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:40:21 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:40:21 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 13:40:21 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20vai
+2025-05-01 13:40:21 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Teste
+2025-05-01 13:40:21 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Tt
+2025-05-01 13:40:33 info: Verificando tabelas do sistema...
+2025-05-01 13:40:33 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:40:33 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:40:33 info: Token do cookie: encontrado
+2025-05-01 13:40:33 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:40:33 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:40:33 info: Verificando tabelas do sistema...
+2025-05-01 13:40:33 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:40:33 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:40:33 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:40:33 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:40:33 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:40:33 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:40:33 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 13:40:33 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20vai
+2025-05-01 13:40:33 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Teste
+2025-05-01 13:40:33 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Tt
+2025-05-01 13:40:45 info: Verificando tabelas do sistema...
+2025-05-01 13:40:45 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:40:45 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:40:45 info: Token do cookie: encontrado
+2025-05-01 13:40:45 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:40:45 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:40:45 info: Verificando tabelas do sistema...
+2025-05-01 13:40:45 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:40:45 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:40:45 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:40:45 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:40:45 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:40:45 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:40:45 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 13:40:45 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20vai
+2025-05-01 13:40:45 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Teste
+2025-05-01 13:40:45 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Tt
+2025-05-01 13:42:20 info: Verificando tabelas do sistema...
+2025-05-01 13:42:21 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:42:21 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:42:21 info: Token do cookie: encontrado
+2025-05-01 13:42:21 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:42:21 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:42:21 info: Verificando tabelas do sistema...
+2025-05-01 13:42:21 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:42:21 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:42:21 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:42:21 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:42:21 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:42:21 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:42:21 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 13:42:21 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20vai
+2025-05-01 13:42:21 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Teste
+2025-05-01 13:42:21 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Tt
+2025-05-01 13:42:59 info: Verificando tabelas do sistema...
+2025-05-01 13:42:59 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:42:59 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:42:59 info: Token do cookie: encontrado
+2025-05-01 13:42:59 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:42:59 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:42:59 info: Verificando tabelas do sistema...
+2025-05-01 13:43:00 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:43:00 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:43:00 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:43:00 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:43:00 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:43:00 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:43:00 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 13:43:00 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20vai
+2025-05-01 13:43:00 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Teste
+2025-05-01 13:43:00 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Tt
+2025-05-01 13:43:18 info: Verificando tabelas do sistema...
+2025-05-01 13:43:18 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:43:18 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:43:18 info: Token do cookie: encontrado
+2025-05-01 13:43:18 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:43:18 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:43:18 info: Verificando tabelas do sistema...
+2025-05-01 13:43:18 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:43:18 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:43:18 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:43:18 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:43:18 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:43:18 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:43:18 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 13:43:18 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20vai
+2025-05-01 13:43:18 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Teste
+2025-05-01 13:43:18 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Tt
+2025-05-01 13:43:35 info: Verificando tabelas do sistema...
+2025-05-01 13:43:36 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:43:36 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:43:36 info: Token do cookie: encontrado
+2025-05-01 13:43:36 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:43:36 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:43:36 info: Verificando tabelas do sistema...
+2025-05-01 13:43:36 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:43:36 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:43:36 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:43:36 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:43:36 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:43:36 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:43:36 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 13:43:36 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20vai
+2025-05-01 13:43:36 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Teste
+2025-05-01 13:43:36 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Tt
+2025-05-01 13:44:15 info: Verificando tabelas do sistema...
+2025-05-01 13:44:15 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:44:15 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:44:15 info: Token do cookie: encontrado
+2025-05-01 13:44:16 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:44:16 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:44:16 info: Verificando tabelas do sistema...
+2025-05-01 13:44:16 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:44:16 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:44:16 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:44:16 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:44:16 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:44:16 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:44:16 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 13:44:16 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20vai
+2025-05-01 13:44:16 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Teste
+2025-05-01 13:44:16 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Tt
+2025-05-01 13:44:27 info: Verificando tabelas do sistema...
+2025-05-01 13:44:27 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:44:27 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:44:27 info: Token do cookie: encontrado
+2025-05-01 13:44:27 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:44:27 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:44:27 info: Verificando tabelas do sistema...
+2025-05-01 13:44:27 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:44:27 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:44:27 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:44:27 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:44:27 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:44:27 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:44:27 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 13:44:27 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20vai
+2025-05-01 13:44:27 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Teste
+2025-05-01 13:44:27 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Tt
+2025-05-01 13:44:40 info: Verificando tabelas do sistema...
+2025-05-01 13:44:40 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:44:40 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:44:40 info: Token do cookie: encontrado
+2025-05-01 13:44:40 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:44:40 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:44:40 info: Verificando tabelas do sistema...
+2025-05-01 13:44:40 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:44:40 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:44:40 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:44:40 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:44:40 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:44:40 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:44:40 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 13:44:40 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20vai
+2025-05-01 13:44:40 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Teste
+2025-05-01 13:44:40 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20carlos%20Fiorim%20-%20Tt
+2025-05-01 13:56:50 info: Verificando tabelas do sistema...
+2025-05-01 13:56:50 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:56:50 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:56:50 info: Token do cookie: encontrado
+2025-05-01 13:56:50 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-05-01 13:56:50 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-05-01 13:56:50 info: Verificando tabelas do sistema...
+2025-05-01 13:56:50 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 13:56:50 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 13:56:50 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-05-01 13:56:50 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-05-01 13:56:50 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-05-01 13:56:50 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-05-01 13:56:50 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /dashboard
