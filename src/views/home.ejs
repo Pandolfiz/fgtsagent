@@ -1,0 +1,102 @@
+<% /* CSS Futurista e Bibliotecas no head via layout */ %>
+<% styles = `
+<style>
+/* Hero futurista com gradiente animado e neon */
+.hero {
+  background: linear-gradient(135deg, #0d47a1, #00bcd4, #651fff, #00bfa5);
+  background-size: 400% 400%;
+  animation: gradientBG 15s ease infinite;
+  color: #ffffff;
+  padding: 100px 0;
+  position: relative;
+  overflow: hidden;
+}
+@keyframes gradientBG { 0%{background-position:0% 50%}50%{background-position:100% 50%}100%{background-position:0% 50%} }
+.hero h1 {
+  font-size: 4rem;
+  font-weight: 700;
+  text-shadow: 0 0 8px rgba(0,255,255,0.8),0 0 16px rgba(0,191,255,0.8);
+  animation: neonPulse 2s ease-in-out infinite;
+}
+@keyframes neonPulse { 0%,100%{text-shadow:0 0 8px rgba(0,255,255,0.8),0 0 16px rgba(0,191,255,0.8);}50%{text-shadow:0 0 16px rgba(0,255,255,1),0 0 24px rgba(0,191,255,1);} }
+.hero p { font-size:1.25rem; opacity:0; animation:fadeIn 2s ease-out 0.5s forwards; }
+@keyframes fadeIn { to{opacity:1;} }
+.particles-container { position:absolute; width:100%; height:100%; top:0; left:0; z-index:0; }
+.hero-content { position:relative; z-index:1; }
+.features { padding:80px 0; background:rgba(255,255,255,0.02); }
+.feature-card { backdrop-filter:blur(10px); background:rgba(255,255,255,0.05); border-radius:12px; transition:transform 0.3s ease,box-shadow 0.3s ease; }
+.feature-card:hover { transform:translateY(-15px) scale(1.02); box-shadow:0 15px 30px rgba(0,0,0,0.3); }
+.cta { background:#00bcd4; color:#fff; padding:80px 0; position:relative; overflow:hidden; }
+.cta .btn { min-width:200px; font-size:1.25rem; padding:15px 30px; box-shadow:0 0 10px rgba(255,255,255,0.6); transition:box-shadow 0.3s ease; }
+.cta .btn:hover { box-shadow:0 0 20px rgba(255,255,255,1); }
+</style>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css" />
+` %>
+
+<% /* JS Futurista e Bibliotecas no final do body via layout */ %>
+<% script = `
+<script src="https://cdn.jsdelivr.net/npm/particles.js"></script>
+<script>
+  particlesJS('particles-js', { particles:{number:{value:80,density:{enable:true,value_area:800}},color:{value:'#ffffff'},shape:{type:'circle'},opacity:{value:0.5},size:{value:3,random:true},line_linked:{enable:true,distance:150,color:'#00bcd4',opacity:0.4,width:1},move:{enable:true,speed:3,out_mode:'out'}},interactivity:{detect_on:'canvas',events:{onhover:{enable:true,mode:'repulse'},onclick:{enable:true,mode:'push'}},modes:{repulse:{distance:100},push:{particles_nb:4}}},retina_detect:true});
+</script>
+<script src="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js"></script>
+<script> AOS.init({duration:1000,once:true}); </script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/vanilla-tilt/1.7.0/vanilla-tilt.min.js"></script>
+<script>
+  document.addEventListener('DOMContentLoaded',()=>{
+    VanillaTilt.init(document.querySelectorAll('.feature-card'),{max:15,speed:400,glare:true,'max-glare':0.3});
+  });
+</script>
+` %>
+
+<div class="hero">
+  <div id="particles-js" class="particles-container"></div>
+  <div class="hero-content container text-center">
+    <h1 data-aos="fade-down">FGTSAgent</h1>
+    <p data-aos="fade-up" data-aos-delay="200">Agente Inteligente para Antecipação de Saque-Aniversário FGTS</p>
+    <div class="mt-4" data-aos="fade-up" data-aos-delay="400">
+      <% if (!user) { %>
+        <a href="/auth/signup" class="btn btn-light btn-lg me-3">Criar Conta</a>
+        <a href="/auth/login" class="btn btn-outline-light btn-lg">Login</a>
+      <% } else { %>
+        <a href="/dashboard" class="btn btn-light btn-lg">Ir para Dashboard</a>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<section class="features container py-5" id="features">
+  <h2 class="text-center fw-bold mb-5" data-aos="fade-up">Por que escolher o FGTSAgent?</h2>
+  <div class="row g-4">
+    <% const items = [
+      {icon:'fa-robot', title:'Automação 24/7', text:'Nosso agente atende leads a qualquer hora, sem falhas.'},
+      {icon:'fa-chart-line', title:'Aumente suas Vendas', text:'Fluxo inteligente que converte mais clientes com menos esforço.'},
+      {icon:'fa-hand-holding-usd', title:'Especialista em FGTS', text:'Cria propostas e simula antecipação de saque-aniversário FGTS automaticamente.'},
+      {icon:'fa-users', title:'Integração Omnichannel', text:'Atendimento via WhatsApp, e-mail e web, garantindo proximidade com o cliente.'},
+      {icon:'fa-shield-alt', title:'Segurança & Compliance', text:'Dados protegidos e conformidade com regulamentações do setor financeiro.'},
+      {icon:'fa-chart-pie', title:'Analytics em Tempo Real', text:'Dashboards que mostram desempenho de leads, propostas e conversão.'}
+    ]; %>
+    <% items.forEach((item, idx)=>{ %>
+      <div class="col-md-4" data-aos="fade-up" data-aos-delay="<%=100+idx*100%>">
+        <div class="card feature-card p-4 text-center h-100">
+          <i class="fas <%=item.icon%> fa-3x mb-3"></i>
+          <h5 class="fw-bold mb-2"><%=item.title%></h5>
+          <p><%=item.text%></p>
+        </div>
+      </div>
+    <% }) %>
+  </div>
+</section>
+
+<section class="cta text-center py-5">
+  <div class="container">
+    <h2 class="fw-bold mb-4" data-aos="zoom-in">Pronto para revolucionar seu atendimento FGTS?</h2>
+    <div data-aos="zoom-in" data-aos-delay="300">
+      <% if (!user) { %>
+        <a href="/auth/signup" class="btn btn-light btn-lg">Solicite uma Demonstração</a>
+      <% } else { %>
+        <a href="/dashboard" class="btn btn-light btn-lg">Acessar o Dashboard</a>
+      <% } %>
+    </div>
+  </div>
+</section>

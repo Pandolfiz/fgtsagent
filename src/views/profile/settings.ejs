@@ -1,0 +1,236 @@
+<!-- Página de configurações do perfil do usuário -->
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-md-3">
+      <!-- Menu lateral -->
+      <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+          <h5 class="mb-0">Meu Perfil</h5>
+        </div>
+        <div class="list-group list-group-flush">
+          <a href="/profile" class="list-group-item list-group-item-action">
+            <i class="fas fa-user me-2"></i> Informações Pessoais
+          </a>
+          <a href="/profile/settings" class="list-group-item list-group-item-action active">
+            <i class="fas fa-cog me-2"></i> Configurações
+          </a>
+          <a href="/profile/security" class="list-group-item list-group-item-action">
+            <i class="fas fa-lock me-2"></i> Segurança
+          </a>
+          <a href="/profile/notifications" class="list-group-item list-group-item-action">
+            <i class="fas fa-bell me-2"></i> Notificações
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-9">
+      <!-- Conteúdo principal -->
+      <div class="card">
+        <div class="card-header bg-primary text-white">
+          <h5 class="mb-0">Configurações</h5>
+        </div>
+        <div class="card-body">
+          <% if (messages.success && messages.success.length > 0) { %>
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+              <%= messages.success %>
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+            </div>
+          <% } %>
+          
+          <% if (messages.error && messages.error.length > 0) { %>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+              <%= messages.error %>
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+            </div>
+          <% } %>
+
+          <form id="profileSettingsForm" action="/profile/settings" method="POST">
+            <!-- Seção: Preferências de Tema -->
+            <div class="mb-4">
+              <h5 class="border-bottom pb-2">Preferências de Tema</h5>
+              <div class="form-group mb-3">
+                <label for="theme" class="form-label">Tema da Interface</label>
+                <select class="form-select" id="theme" name="theme">
+                  <option value="light" <%= (user && user.user_metadata && user.user_metadata.theme === 'light') ? 'selected' : '' %>>Claro</option>
+                  <option value="dark" <%= (user && user.user_metadata && user.user_metadata.theme === 'dark') ? 'selected' : '' %>>Escuro</option>
+                  <option value="system" <%= (!user || !user.user_metadata || !user.user_metadata.theme || user.user_metadata.theme === 'system') ? 'selected' : '' %>>Usar configuração do sistema</option>
+                </select>
+                <div class="form-text">Escolha entre temas claro, escuro ou use a preferência do seu sistema.</div>
+              </div>
+            </div>
+            
+            <!-- Seção: Idioma e Região -->
+            <div class="mb-4">
+              <h5 class="border-bottom pb-2">Idioma e Região</h5>
+              <div class="form-group mb-3">
+                <label for="language" class="form-label">Idioma</label>
+                <select class="form-select" id="language" name="language">
+                  <option value="pt-BR" <%= (user && user.user_metadata && user.user_metadata.language === 'pt-BR') ? 'selected' : 'selected' %>>Português (Brasil)</option>
+                  <option value="en" <%= (user && user.user_metadata && user.user_metadata.language === 'en') ? 'selected' : '' %>>English</option>
+                  <option value="es" <%= (user && user.user_metadata && user.user_metadata.language === 'es') ? 'selected' : '' %>>Español</option>
+                </select>
+              </div>
+              
+              <div class="form-group mb-3">
+                <label for="timezone" class="form-label">Fuso Horário</label>
+                <select class="form-select" id="timezone" name="timezone">
+                  <option value="America/Sao_Paulo" <%= (user && user.user_metadata && user.user_metadata.timezone === 'America/Sao_Paulo') ? 'selected' : 'selected' %>>Brasília (GMT-3)</option>
+                  <option value="America/New_York" <%= (user && user.user_metadata && user.user_metadata.timezone === 'America/New_York') ? 'selected' : '' %>>New York (GMT-5/GMT-4)</option>
+                  <option value="Europe/London" <%= (user && user.user_metadata && user.user_metadata.timezone === 'Europe/London') ? 'selected' : '' %>>London (GMT+0/GMT+1)</option>
+                  <option value="Asia/Tokyo" <%= (user && user.user_metadata && user.user_metadata.timezone === 'Asia/Tokyo') ? 'selected' : '' %>>Tokyo (GMT+9)</option>
+                </select>
+              </div>
+              
+              <div class="form-group mb-3">
+                <label for="dateFormat" class="form-label">Formato de Data</label>
+                <select class="form-select" id="dateFormat" name="dateFormat">
+                  <option value="DD/MM/YYYY" <%= (user && user.user_metadata && user.user_metadata.dateFormat === 'DD/MM/YYYY') ? 'selected' : 'selected' %>>DD/MM/YYYY</option>
+                  <option value="MM/DD/YYYY" <%= (user && user.user_metadata && user.user_metadata.dateFormat === 'MM/DD/YYYY') ? 'selected' : '' %>>MM/DD/YYYY</option>
+                  <option value="YYYY-MM-DD" <%= (user && user.user_metadata && user.user_metadata.dateFormat === 'YYYY-MM-DD') ? 'selected' : '' %>>YYYY-MM-DD</option>
+                </select>
+              </div>
+            </div>
+            
+            <!-- Seção: Configurações de Painel -->
+            <div class="mb-4">
+              <h5 class="border-bottom pb-2">Configurações do Painel</h5>
+              <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="showWelcomeMessage" name="showWelcomeMessage" 
+                  <%= (user && user.user_metadata && user.user_metadata.showWelcomeMessage !== false) ? 'checked' : '' %>>
+                <label class="form-check-label" for="showWelcomeMessage">Mostrar mensagem de boas-vindas no painel</label>
+              </div>
+              
+              <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="showStats" name="showStats" 
+                  <%= (user && user.user_metadata && user.user_metadata.showStats !== false) ? 'checked' : '' %>>
+                <label class="form-check-label" for="showStats">Mostrar estatísticas no painel</label>
+              </div>
+              
+              <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="compactView" name="compactView" 
+                  <%= (user && user.user_metadata && user.user_metadata.compactView === true) ? 'checked' : '' %>>
+                <label class="form-check-label" for="compactView">Usar visualização compacta</label>
+              </div>
+            </div>
+            
+            <!-- Botões de ação -->
+            <div class="d-flex justify-content-end">
+              <button type="button" class="btn btn-outline-secondary me-2" id="resetSettingsBtn">Restaurar Padrões</button>
+              <button type="submit" class="btn btn-primary">Salvar Configurações</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Manipular o formulário de configurações
+    const form = document.getElementById('profileSettingsForm');
+    
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      // Coletar os dados do formulário
+      const formData = new FormData(form);
+      const settings = {};
+      
+      for (const [key, value] of formData.entries()) {
+        // Para checkboxes, armazenar como booleano
+        if (key === 'showWelcomeMessage' || key === 'showStats' || key === 'compactView') {
+          settings[key] = true;
+        } else {
+          settings[key] = value;
+        }
+      }
+      
+      // Adicionar checkboxes desmarcados como falso
+      if (!formData.has('showWelcomeMessage')) settings['showWelcomeMessage'] = false;
+      if (!formData.has('showStats')) settings['showStats'] = false;
+      if (!formData.has('compactView')) settings['compactView'] = false;
+      
+      // Enviar os dados para o servidor
+      fetch('/profile/settings', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(settings)
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          // Mostrar mensagem de sucesso
+          const successAlert = document.createElement('div');
+          successAlert.className = 'alert alert-success alert-dismissible fade show';
+          successAlert.innerHTML = `
+            ${data.message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+          `;
+          
+          // Inserir a mensagem no topo do formulário
+          const alertContainer = document.querySelector('.card-body');
+          alertContainer.insertBefore(successAlert, alertContainer.firstChild);
+          
+          // Aplicar tema se alterado
+          if (settings.theme && settings.theme !== 'system') {
+            document.documentElement.setAttribute('data-bs-theme', settings.theme);
+          }
+        } else {
+          // Mostrar mensagem de erro
+          const errorAlert = document.createElement('div');
+          errorAlert.className = 'alert alert-danger alert-dismissible fade show';
+          errorAlert.innerHTML = `
+            ${data.message}
+            <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+          `;
+          
+          // Inserir a mensagem no topo do formulário
+          const alertContainer = document.querySelector('.card-body');
+          alertContainer.insertBefore(errorAlert, alertContainer.firstChild);
+        }
+      })
+      .catch(error => {
+        console.error('Erro ao salvar configurações:', error);
+        // Mostrar mensagem de erro
+        const errorAlert = document.createElement('div');
+        errorAlert.className = 'alert alert-danger alert-dismissible fade show';
+        errorAlert.innerHTML = `
+          Erro ao salvar configurações. Tente novamente mais tarde.
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+        `;
+        
+        // Inserir a mensagem no topo do formulário
+        const alertContainer = document.querySelector('.card-body');
+        alertContainer.insertBefore(errorAlert, alertContainer.firstChild);
+      });
+    });
+    
+    // Botão para restaurar configurações padrão
+    document.getElementById('resetSettingsBtn').addEventListener('click', function() {
+      // Definir valores padrão
+      document.getElementById('theme').value = 'system';
+      document.getElementById('language').value = 'pt-BR';
+      document.getElementById('timezone').value = 'America/Sao_Paulo';
+      document.getElementById('dateFormat').value = 'DD/MM/YYYY';
+      document.getElementById('showWelcomeMessage').checked = true;
+      document.getElementById('showStats').checked = true;
+      document.getElementById('compactView').checked = false;
+      
+      // Aviso de que as configurações foram restauradas, mas não salvas
+      const infoAlert = document.createElement('div');
+      infoAlert.className = 'alert alert-info alert-dismissible fade show';
+      infoAlert.innerHTML = `
+        Configurações restauradas para o padrão. Clique em "Salvar Configurações" para aplicar as mudanças.
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+      `;
+      
+      // Inserir a mensagem no topo do formulário
+      const alertContainer = document.querySelector('.card-body');
+      alertContainer.insertBefore(infoAlert, alertContainer.firstChild);
+    });
+  });
+</script> 

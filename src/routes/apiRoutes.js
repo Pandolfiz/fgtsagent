@@ -1,0 +1,758 @@
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+console.log('N8N_API_URL carregada:', process.env.N8N_API_URL);
+
+// Rotas da API
+const express = require('express');
+const router = express.Router();
+const { requireAuth } = require('../middleware/authMiddleware');
+const logger = require('../utils/logger');
+const { supabase, supabaseAdmin } = require('../config/supabase');
+const authMiddleware = require('../middleware/authMiddleware');
+const jwt = require('jsonwebtoken');
+const dashboardController = require('../controllers/dashboardController');
+const proposalController = require('../controllers/proposalController');
+const multer = require('multer');
+const axios = require('axios');
+const fs = require('fs');
+const path = require('path');
+const { execFile } = require('child_process');
+const contactController = require('../controllers/contactController');
+
+// Função para criar um controlador mock
+const createMockController = (name) => {
+  return {
+    getAll: (req, res) => res.json({ success: true, data: [], message: `Mock: Listar ${name}` }),
+    create: (req, res) => res.json({ success: true, data: { id: 'mock-id' }, message: `Mock: Criar ${name}` }),
+    getById: (req, res) => res.json({ success: true, data: { id: req.params.id }, message: `Mock: Obter ${name}` }),
+    update: (req, res) => res.json({ success: true, data: { id: req.params.id }, message: `Mock: Atualizar ${name}` }),
+    delete: (req, res) => res.json({ success: true, message: `Mock: Deletar ${name}` })
+  };
+};
+
+// Carregar controladores reais ou usar mocks
+let authController;
+try {
+  authController = require('../controllers/authController');
+} catch (error) {
+  console.log('Controlador de autenticação não encontrado, usando funções mock');
+  authController = {
+    login: (req, res) => res.json({ success: true, message: 'Mock: Login realizado' }),
+    register: (req, res) => res.json({ success: true, message: 'Mock: Registro realizado' }),
+    logout: (req, res) => res.json({ success: true, message: 'Mock: Logout realizado' }),
+    getMe: (req, res) => res.json({ success: true, user: { id: 'mock-user' } }),
+    updateCurrentUser: (req, res) => res.json({ success: true, message: 'Mock: Perfil atualizado' }),
+    requestPasswordReset: (req, res) => res.json({ success: true, message: 'Mock: Recuperação de senha solicitada' }),
+    confirmPasswordReset: (req, res) => res.json({ success: true, message: 'Mock: Senha redefinida' })
+  };
+}
+
+// Rota de status da API (sem autenticação)
+router.get('/status', (req, res) => {
+  const startTime = process.uptime();
+  res.json({
+    status: 'online',
+    timestamp: new Date().toISOString(),
+    uptime: `${Math.floor(startTime / 60)} minutos e ${Math.floor(startTime % 60)} segundos`
+  });
+});
+
+// Rota para verificar status da sessão
+router.get('/auth/check-session', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1] || req.cookies.authToken;
+    logger.info(`Verificando status da sessão: ${token ? 'Token fornecido' : 'Token não fornecido'}`);
+    
+    if (!token) {
+      return res.status(401).json({
+        valid: false,
+        message: 'Token não fornecido'
+      });
+    }
+    
+    // Verificar o token com o Supabase
+    const { data: { user }, error } = await supabase.auth.getUser(token);
+    
+    if (error || !user) {
+      logger.warn(`Token inválido durante verificação de sessão: ${error ? error.message : 'Usuário não encontrado'}`);
+      return res.status(401).json({
+        valid: false,
+        message: 'Token inválido ou expirado'
+      });
+    }
+    
+    // Verificar expiração do token
+    try {
+      const [headerEncoded, payloadEncoded] = token.split('.');
+      if (headerEncoded && payloadEncoded) {
+        const payload = JSON.parse(Buffer.from(payloadEncoded, 'base64').toString('utf8'));
+        if (payload && payload.exp) {
+          const expiryTime = payload.exp * 1000; // Converter para milissegundos
+          const currentTime = Date.now();
+          
+          if (expiryTime <= currentTime) {
+            logger.warn(`Token expirado durante verificação de sessão para o usuário ${user.id}`);
+            return res.status(401).json({
+              valid: false,
+              message: 'Token expirado'
+            });
+          }
+          
+          // Informar quanto tempo resta até a expiração (em segundos)
+          const timeRemaining = Math.floor((expiryTime - currentTime) / 1000);
+          
+          return res.json({
+            valid: true,
+            user: {
+              id: user.id,
+              email: user.email
+            },
+            expiresIn: timeRemaining
+          });
+        }
+      }
+    } catch (parseError) {
+      logger.warn(`Erro ao analisar JWT durante verificação de sessão: ${parseError.message}`);
+    }
+    
+    // Se não conseguiu analisar o token, mas o Supabase validou, consideramos válido
+    return res.json({
+      valid: true,
+      user: {
+        id: user.id,
+        email: user.email
+      }
+    });
+  } catch (err) {
+    logger.error(`Erro na verificação de sessão: ${err.message}`);
+    return res.status(500).json({
+      valid: false,
+      message: 'Erro interno ao verificar sessão'
+    });
+  }
+});
+
+// Rota de Dashboard FGTS/propostas
+router.get('/dashboard/stats', requireAuth, require('../controllers/dashboardController').getApiDashboardStats);
+
+// Rotas de Organizações
+// Vamos criar handlers alternativos caso os métodos originais não estejam disponíveis
+const orgHandler = {
+  listUserOrganizations: async (req, res) => {
+    try {
+      // Sempre usar fallback de listagem de organizações
+      const userId = req.user.id;
+      logger.info(`Listando organizações do usuário: ${userId} (fallback)`);
+      
+      // Buscar organizações do usuário usando RPC
+      const { data, error } = await supabase
+        .rpc('get_user_memberships', { user_id_param: userId });
+      
+      if (error) {
+        logger.error(`Erro ao buscar organizações do usuário: ${error.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao buscar organizações'
+        });
+      }
+      
+      // Formatar resposta para uso no frontend
+      const organizations = data.map(org => ({
+        id: org.organization_id,
+        name: org.organization_name,
+        role: org.role
+      }));
+      
+      logger.info(`Encontradas ${organizations.length} organizações para o usuário`);
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Organizações recuperadas com sucesso',
+        data: organizations
+      });
+    } catch (error) {
+      logger.error('Erro ao listar organizações:', error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || 'Erro ao listar organizações'
+      });
+    }
+  },
+  
+  getOrganization: async (req, res) => {
+    try {
+      // Sempre usar fallback de obtenção de organização
+      const orgId = req.params.id;
+      const userId = req.user.id;
+      
+      logger.info(`Buscando organização ${orgId} para usuário ${userId} (fallback)`);
+      
+      // Verificar se o usuário é membro
+      const { data: membership, error: membershipError } = await supabase
+        .from('organization_members')
+        .select('role')
+        .eq('organization_id', orgId)
+        .eq('user_id', userId)
+        .single();
+      
+      if (membershipError) {
+        logger.error(`Erro ao verificar associação: ${membershipError.message}`);
+        return res.status(403).json({
+          success: false,
+          message: 'Acesso negado a esta organização'
+        });
+      }
+      
+      // Buscar dados da organização
+      const { data: org, error: orgError } = await supabase
+        .from('organizations')
+        .select('*')
+        .eq('id', orgId)
+        .single();
+      
+      if (orgError) {
+        logger.error(`Erro ao buscar organização: ${orgError.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao buscar organização'
+        });
+      }
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Organização recuperada com sucesso',
+        data: {
+          ...org,
+          role: membership.role
+        }
+      });
+    } catch (error) {
+      logger.error('Erro ao buscar organização:', error);
+      return res.status(500).json({
+        success: false,
+        message: error.message || 'Erro ao buscar organização'
+      });
+    }
+  },
+  
+  createOrganization: async (req, res) => {
+    // Implementação alternativa para criar organização
+    return res.status(200).json({
+      success: true,
+      message: 'Método não implementado'
+    });
+  },
+  
+  updateOrganization: async (req, res) => {
+    // Implementação alternativa para atualizar organização
+    return res.status(200).json({
+      success: true,
+      message: 'Método não implementado'
+    });
+  }
+};
+
+router.get('/organizations', requireAuth, orgHandler.listUserOrganizations);
+router.get('/organizations/:id', requireAuth, orgHandler.getOrganization);
+router.post('/organizations', requireAuth, orgHandler.createOrganization);
+router.put('/organizations/:id', requireAuth, orgHandler.updateOrganization);
+
+// Rota para renovação de token
+router.post('/auth/refresh-token', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.split(' ')[1] || req.cookies.authToken;
+    const refreshTokenValue = req.cookies.refreshToken;
+    
+    logger.info(`Tentativa de renovação de token: ${token ? 'Token encontrado' : 'Token não encontrado'}`);
+    logger.info(`RefreshToken disponível: ${refreshTokenValue ? 'Sim' : 'Não'}`);
+    
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Token não fornecido'
+      });
+    }
+    
+    // Verificar se o supabaseAdmin está disponível
+    if (!supabaseAdmin) {
+      logger.error('Objeto supabaseAdmin não definido. Verificar importação do módulo.');
+      return res.status(500).json({
+        success: false,
+        message: 'Erro interno no servidor ao processar a renovação do token'
+      });
+    }
+    
+    // Analisar o token para extrair as informações do usuário antes de tentar verificar com o Supabase
+    let userId = null;
+    let userEmail = null;
+    
+    try {
+      // Tentar extrair o payload do token
+      const [headerEncoded, payloadEncoded] = token.split('.');
+      if (headerEncoded && payloadEncoded) {
+        const payload = JSON.parse(Buffer.from(payloadEncoded, 'base64').toString('utf8'));
+        if (payload) {
+          userId = payload.sub;
+          userEmail = payload.email;
+          logger.info(`Informações extraídas do token - userId: ${userId}, email: ${userEmail}`);
+        }
+      }
+    } catch (parseError) {
+      logger.warn(`Não foi possível analisar o token para extrair informações: ${parseError.message}`);
+    }
+    
+    // Verificar o token atual com o Supabase
+    let supabaseUser = null;
+    
+    try {
+      const { data: { user }, error } = await supabase.auth.getUser(token);
+      if (!error && user) {
+        supabaseUser = user;
+        logger.info(`Usuário verificado pelo Supabase: ${user.id}`);
+        
+        // Atualizar as informações do usuário caso tenha sido possível extrair do token
+        if (!userId) userId = user.id;
+        if (!userEmail) userEmail = user.email;
+      } else {
+        logger.warn(`Erro ao verificar token com Supabase: ${error ? error.message : 'Usuário não encontrado'}`);
+      }
+    } catch (supabaseError) {
+      logger.warn(`Exceção ao verificar token com Supabase: ${supabaseError.message}`);
+    }
+    
+    // Abordagem 1: Tentar realizar refreshSession do Supabase se o token for válido
+    if (supabaseUser) {
+      try {
+        logger.info(`Tentando realizar refresh da sessão para o usuário ${supabaseUser.id}`);
+        
+        // Verificar se temos uma sessão ativa antes de tentar refresh
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        
+        if (sessionError) {
+          logger.warn(`Erro ao verificar sessão atual: ${sessionError.message}`);
+        } else if (!sessionData?.session) {
+          logger.info('Sessão atual não encontrada, tentando recriar...');
+          
+          // Tentar criar uma nova sessão com o token existente
+          const { data: signInData, error: signInError } = await supabase.auth.setSession({
+            access_token: token,
+            refresh_token: refreshTokenValue
+          });
+          
+          if (signInError) {
+            logger.warn(`Erro ao tentar recriar sessão: ${signInError.message}`);
+          } else if (signInData?.session) {
+            logger.info('Sessão recriada com sucesso');
+            
+            // Definir novos tokens nos cookies
+            res.cookie('authToken', signInData.session.access_token, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === 'production',
+              maxAge: 30 * 60 * 1000 // 30 minutos
+            });
+            
+            if (signInData.session.refresh_token) {
+              res.cookie('refreshToken', signInData.session.refresh_token, {
+                httpOnly: true,
+                secure: process.env.NODE_ENV === 'production',
+                maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
+              });
+            }
+            
+            return res.status(200).json({
+              status: 'success',
+              data: {
+                token: signInData.session.access_token,
+                expiresIn: 30 * 60 // 30 minutos em segundos
+              },
+              message: 'Sessão recriada com sucesso'
+            });
+          } else {
+            logger.warn('Não foi possível recriar a sessão e nenhum erro foi retornado');
+          }
+        } else {
+          logger.info('Sessão atual encontrada, prosseguindo com refresh');
+        }
+        
+        // Tentar realizar o refresh da sessão
+        // Se temos um refreshToken, usá-lo explicitamente
+        let refreshOptions = {};
+        if (refreshTokenValue) {
+          refreshOptions = { refresh_token: refreshTokenValue };
+          logger.info('Usando refresh_token explícito para atualizar a sessão');
+        }
+        
+        const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession(refreshOptions);
+        
+        // Verificar se o refreshSession funcionou
+        if (!refreshError && refreshData && refreshData.session) {
+          logger.info(`Sessão renovada com sucesso para o usuário ${supabaseUser.id}`);
+          
+          // Definir novo token no cookie - tempo de 30 minutos para inatividade
+          res.cookie('authToken', refreshData.session.access_token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            maxAge: 30 * 60 * 1000 // 30 minutos
+          });
+          
+          // Armazenar também o refresh token quando disponível
+          if (refreshData.session.refresh_token) {
+            res.cookie('refreshToken', refreshData.session.refresh_token, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === 'production',
+              maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
+            });
+          }
+          
+          return res.status(200).json({
+            status: 'success',
+            data: {
+              token: refreshData.session.access_token,
+              expiresIn: 30 * 60 // 30 minutos em segundos
+            },
+            message: 'Token renovado com sucesso'
+          });
+        } else {
+          logger.warn(`Refresh normal falhou: ${refreshError?.message || 'Erro desconhecido'}. Tentando abordagem alternativa.`);
+        }
+      } catch (refreshErr) {
+        logger.warn(`Erro ao tentar refreshSession: ${refreshErr.message}`);
+      }
+    }
+    
+    // Abordagem 2: Se não conseguimos usar o supabase ou o userId foi extraído do token, buscar usuário pelo ID
+    if (userId) {
+      try {
+        logger.info(`Tentando buscar usuário pelo ID: ${userId}`);
+        // Verificar explicitamente se o supabaseAdmin está disponível
+        if (!supabaseAdmin) {
+          throw new Error('supabaseAdmin não está definido');
+        }
+        
+        // Em vez de buscar no profiles, vamos usar o próprio objeto auth do Supabase
+        const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
+        
+        if (!userError && userData && userData.user) {
+          const user = userData.user;
+          logger.info(`Informações do usuário encontradas via auth.admin: ${user.email || userEmail}`);
+          
+          // Usar email do banco se disponível, ou manter o email extraído do token
+          if (user.email) userEmail = user.email;
+          
+          // Gerar um novo token JWT com validade de 30 minutos
+          const expiryDate = new Date();
+          expiryDate.setMinutes(expiryDate.getMinutes() + 30); // 30 minutos
+          
+          const newToken = jwt.sign(
+            { 
+              sub: userId,
+              email: userEmail,
+              name: user.user_metadata?.full_name || user.user_metadata?.first_name || '',
+              aud: 'authenticated',
+              role: 'authenticated',
+              exp: Math.floor(expiryDate.getTime() / 1000),
+              iat: Math.floor(Date.now() / 1000)
+            },
+            process.env.JWT_SECRET || 'your-secret-key'
+          );
+          
+          // Definir novo token no cookie
+          res.cookie('authToken', newToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            maxAge: 30 * 60 * 1000 // 30 minutos
+          });
+          
+          logger.info(`Token JWT alternativo gerado para o usuário ${userId}`);
+          
+          return res.status(200).json({
+            status: 'success',
+            data: {
+              token: newToken,
+              expiresIn: 30 * 60 // 30 minutos em segundos
+            },
+            message: 'Token JWT alternativo gerado com sucesso'
+          });
+        } else {
+          logger.warn(`Usuário ${userId} não encontrado via auth.admin: ${userError?.message || 'Erro ao buscar usuário'}`);
+        }
+      } catch (userLookupError) {
+        logger.error(`Erro ao buscar usuário no banco: ${userLookupError.message}`);
+      }
+    }
+    
+    // Abordagem 3: Se o email estiver disponível, mas o usuário não for encontrado
+    if (userEmail && !supabaseUser) {
+      try {
+        logger.info(`Tentando buscar usuário pelo email: ${userEmail}`);
+        // Verificar explicitamente se o supabaseAdmin está disponível
+        if (!supabaseAdmin) {
+          throw new Error('supabaseAdmin não está definido');
+        }
+        
+        // Buscar usuário pela API de administração do Supabase usando email
+        const { data: userList, error: listError } = await supabaseAdmin.auth.admin.listUsers({
+          filter: {
+            email: userEmail
+          }
+        });
+          
+        // Se encontrou o usuário, usar seu ID
+        if (!listError && userList && userList.users && userList.users.length > 0) {
+          const foundUser = userList.users[0];
+          userId = foundUser.id;
+          logger.info(`Usuário encontrado pela API de administração, ID: ${userId}`);
+          
+          // Gerar um novo token JWT com validade de 30 minutos
+          const expiryDate = new Date();
+          expiryDate.setMinutes(expiryDate.getMinutes() + 30); // 30 minutos
+          
+          const newToken = jwt.sign(
+            { 
+              sub: userId,
+              email: userEmail,
+              name: foundUser.user_metadata?.full_name || foundUser.user_metadata?.first_name || '',
+              aud: 'authenticated',
+              role: 'authenticated',
+              exp: Math.floor(expiryDate.getTime() / 1000),
+              iat: Math.floor(Date.now() / 1000)
+            },
+            process.env.JWT_SECRET || 'your-secret-key'
+          );
+          
+          // Definir novo token no cookie
+          res.cookie('authToken', newToken, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            maxAge: 30 * 60 * 1000 // 30 minutos
+          });
+          
+          logger.info(`Token JWT gerado para usuário encontrado pelo email: ${userEmail}`);
+          
+          return res.status(200).json({
+            status: 'success',
+            data: {
+              token: newToken,
+              expiresIn: 30 * 60 // 30 minutos em segundos
+            },
+            message: 'Token JWT gerado com sucesso usando email'
+          });
+        } else {
+          logger.warn(`Usuário com email ${userEmail} não encontrado: ${listError?.message || 'Não encontrado'}`);
+        }
+      } catch (emailLookupError) {
+        logger.error(`Erro ao buscar usuário por email: ${emailLookupError.message}`);
+      }
+    }
+    
+    // Abordagem 4: Último recurso - tente criar uma nova sessão anônima temporária
+    try {
+      logger.info('Tentando criar uma sessão anônima temporária como último recurso');
+      
+      // Gerar um ID de sessão temporário
+      const tempSessionId = Date.now().toString(36) + Math.random().toString(36).substring(2, 15);
+      
+      // Criar um token temporário com validade muito curta (5 minutos)
+      const expiryDate = new Date();
+      expiryDate.setMinutes(expiryDate.getMinutes() + 5); // 5 minutos apenas
+      
+      const tempToken = jwt.sign(
+        { 
+          sub: tempSessionId,
+          aud: 'temp_session',
+          role: 'anonymous',
+          exp: Math.floor(expiryDate.getTime() / 1000),
+          iat: Math.floor(Date.now() / 1000),
+          temp: true
+        },
+        process.env.JWT_SECRET || 'your-secret-key'
+      );
+      
+      // Configurar o cookie com um tempo de vida muito curto
+      res.cookie('authToken', tempToken, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 5 * 60 * 1000 // 5 minutos
+      });
+      
+      logger.info('Token temporário de emergência criado');
+      
+      return res.status(207).json({
+        status: 'partial',
+        data: {
+          token: tempToken,
+          expiresIn: 5 * 60, // 5 minutos em segundos
+          isTemporary: true
+        },
+        message: 'Sessão temporária criada. Por favor, faça login novamente quando possível.'
+      });
+    } catch (finalError) {
+      logger.error(`Falha em todas as tentativas de renovação de token: ${finalError.message}`);
+    }
+    
+    // Se chegou até aqui, todas as tentativas falharam
+    logger.warn(`Todas as abordagens de renovação falharam - sessão expirada ou token inválido`);
+    
+    // Limpar o cookie inválido
+    res.clearCookie('authToken');
+    
+    return res.status(401).json({
+      status: 'error',
+      expired: true,
+      message: 'Sessão expirada. Por favor, faça login novamente.'
+    });
+  } catch (err) {
+    logger.error(`Erro geral na renovação de token: ${err.message}`);
+    
+    // Limpar cookie por segurança
+    res.clearCookie('authToken');
+    
+    return res.status(500).json({
+      status: 'error',
+      message: 'Erro interno ao processar renovação de token'
+    });
+  }
+});
+
+// Rotas para API Keys de usuário
+const userCredentialsController = require('../controllers/userCredentialsController');
+
+// Rotas protegidas por autenticação normal
+router.get('/user/api-keys', requireAuth, userCredentialsController.listUserApiKeys);
+router.post('/user/api-keys', requireAuth, userCredentialsController.createUserApiKey);
+router.delete('/user/api-keys/:id', requireAuth, userCredentialsController.revokeUserApiKey);
+router.put('/user/api-keys/:id', requireAuth, userCredentialsController.updateUserApiKeyName);
+
+// Rotas para teste de API key
+router.get('/user/verify-api-key', (req, res) => {
+  return res.status(200).json({
+    success: true,
+    message: 'API key válida',
+    data: {
+      userId: req.user.id,
+      email: req.user.email,
+      name: req.user.name,
+      keyName: req.user.apiKey.name
+    }
+  });
+});
+
+// Rota de teste para autenticação
+router.get('/test-auth', async (req, res) => {
+  try {
+    logger.info('[test-auth] Rota de teste acessada com sucesso');
+    logger.info(`[test-auth] Usuário autenticado: ${JSON.stringify(req.user)}`);
+    
+    return res.status(200).json({
+      success: true,
+      message: 'Autenticação bem-sucedida',
+      authMethod: req.user.auth_method || 'desconhecido',
+      user: {
+        id: req.user.id,
+        email: req.user.email,
+        displayName: req.user.displayName
+      }
+    });
+  } catch (error) {
+    logger.error(`[test-auth] Erro: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao processar autenticação de teste'
+    });
+  }
+});
+
+// Rota para cancelar proposta
+router.post('/proposals/:id/cancel', requireAuth, proposalController.cancelProposal);
+
+// Rota para excluir proposta
+router.delete('/proposals/:id', requireAuth, proposalController.deleteProposal);
+
+router.post('/agent/save-name', requireAuth, async (req, res) => {
+  const { agentName } = req.body;
+  const userId = req.user.id;
+
+  if (!agentName) {
+    return res.status(400).json({ success: false, message: 'Nome do agente é obrigatório.' });
+  }
+
+  try {
+    // Atualiza o nome do agente na tabela evolution_credentials para o usuário logado
+    const { error } = await require('../config/supabase').supabaseAdmin
+      .from('evolution_credentials')
+      .update({ agent_name: agentName })
+      .eq('client_id', userId);
+
+    if (error) {
+      return res.status(500).json({ success: false, message: 'Erro ao atualizar nome do agente.' });
+    }
+
+    return res.json({ success: true, message: 'Nome do agente atualizado com sucesso.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: 'Erro interno ao atualizar nome do agente.' });
+  }
+});
+
+const upload = multer({ dest: 'uploads/' }); // pasta temporária para uploads
+
+const N8N_API_URL = process.env.N8N_API_URL;
+
+function convertToMarkdownWithDocling(filePath) {
+  return new Promise((resolve, reject) => {
+    execFile('python', ['scripts/docling_convert.py', filePath], { maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+      if (error) return reject(stderr || error);
+      resolve(stdout);
+    });
+  });
+}
+
+router.post('/agent/upload-kb', requireAuth, upload.array('kbFiles'), async (req, res) => {
+  try {
+    const files = req.files;
+    const userId = req.user.id;
+    const agentName = req.body.agentName;
+    console.log('[UPLOAD] Recebido:', files.map(f => f.originalname));
+    if (!files || files.length === 0) {
+      console.log('[UPLOAD] Nenhum arquivo enviado.');
+      return res.status(400).json({ success: false, message: 'Nenhum arquivo enviado.' });
+    }
+    for (const file of files) {
+      let markdown = '';
+      try {
+        console.log(`[DOCILING] Iniciando conversão: ${file.path}`);
+        markdown = await convertToMarkdownWithDocling(file.path);
+        console.log(`[DOCILING] Markdown gerado (${file.originalname}):`, markdown.slice(0, 200));
+      } catch (err) {
+        console.error(`[DOCILING] Erro ao converter ${file.originalname}:`, err);
+        markdown = '';
+      }
+      try {
+        console.log(`[N8N] Enviando para n8n: ${N8N_API_URL}/webhook/uploadKb`);
+        await axios.post(`${N8N_API_URL}/webhook/uploadKb`, {
+          agentName,
+          userId,
+          originalName: file.originalname,
+          mimetype: file.mimetype,
+          markdown
+        });
+        console.log(`[N8N] Enviado com sucesso: ${file.originalname}`);
+      } catch (err) {
+        console.error(`[N8N] Erro ao enviar para n8n (${file.originalname}):`, err);
+      }
+      fs.unlink(file.path, () => {});
+    }
+    console.log('[UPLOAD] Todos os arquivos processados.');
+    res.json({ success: true, message: 'Documentos enviados e processados!' });
+  } catch (err) {
+    console.error('[UPLOAD] Erro geral:', err);
+    res.status(500).json({ success: false, message: 'Erro ao processar documentos.' });
+  }
+});
+
+// Rotas de KnowledgeBase
+const knowledgeBaseRoutes = require('./knowledgeBaseRoutes');
+router.use('/knowledge-base', knowledgeBaseRoutes);
+
+// Atualizar agent_state de contato
+router.post('/contacts/:remoteJid/state', requireAuth, contactController.updateState);
+
+module.exports = router; 

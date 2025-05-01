@@ -1,0 +1,501 @@
+<!-- Página de segurança do perfil do usuário -->
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-md-3">
+      <!-- Menu lateral -->
+      <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+          <h5 class="mb-0">Meu Perfil</h5>
+        </div>
+        <div class="list-group list-group-flush">
+          <a href="/profile" class="list-group-item list-group-item-action">
+            <i class="fas fa-user me-2"></i> Informações Pessoais
+          </a>
+          <a href="/profile/settings" class="list-group-item list-group-item-action">
+            <i class="fas fa-cog me-2"></i> Configurações
+          </a>
+          <a href="/profile/security" class="list-group-item list-group-item-action active">
+            <i class="fas fa-lock me-2"></i> Segurança
+          </a>
+          <a href="/profile/notifications" class="list-group-item list-group-item-action">
+            <i class="fas fa-bell me-2"></i> Notificações
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-9">
+      <!-- Conteúdo principal -->
+      <div class="card">
+        <div class="card-header bg-primary text-white">
+          <h5 class="mb-0">Segurança da Conta</h5>
+        </div>
+        <div class="card-body">
+          <% if (messages.success && messages.success.length > 0) { %>
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+              <%= messages.success %>
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+            </div>
+          <% } %>
+          
+          <% if (messages.error && messages.error.length > 0) { %>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+              <%= messages.error %>
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+            </div>
+          <% } %>
+
+          <!-- Seção: Alterar Senha -->
+          <div class="mb-4">
+            <h5 class="border-bottom pb-2">Alterar Senha</h5>
+            <form id="changePasswordForm">
+              <div class="mb-3">
+                <label for="currentPassword" class="form-label">Senha Atual</label>
+                <input type="password" class="form-control" id="currentPassword" name="currentPassword" required>
+              </div>
+              
+              <div class="mb-3">
+                <label for="newPassword" class="form-label">Nova Senha</label>
+                <input type="password" class="form-control" id="newPassword" name="newPassword" required 
+                  pattern="(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}" 
+                  title="A senha deve conter pelo menos 8 caracteres, incluindo uma letra maiúscula, uma letra minúscula e um número">
+                <div class="form-text">A senha deve conter pelo menos 8 caracteres, incluindo uma letra maiúscula, uma letra minúscula e um número.</div>
+              </div>
+              
+              <div class="mb-3">
+                <label for="confirmPassword" class="form-label">Confirmar Nova Senha</label>
+                <input type="password" class="form-control" id="confirmPassword" name="confirmPassword" required>
+                <div id="passwordMatchError" class="invalid-feedback">As senhas não coincidem.</div>
+              </div>
+              
+              <button type="button" id="changePasswordBtn" class="btn btn-primary">Alterar Senha</button>
+            </form>
+          </div>
+          
+          <!-- Seção: Autenticação de Dois Fatores -->
+          <div class="mb-4">
+            <h5 class="border-bottom pb-2">Autenticação de Dois Fatores (2FA)</h5>
+            
+            <div class="card mb-3">
+              <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                  <div>
+                    <h6 class="mb-1">Status da Autenticação de Dois Fatores</h6>
+                    <p class="mb-0 <%= (user && user.user_metadata && user.user_metadata.twoFactorEnabled) ? 'text-success' : 'text-danger' %>">
+                      <% if (user && user.user_metadata && user.user_metadata.twoFactorEnabled) { %>
+                        <i class="fas fa-shield-alt me-1"></i> Autenticação de dois fatores está <strong>ativada</strong>
+                      <% } else { %>
+                        <i class="fas fa-exclamation-triangle me-1"></i> Autenticação de dois fatores está <strong>desativada</strong>
+                      <% } %>
+                    </p>
+                  </div>
+                  <div>
+                    <% if (user && user.user_metadata && user.user_metadata.twoFactorEnabled) { %>
+                      <button class="btn btn-danger" id="disable2faBtn">Desativar 2FA</button>
+                    <% } else { %>
+                      <button class="btn btn-success" id="enable2faBtn">Ativar 2FA</button>
+                    <% } %>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <p class="text-muted">
+              A autenticação de dois fatores adiciona uma camada extra de segurança à sua conta, solicitando 
+              um código de verificação além da sua senha ao fazer login.
+            </p>
+          </div>
+          
+          <!-- Seção: Sessões Ativas -->
+          <div class="mb-4">
+            <h5 class="border-bottom pb-2">Sessões Ativas</h5>
+            
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead>
+                  <tr>
+                    <th>Dispositivo</th>
+                    <th>Localização</th>
+                    <th>Último Acesso</th>
+                    <th>Ações</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- Sessão atual -->
+                  <tr>
+                    <td>
+                      <i class="fas fa-laptop me-2"></i>
+                      Navegador Atual
+                      <span class="badge bg-success ms-2">Atual</span>
+                    </td>
+                    <td>São Paulo, BR</td>
+                    <td>Agora</td>
+                    <td>
+                      <button class="btn btn-sm btn-outline-danger" disabled>Encerrar</button>
+                    </td>
+                  </tr>
+                  
+                  <!-- Exemplo de outras sessões -->
+                  <tr>
+                    <td><i class="fas fa-mobile-alt me-2"></i> iPhone</td>
+                    <td>Rio de Janeiro, BR</td>
+                    <td>Ontem, 14:30</td>
+                    <td>
+                      <button class="btn btn-sm btn-outline-danger session-logout-btn" data-session-id="12345">Encerrar</button>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td><i class="fas fa-tablet-alt me-2"></i> iPad</td>
+                    <td>Belo Horizonte, BR</td>
+                    <td>13/09/2023, 10:15</td>
+                    <td>
+                      <button class="btn btn-sm btn-outline-danger session-logout-btn" data-session-id="67890">Encerrar</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            
+            <div class="d-flex justify-content-end mt-3">
+              <button class="btn btn-danger" id="logoutAllBtn">Encerrar Todas as Sessões</button>
+            </div>
+          </div>
+          
+          <!-- Seção: Histórico de Atividades -->
+          <div class="mb-4">
+            <h5 class="border-bottom pb-2">Histórico de Atividades</h5>
+            
+            <div class="table-responsive">
+              <table class="table table-hover">
+                <thead>
+                  <tr>
+                    <th>Atividade</th>
+                    <th>Data</th>
+                    <th>Dispositivo</th>
+                    <th>Localização</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><i class="fas fa-sign-in-alt me-2 text-success"></i> Login bem-sucedido</td>
+                    <td>Hoje, 09:45</td>
+                    <td>Windows / Chrome</td>
+                    <td>São Paulo, BR</td>
+                  </tr>
+                  <tr>
+                    <td><i class="fas fa-key me-2 text-warning"></i> Senha alterada</td>
+                    <td>10/09/2023, 18:30</td>
+                    <td>Windows / Chrome</td>
+                    <td>São Paulo, BR</td>
+                  </tr>
+                  <tr>
+                    <td><i class="fas fa-sign-out-alt me-2 text-info"></i> Logout</td>
+                    <td>10/09/2023, 17:15</td>
+                    <td>Windows / Chrome</td>
+                    <td>São Paulo, BR</td>
+                  </tr>
+                  <tr>
+                    <td><i class="fas fa-sign-in-alt me-2 text-success"></i> Login bem-sucedido</td>
+                    <td>10/09/2023, 09:20</td>
+                    <td>iPhone / Safari</td>
+                    <td>Rio de Janeiro, BR</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            
+            <div class="d-flex justify-content-end mt-3">
+              <button class="btn btn-outline-primary" id="viewAllActivitiesBtn">Ver Todas as Atividades</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Flag global para controlar se há uma requisição em andamento
+    let isSubmitting = false;
+    
+    // Fazer com que os alertas existentes desapareçam após 15 segundos
+    document.querySelectorAll('.alert-success, .alert-danger').forEach(alert => {
+      setTimeout(() => {
+        if (alert && alert.parentNode) {
+          alert.classList.remove('show');
+          setTimeout(() => {
+            if (alert.parentNode) {
+              alert.parentNode.removeChild(alert);
+            }
+          }, 500);
+        }
+      }, 15000);
+    });
+    
+    // Validação de formulário de alteração de senha
+    const changePasswordForm = document.getElementById('changePasswordForm');
+    const changePasswordBtn = document.getElementById('changePasswordBtn');
+    const newPasswordInput = document.getElementById('newPassword');
+    const confirmPasswordInput = document.getElementById('confirmPassword');
+    const passwordMatchError = document.getElementById('passwordMatchError');
+    
+    // Verificar se as senhas coincidem
+    function checkPasswordMatch() {
+      if (newPasswordInput.value !== confirmPasswordInput.value) {
+        confirmPasswordInput.setCustomValidity('As senhas não coincidem');
+        passwordMatchError.style.display = 'block';
+      } else {
+        confirmPasswordInput.setCustomValidity('');
+        passwordMatchError.style.display = 'none';
+      }
+    }
+    
+    // Adicionar eventos para verificação em tempo real
+    newPasswordInput.addEventListener('input', checkPasswordMatch);
+    confirmPasswordInput.addEventListener('input', checkPasswordMatch);
+    
+    // Limpar erro de senha atual incorreta quando o usuário digita
+    document.getElementById('currentPassword').addEventListener('input', function() {
+      this.classList.remove('is-invalid');
+      const errorElement = document.getElementById('currentPasswordError');
+      if (errorElement) {
+        errorElement.style.display = 'none';
+      }
+    });
+    
+    // Transformar o formulário em um div
+    // Remove completamente o comportamento de formulário
+    changePasswordForm.addEventListener('submit', function(e) {
+      e.preventDefault();
+      return false;
+    });
+    
+    // Usar o botão em vez do submit do formulário
+    changePasswordBtn.addEventListener('click', function() {
+      // Verificar se já existe uma requisição em andamento
+      if (isSubmitting) {
+        console.log('Requisição já em andamento, ignorando clique adicional');
+        return false;
+      }
+      
+      // Verificar se as senhas coincidem
+      if (newPasswordInput.value !== confirmPasswordInput.value) {
+        passwordMatchError.style.display = 'block';
+        return false;
+      }
+      
+      // Marcar que há uma requisição em andamento
+      isSubmitting = true;
+      
+      // Desabilitar o botão
+      changePasswordBtn.disabled = true;
+      changePasswordBtn.innerHTML = 'Processando...';
+      
+      console.log('Enviando requisição para alterar senha...');
+      
+      // Enviar o formulário para o servidor
+      fetch('/profile/change-password', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          currentPassword: document.getElementById('currentPassword').value,
+          newPassword: newPasswordInput.value
+        })
+      })
+      .then(response => response.json())
+      .then(data => {
+        console.log('Resposta recebida:', data.success ? 'Sucesso' : 'Erro');
+        
+        // Criar alerta baseado na resposta
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${data.success ? 'success' : 'danger'} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+          ${data.message}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+        `;
+        
+        // Se for erro de senha atual incorreta, destacar o campo correspondente
+        if (!data.success && data.message && data.message.includes('senha atual está incorreta')) {
+          const currentPasswordInput = document.getElementById('currentPassword');
+          currentPasswordInput.classList.add('is-invalid');
+          
+          // Adicionar feedback de senha incorreta
+          if (!document.getElementById('currentPasswordError')) {
+            const feedbackDiv = document.createElement('div');
+            feedbackDiv.id = 'currentPasswordError';
+            feedbackDiv.className = 'invalid-feedback';
+            feedbackDiv.innerText = 'A senha atual está incorreta';
+            currentPasswordInput.parentNode.appendChild(feedbackDiv);
+          }
+        }
+        
+        // Inserir alerta no início do card-body
+        const cardBody = document.querySelector('.card-body');
+        cardBody.insertBefore(alertDiv, cardBody.firstChild);
+        
+        // Configurar temporizador para remover o alerta após 15 segundos
+        setTimeout(() => {
+          // Verificar se o alerta ainda existe no DOM antes de tentar removê-lo
+          if (alertDiv && alertDiv.parentNode) {
+            // Adicionar classe de fade out
+            alertDiv.classList.remove('show');
+            // Aguardar a animação terminar antes de remover o elemento
+            setTimeout(() => {
+              if (alertDiv.parentNode) {
+                alertDiv.parentNode.removeChild(alertDiv);
+              }
+            }, 500); // 500ms para a animação de fade out
+          }
+        }, 15000); // 15 segundos
+        
+        // Limpar formulário se bem-sucedido
+        if (data.success) {
+          changePasswordForm.reset();
+        }
+        
+        // Restaurar o botão
+        changePasswordBtn.disabled = false;
+        changePasswordBtn.innerHTML = 'Alterar Senha';
+        
+        // Desmarcar que há uma requisição em andamento
+        isSubmitting = false;
+      })
+      .catch(error => {
+        console.error('Erro ao alterar senha:', error);
+        
+        // Mostrar mensagem de erro
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-danger alert-dismissible fade show';
+        alertDiv.innerHTML = `
+          Erro ao processar a solicitação. Tente novamente mais tarde.
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+        `;
+        
+        // Inserir alerta no início do card-body
+        const cardBody = document.querySelector('.card-body');
+        cardBody.insertBefore(alertDiv, cardBody.firstChild);
+        
+        // Configurar temporizador para remover o alerta após 15 segundos
+        setTimeout(() => {
+          if (alertDiv && alertDiv.parentNode) {
+            alertDiv.classList.remove('show');
+            setTimeout(() => {
+              if (alertDiv.parentNode) {
+                alertDiv.parentNode.removeChild(alertDiv);
+              }
+            }, 500);
+          }
+        }, 15000); // 15 segundos
+        
+        // Restaurar o botão
+        changePasswordBtn.disabled = false;
+        changePasswordBtn.innerHTML = 'Alterar Senha';
+        
+        // Desmarcar que há uma requisição em andamento
+        isSubmitting = false;
+      });
+    });
+    
+    // Botões de autenticação de dois fatores
+    const enable2faBtn = document.getElementById('enable2faBtn');
+    const disable2faBtn = document.getElementById('disable2faBtn');
+    
+    if (enable2faBtn) {
+      enable2faBtn.addEventListener('click', function() {
+        // Redirecionar para a página de ativação de 2FA
+        window.location.href = '/profile/2fa/setup';
+      });
+    }
+    
+    if (disable2faBtn) {
+      disable2faBtn.addEventListener('click', function() {
+        if (confirm('Tem certeza que deseja desativar a autenticação de dois fatores? Isso pode reduzir a segurança da sua conta.')) {
+          // Enviar solicitação para desativar 2FA
+          fetch('/profile/2fa/disable', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              window.location.reload();
+            } else {
+              alert(data.message || 'Erro ao desativar 2FA. Tente novamente.');
+            }
+          })
+          .catch(error => {
+            console.error('Erro ao desativar 2FA:', error);
+            alert('Erro ao desativar 2FA. Tente novamente mais tarde.');
+          });
+        }
+      });
+    }
+    
+    // Botões de sessão
+    const sessionLogoutBtns = document.querySelectorAll('.session-logout-btn');
+    const logoutAllBtn = document.getElementById('logoutAllBtn');
+    
+    sessionLogoutBtns.forEach(btn => {
+      btn.addEventListener('click', function() {
+        const sessionId = this.getAttribute('data-session-id');
+        
+        if (confirm('Tem certeza que deseja encerrar esta sessão?')) {
+          // Enviar solicitação para encerrar sessão específica
+          fetch(`/profile/sessions/${sessionId}/logout`, {
+            method: 'POST'
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              // Remover linha da tabela
+              this.closest('tr').remove();
+            } else {
+              alert(data.message || 'Erro ao encerrar sessão. Tente novamente.');
+            }
+          })
+          .catch(error => {
+            console.error('Erro ao encerrar sessão:', error);
+            alert('Erro ao encerrar sessão. Tente novamente mais tarde.');
+          });
+        }
+      });
+    });
+    
+    if (logoutAllBtn) {
+      logoutAllBtn.addEventListener('click', function() {
+        if (confirm('Tem certeza que deseja encerrar todas as sessões? Você será desconectado e precisará fazer login novamente.')) {
+          // Enviar solicitação para encerrar todas as sessões
+          fetch('/profile/sessions/logout-all', {
+            method: 'POST'
+          })
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              window.location.href = '/auth/login?message=Todas as sessões foram encerradas. Por favor, faça login novamente.';
+            } else {
+              alert(data.message || 'Erro ao encerrar sessões. Tente novamente.');
+            }
+          })
+          .catch(error => {
+            console.error('Erro ao encerrar todas as sessões:', error);
+            alert('Erro ao encerrar todas as sessões. Tente novamente mais tarde.');
+          });
+        }
+      });
+    }
+    
+    // Botão Ver Todas as Atividades
+    const viewAllActivitiesBtn = document.getElementById('viewAllActivitiesBtn');
+    
+    if (viewAllActivitiesBtn) {
+      viewAllActivitiesBtn.addEventListener('click', function() {
+        window.location.href = '/profile/activity-log';
+      });
+    }
+  });
+</script> 

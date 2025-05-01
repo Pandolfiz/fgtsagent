@@ -1,0 +1,43 @@
+2025-04-27 20:10:35 [error]: Erro na sincronização inicial de templates: Cannot find module './sync-n8n-templates'
+Require stack:
+- C:\Users\luizf\OneDrive\Área de Trabalho\CODE\SAAS\saas fgts\src\server.js {"service":"api"}
+2025-04-27 20:10:42 [error]: Erro na sincronização inicial de templates: Cannot find module './sync-n8n-templates'
+Require stack:
+- C:\Users\luizf\OneDrive\Área de Trabalho\CODE\SAAS\saas fgts\src\server.js {"service":"api"}
+2025-04-27 20:11:59 [error]: Erro na sincronização inicial de templates: Cannot find module './sync-n8n-templates'
+Require stack:
+- C:\Users\luizf\OneDrive\Área de Trabalho\CODE\SAAS\saas fgts\src\server.js {"service":"api"}
+2025-04-28 03:38:22 error: Erro ao enviar mensagem via API REST:
+2025-04-28 03:38:22 error: Detalhes do erro:
+2025-04-28 03:39:59 error: Erro ao enviar mensagem via API REST:
+2025-04-28 03:39:59 error: Detalhes do erro:
+2025-04-28 03:40:33 error: Erro ao enviar mensagem via API REST:
+2025-04-28 03:40:33 error: Detalhes do erro:
+2025-04-28 03:41:42 error: Erro ao enviar mensagem via API REST:
+2025-04-28 03:41:42 error: Detalhes do erro:
+2025-04-28 12:52:30 error: Erro ao desconectar instância antes de excluir:
+2025-04-28 22:52:09 error: Erro ao recuperar usuário por ID: User not found
+2025-04-28 22:52:09 error: Falha na recuperação de usuário: Usuário não encontrado
+2025-04-28 23:50:04 error: Erro ao criar credencial na UI: insert or update on table "evolution_credentials" violates foreign key constraint "evolution_credentials_client_id_fkey"
+2025-04-28 23:50:24 error: Erro ao criar instância:
+2025-04-28 23:50:24 error: Erro ao criar credencial na UI: Erro da Evolution API: 403 - {"status":403,"error":"Forbidden","response":{"message":["This name \"teste\" is already in use."]}}
+2025-04-28 23:51:05 error: Erro ao criar credencial na UI: insert or update on table "evolution_credentials" violates foreign key constraint "evolution_credentials_client_id_fkey"
+2025-04-29 00:54:27 error: Erro ao criar credencial na UI: insert or update on table "evolution_credentials" violates foreign key constraint "evolution_credentials_client_id_fkey"
+2025-04-29 01:10:07 error: Falha na recuperação de usuário: supabaseAdmin.auth.admin.createSession is not a function
+2025-04-29 01:16:33 error: Falha na recuperação de usuário: supabaseAdmin.auth.admin.createSession is not a function
+2025-04-29 01:18:36 error: Falha na recuperação de usuário: supabaseAdmin.auth.admin.createSession is not a function
+2025-04-29 01:20:07 error: Falha na recuperação de usuário: supabaseAdmin.auth.admin.createSession is not a function
+2025-04-29 12:22:03 error: Erro ao enviar mensagem via API REST:
+2025-04-29 12:22:03 error: Detalhes do erro:
+2025-04-29 12:40:07 error: Erro ao enviar mensagem via API REST:
+2025-04-29 12:40:07 error: Detalhes do erro:
+2025-04-29 14:03:33 error: Erro ao criar instância:
+2025-04-29 14:03:33 error: Erro ao criar credencial na UI: Erro da Evolution API: 400 - {"status":400,"error":"Bad Request","response":{"message":[["number does not match pattern \"^\\\\d+[\\\\.@\\\\w-]+\""]]}}
+2025-04-29 14:05:51 error: Erro ao criar instância:
+2025-04-29 14:05:51 error: Erro ao criar credencial na UI: Erro da Evolution API: 400 - {"status":400,"error":"Bad Request","response":{"message":[["number does not match pattern \"^\\\\d+[\\\\.@\\\\w-]+\""]]}}
+2025-04-29 17:17:01 error: Erro ao criar instância:
+2025-04-29 17:17:01 error: Erro ao criar credencial na UI: Erro da Evolution API: 403 - {"status":403,"error":"Forbidden","response":{"message":["This name \"Fgts\" is already in use."]}}
+2025-04-29 18:54:14 error: Erro ao recuperar usuário por ID: User not found
+2025-04-29 18:54:14 error: Falha na recuperação de usuário: Usuário não encontrado
+2025-04-30 01:20:34 error: Falha na recuperação de usuário: supabaseAdmin.auth.admin.createSession is not a function
+2025-04-30 02:26:54 error: Falha na recuperação de usuário: supabaseAdmin.auth.admin.createSession is not a function

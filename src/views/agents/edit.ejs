@@ -1,0 +1,203 @@
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1 class="h2 mb-0 text-primary">
+                <i class="fas fa-edit me-2"></i>Editar Agente
+            </h1>
+            <p class="text-muted mt-2" id="agentDescription">Carregando informações do agente...</p>
+        </div>
+        <div class="col-md-4 text-md-end d-flex align-items-center justify-content-md-end mt-3 mt-md-0">
+            <a href="/agents/<%= agentId %>" id="backToAgentBtn" class="btn btn-outline-secondary me-2">
+                <i class="fas fa-arrow-left me-2"></i>Voltar
+            </a>
+            <div class="dropdown">
+                <button class="btn btn-primary dropdown-toggle" type="button" id="actionDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-cog me-2"></i>Ações
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="actionDropdown">
+                    <li>
+                        <a class="dropdown-item" href="#" id="saveChangesBtn">
+                            <i class="fas fa-save me-2"></i>Salvar Alterações
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item text-danger" href="#" id="cancelEditBtn">
+                            <i class="fas fa-times me-2"></i>Cancelar Edição
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <div class="col-lg-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-body p-4">
+                    <!-- Spinner de carregamento -->
+                    <div id="loadingSpinner" class="text-center py-5">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Carregando...</span>
+                        </div>
+                        <p class="mt-3">Carregando informações do agente...</p>
+                    </div>
+                    
+                    <!-- Formulário de edição -->
+                    <form id="editAgentForm" class="d-none">
+                        <div class="row mb-4">
+                            <!-- Informações básicas -->
+                            <div class="col-md-7">
+                                <h5 class="mb-3">Informações Básicas</h5>
+                                
+                                <div class="mb-3">
+                                    <label for="agentName" class="form-label">Nome do Agente <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" id="agentName" name="name" required
+                                        placeholder="Ex: Assistente de Atendimento">
+                                    <div class="form-text">Um nome descritivo para identificar seu agente.</div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="agentDescription" class="form-label">Descrição</label>
+                                    <textarea class="form-control" id="agentDescription" name="description" rows="3"
+                                        placeholder="Descreva o propósito deste agente..."></textarea>
+                                    <div class="form-text">Uma descrição clara do que o agente faz e como deve ser utilizado.</div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="agentOrganization" class="form-label">Organização <span class="text-danger">*</span></label>
+                                    <select class="form-select" id="agentOrganization" name="organization_id" required disabled>
+                                        <option value="" selected disabled>Carregando organizações...</option>
+                                    </select>
+                                    <div class="form-text">A organização não pode ser alterada após a criação do agente.</div>
+                                </div>
+                                
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" id="agentActive" name="is_active">
+                                    <label class="form-check-label" for="agentActive">Ativar Agente</label>
+                                    <div class="form-text">Agentes ativos podem ser acessados por usuários de acordo com as permissões.</div>
+                                </div>
+                            </div>
+                            
+                            <!-- Informações do template -->
+                            <div class="col-md-5">
+                                <h5 class="mb-3">Template de Fluxo</h5>
+                                <div class="mb-3">
+                                    <label for="agentTemplate" class="form-label">Template</label>
+                                    <input type="text" class="form-control" id="agentTemplate" disabled readonly>
+                                    <div class="form-text">O template não pode ser alterado após a criação do agente.</div>
+                                </div>
+                                
+                                <div class="template-info mb-4 p-3 border rounded bg-light">
+                                    <h6 class="mb-2" id="templateTitle">Informações do Template</h6>
+                                    <p class="mb-2 small text-muted" id="templateDescription">
+                                        Carregando...
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Parâmetros do template -->
+                        <div id="templateConfigSection" class="mb-4">
+                            <h5 class="mb-3">Configuração do Template</h5>
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-2"></i>Configure os parâmetros abaixo para personalizar o funcionamento do seu agente.
+                            </div>
+                            
+                            <div id="templateConfigFields" class="row g-3">
+                                <!-- Os campos serão criados dinamicamente com base no template selecionado -->
+                                <div class="col-12 text-center py-3" id="configLoadingIndicator">
+                                    <div class="spinner-border spinner-border-sm text-secondary" role="status">
+                                        <span class="visually-hidden">Carregando...</span>
+                                    </div>
+                                    <span class="ms-2">Carregando configurações...</span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Autenticação e Acesso -->
+                        <div class="mb-4">
+                            <h5 class="mb-3">Acesso e Segurança</h5>
+                            
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="agentPublic" name="is_public">
+                                        <label class="form-check-label" for="agentPublic">Acesso Público</label>
+                                        <div class="form-text">Se habilitado, o agente poderá ser acessado sem autenticação através de uma URL compartilhável.</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch mb-3">
+                                        <input class="form-check-input" type="checkbox" id="agentCollectData" name="collect_data">
+                                        <label class="form-check-label" for="agentCollectData">Coletar Dados de Interação</label>
+                                        <div class="form-text">Armazena as interações com o agente para análise e melhoria contínua.</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <input type="hidden" id="agentId" name="id">
+                        
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <button type="button" class="btn btn-secondary me-md-2" id="cancelEditBtn">Cancelar</button>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save me-2"></i>Salvar Alterações
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <h2 class="h4 mb-3 text-primary">
+                <i class="fas fa-upload me-2"></i>Adicionar Documentos à Base de Conhecimento
+            </h2>
+            <p class="text-muted">Faça upload de arquivos de texto, planilhas, XML, PDFs ou imagens. Todos os arquivos serão convertidos para Markdown para melhor compreensão do agente. Imagens passarão por OCR automaticamente.</p>
+            <form id="kbUploadForm" enctype="multipart/form-data">
+                <div class="mb-3">
+                    <input type="file" class="form-control" id="kbFiles" name="kbFiles" multiple required accept=".txt,.doc,.docx,.pdf,.csv,.xlsx,.xls,.xml,image/*">
+                    <div class="form-text">Tipos aceitos: .txt, .doc, .docx, .pdf, .csv, .xlsx, .xls, .xml, imagens (jpg, png, etc)</div>
+                </div>
+                <button type="submit" class="btn btn-success">
+                    <i class="fas fa-cloud-upload-alt me-2"></i>Enviar para Base de Conhecimento
+                </button>
+            </form>
+            <div id="kbUploadStatus" class="mt-3"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Upload de arquivos para base de conhecimento
+document.addEventListener('DOMContentLoaded', function() {
+    const kbUploadForm = document.getElementById('kbUploadForm');
+    const kbUploadStatus = document.getElementById('kbUploadStatus');
+    if (kbUploadForm) {
+        kbUploadForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            kbUploadStatus.innerHTML = '<div class="text-info">Enviando arquivos...</div>';
+            const formData = new FormData(kbUploadForm);
+            try {
+                const res = await fetch('/api/agent/upload-kb', {
+                    method: 'POST',
+                    body: formData
+                });
+                if (res.ok) {
+                    kbUploadStatus.innerHTML = '<div class="text-success">Upload realizado com sucesso! Os documentos serão processados e adicionados à base de conhecimento.</div>';
+                } else {
+                    const err = await res.text();
+                    kbUploadStatus.innerHTML = `<div class="text-danger">Erro ao enviar: ${err}</div>`;
+                }
+            } catch (error) {
+                kbUploadStatus.innerHTML = `<div class="text-danger">Erro ao enviar: ${error.message}</div>`;
+            }
+        });
+    }
+});
+</script> 

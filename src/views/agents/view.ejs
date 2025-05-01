@@ -1,0 +1,184 @@
+<div class="container py-4">
+    <div class="row mb-4">
+        <div class="col-md-8">
+            <h1 class="h2 mb-0 text-primary">
+                <i class="fas fa-robot me-2"></i>Detalhes do Agente
+            </h1>
+            <p class="text-muted mt-2" id="agentDescription">Carregando informações do agente...</p>
+        </div>
+        <div class="col-md-4 text-md-end d-flex align-items-center justify-content-md-end mt-3 mt-md-0">
+            <a href="/agents" class="btn btn-outline-secondary me-2">
+                <i class="fas fa-arrow-left me-2"></i>Voltar
+            </a>
+            <div class="dropdown ms-2">
+                <button class="btn btn-primary dropdown-toggle" type="button" id="agentActionsDropdown" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="fas fa-cog me-2"></i>Ações
+                </button>
+                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="agentActionsDropdown">
+                    <li>
+                        <a class="dropdown-item" href="/agents/<%= agentId %>/edit" id="editAgentBtn">
+                            <i class="fas fa-edit me-2"></i>Editar Agente
+                        </a>
+                    </li>
+                    <li>
+                        <a class="dropdown-item text-warning" href="#" id="toggleAgentStatusBtn">
+                            <i class="fas fa-power-off me-2"></i><span id="toggleStatusText">Desativar</span>
+                        </a>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                        <a class="dropdown-item text-danger" href="#" id="deleteAgentBtn">
+                            <i class="fas fa-trash-alt me-2"></i>Excluir Agente
+                        </a>
+                    </li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Informações gerais -->
+        <div class="col-lg-4 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-info-circle me-2"></i>Informações Gerais
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex align-items-center mb-4">
+                        <div class="fs-1 me-3 bg-light rounded-circle p-3">
+                            <i class="fas fa-robot text-primary"></i>
+                        </div>
+                        <div>
+                            <h4 class="mb-1" id="agentName">Carregando...</h4>
+                            <p class="mb-0 text-muted" id="agentOrganization">Organização: --</p>
+                        </div>
+                    </div>
+                    
+                    <table class="table table-sm">
+                        <tbody>
+                            <tr>
+                                <th scope="row" style="width: 40%">Status</th>
+                                <td id="agentStatus">
+                                    <span class="badge bg-secondary">Carregando...</span>
+                                </td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Template</th>
+                                <td id="agentTemplate">--</td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Data de Criação</th>
+                                <td id="agentCreated">--</td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Última Atualização</th>
+                                <td id="agentUpdated">--</td>
+                            </tr>
+                            <tr>
+                                <th scope="row">Acesso Público</th>
+                                <td id="agentPublic">--</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Estatísticas e atividade -->
+        <div class="col-lg-8 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-chart-line me-2"></i>Estatísticas e Atividade
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div class="row g-4 mb-4">
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 text-center">
+                                <h3 class="mb-1" id="statInteractions">--</h3>
+                                <p class="mb-0 text-muted">Interações Total</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 text-center">
+                                <h3 class="mb-1" id="statRecent">--</h3>
+                                <p class="mb-0 text-muted">Últimos 7 dias</p>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="border rounded p-3 text-center">
+                                <h3 class="mb-1" id="statAvgTime">--</h3>
+                                <p class="mb-0 text-muted">Tempo Médio</p>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <h6 class="mb-3">Últimas Atividades</h6>
+                    <div id="activityList" class="list-group">
+                        <div class="list-group-item d-flex align-items-center">
+                            <div class="spinner-border spinner-border-sm text-primary me-3" role="status">
+                                <span class="visually-hidden">Carregando...</span>
+                            </div>
+                            <span>Carregando atividades recentes...</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Configuração e Parâmetros -->
+        <div class="col-12 mb-4">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white">
+                    <h5 class="mb-0">
+                        <i class="fas fa-cogs me-2"></i>Configuração e Parâmetros
+                    </h5>
+                </div>
+                <div class="card-body">
+                    <div id="configLoading" class="text-center py-4">
+                        <div class="spinner-border text-primary" role="status">
+                            <span class="visually-hidden">Carregando...</span>
+                        </div>
+                        <p class="mt-2">Carregando configurações do agente...</p>
+                    </div>
+                    
+                    <div id="configContent" class="d-none">
+                        <div class="alert alert-info mb-4">
+                            <i class="fas fa-info-circle me-2"></i>
+                            Estes são os parâmetros configurados para este agente com base em seu template.
+                        </div>
+                        
+                        <div id="parametersList">
+                            <!-- Parâmetros serão carregados dinamicamente -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Confirmação para Exclusão -->
+<div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Confirmar Exclusão</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Fechar"></button>
+            </div>
+            <div class="modal-body">
+                <p>Tem certeza de que deseja excluir o agente <strong id="deleteAgentName">este agente</strong>?</p>
+                <p class="text-danger"><strong>Atenção:</strong> Esta ação não pode ser desfeita e todos os dados associados a este agente serão perdidos.</p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                <button type="button" class="btn btn-danger" id="confirmDeleteBtn">
+                    <i class="fas fa-trash-alt me-2"></i>Excluir Permanentemente
+                </button>
+            </div>
+        </div>
+    </div>
+</div> 

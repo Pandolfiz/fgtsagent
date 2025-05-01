@@ -1,0 +1,29 @@
+<div class="container">
+    <div class="row justify-content-center">
+        <div class="col-md-8 text-center mt-5">
+            <div class="mb-4">
+                <i class="fas fa-exclamation-triangle text-warning fa-5x"></i>
+            </div>
+            <h1 class="display-4 mb-4"><%= title %></h1>
+            <p class="lead mb-5"><%= message %></p>
+            
+            <% if (error && Object.keys(error).length > 0) { %>
+                <div class="card text-start mb-4">
+                    <div class="card-header">Detalhes do erro</div>
+                    <div class="card-body">
+                        <pre class="mb-0"><%= JSON.stringify(error, null, 2) %></pre>
+                    </div>
+                </div>
+            <% } %>
+            
+            <div class="mt-4">
+                <a href="javascript:history.back()" class="btn btn-outline-primary me-2">
+                    <i class="fas fa-arrow-left me-1"></i> Voltar
+                </a>
+                <a href="/" class="btn btn-primary">
+                    <i class="fas fa-home me-1"></i> Página Inicial
+                </a>
+            </div>
+        </div>
+    </div>
+</div> 

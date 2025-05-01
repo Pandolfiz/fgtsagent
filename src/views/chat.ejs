@@ -1,0 +1,269 @@
+<!-- Interface de chat com Evolution API -->
+
+<div class="container-fluid py-4 px-md-5">
+  <div class="row mb-4">
+    <div class="col-12">
+      <h1><i class="fas fa-comments"></i> <%= title %></h1>
+    </div>
+  </div>
+  
+  <div class="row mb-3">
+    <div class="col-3">
+      <div class="card">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+          <span>Conversas</span>
+          <span class="text-white">AI</span>
+        </div>
+        <div class="list-group list-group-flush">
+          <% if (conversations && conversations.length) { %>
+            <% conversations.forEach(function(conv) {
+              const contact = (contacts || []).find(c => c.remote_jid === conv);
+              const number = conv.split('@')[0];
+              const displayName = (contact && contact.push_name) ? contact.push_name : number;
+              const state = (contact && contact.agent_state) || 'ai';
+            %>
+              <div class="list-group-item d-flex justify-content-between align-items-center <%= conv === conversationId ? 'active' : '' %>">
+                <a href="/chat?id=<%= conv %><% if (selectedInstanceId) { %>&instance=<%= selectedInstanceId %><% } %>" class="flex-grow-1 text-decoration-none text-dark">
+                  <%= displayName %>
+                </a>
+                <div class="form-check form-switch m-0">
+                  <input class="form-check-input agent-toggle" type="checkbox" id="toggle-<%= conv %>" data-remote-id="<%= conv %>" <%= state === 'ai' ? 'checked' : '' %>>
+                </div>
+              </div>
+            <% }); %>
+          <% } else { %>
+            <div class="list-group-item text-muted">Nenhuma conversa</div>
+          <% } %>
+        </div>
+      </div>
+    </div>
+    <div class="col-9">
+      <div class="card">
+        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+          <div class="d-flex align-items-center">
+            <i class="fab fa-whatsapp me-2"></i> WhatsApp
+            <select id="instance-select" class="form-select form-select-sm ms-3" style="width:auto;">
+              <% if (instances && instances.length) { %>
+                <% instances.forEach(function(inst) { %>
+                  <option value="<%= inst.id %>" <%= inst.id === selectedInstanceId ? 'selected' : '' %>><%= inst.instance_name %></option>
+                <% }); %>
+              <% } else { %>
+                <option value="" selected>Sem instâncias</option>
+              <% } %>
+            </select>
+          </div>
+          <span class="badge bg-success" id="connection-status">Conectado</span>
+        </div>
+        <div id="chat-window" class="card-body p-3" style="height: 400px; overflow-y: auto; background: #f8f9fa;">
+          <div class="text-center text-muted my-3" id="loading-message">
+            <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+            Carregando mensagens...
+          </div>
+          <!-- Mensagens serão carregadas aqui -->
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="row">
+    <div class="col-3"></div>
+    <div class="col-9">
+      <form id="chat-form" class="d-flex">
+        <input type="hidden" id="conversation-id" value="<%= conversationId %>">
+        <input type="hidden" id="recipient" value="<%= conversationId %>">
+        <div class="input-group">
+          <input id="chat-input" class="form-control" type="text" placeholder="Digite sua mensagem..." autocomplete="off">
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-paper-plane"></i> Enviar
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Configurações da interface
+    const chatWindow = document.getElementById('chat-window');
+    const chatForm = document.getElementById('chat-form');
+    const chatInput = document.getElementById('chat-input');
+    const conversationId = document.getElementById('conversation-id').value;
+    const instanceId = '<%= selectedInstanceId %>';
+    const loadingMessage = document.getElementById('loading-message');
+    const connectionStatus = document.getElementById('connection-status');
+    // ID do usuário logado para diferenciação de mensagens
+    const userId = '<%= user.id %>';
+    
+    // Valor padrão do destinatário (será configurado pela primeira mensagem)
+    let recipientNumber = document.getElementById('recipient').value;
+    
+    // Função para adicionar mensagem ao chat
+    function addMessageToChat(message) {
+      // Identifica se é mensagem enviada pelo próprio usuário
+      const isSent = message.sender_id == userId || message.status === 'sent';
+      const wrapper = document.createElement('div');
+      // Aplica classe para posicionamento e estilo
+      wrapper.className = 'message-wrapper ' + (isSent ? 'sent' : 'received');
+
+      const bubble = document.createElement('div');
+      // Apenas classe base, cor e borda via CSS do wrapper
+      bubble.className = 'message-bubble';
+
+      const contentDiv = document.createElement('div');
+      contentDiv.textContent = message.content;
+
+      const timeDiv = document.createElement('div');
+      timeDiv.className = 'timestamp';
+      timeDiv.textContent = new Date(message.timestamp || Date.now()).toLocaleTimeString();
+
+      bubble.appendChild(contentDiv);
+      bubble.appendChild(timeDiv);
+      wrapper.appendChild(bubble);
+      chatWindow.appendChild(wrapper);
+      chatWindow.scrollTop = chatWindow.scrollHeight;
+    }
+    
+    function insertDateSeparator(dateStr) {
+      const separator = document.createElement('div');
+      separator.className = 'date-separator';
+      separator.textContent = dateStr;
+      document.getElementById('chat-window').appendChild(separator);
+    }
+    
+    // Conectar ao stream de eventos via SSE
+    function connectToEventStream() {
+      // Remover evento anterior se existir
+      if (window.eventSource) {
+        window.eventSource.close();
+      }
+      
+      loadingMessage.style.display = 'block';
+      connectionStatus.className = 'badge bg-warning';
+      connectionStatus.textContent = 'Conectando...';
+      
+      // Criar nova conexão SSE
+      window.eventSource = new EventSource(`/api/chat/stream/${conversationId}?instance=${instanceId}`);
+      
+      // Evento ao conectar
+      window.eventSource.onopen = function() {
+        loadingMessage.style.display = 'none';
+        connectionStatus.className = 'badge bg-success';
+        connectionStatus.textContent = 'Conectado';
+      };
+      
+      // Evento ao receber novas mensagens
+      window.eventSource.onmessage = function(event) {
+        const data = JSON.parse(event.data);
+        
+        if (data.type === 'history') {
+          // Ordenar histórico em ordem cronológica (ascendente)
+          data.messages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+          // Limpar mensagens existentes
+          chatWindow.innerHTML = '';
+          loadingMessage.style.display = 'none';
+          
+          // Exibir mensagens do histórico
+          if (data.messages && data.messages.length > 0) {
+            data.messages.forEach(message => {
+              addMessageToChat(message);
+            });
+          } else {
+            // Sem mensagens no histórico
+            const noMessagesElement = document.createElement('div');
+            noMessagesElement.className = 'text-center text-muted my-3';
+            noMessagesElement.textContent = 'Nenhuma mensagem anterior';
+            chatWindow.appendChild(noMessagesElement);
+          }
+        } else {
+          // Nova mensagem recebida
+          addMessageToChat(data);
+        }
+      };
+      
+      // Evento de erro
+      window.eventSource.onerror = function(error) {
+        console.error('Erro na conexão SSE:', error);
+        connectionStatus.className = 'badge bg-danger';
+        connectionStatus.textContent = 'Desconectado';
+        
+        // Tentar reconectar após 5 segundos
+        setTimeout(connectToEventStream, 5000);
+      };
+    }
+    
+    // Iniciar a conexão
+    connectToEventStream();
+    
+    // Enviar mensagem
+    chatForm.addEventListener('submit', async function(e) {
+      e.preventDefault();
+      const message = chatInput.value.trim();
+      if (!message) return;
+      const to = document.getElementById('recipient').value || recipientNumber;
+      if (!to) {
+        alert('Número do destinatário não encontrado. Aguarde receber uma mensagem primeiro ou configure o destinatário manualmente.');
+        return;
+      }
+      try {
+        // Enviar mensagem para o backend, que repassa ao n8n
+        const response = await fetch('/api/chat/send', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            to: to,
+            message: message,
+            instanceId: instanceId,
+            conversationId: conversationId
+          })
+        });
+        if (!response.ok) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Erro ao enviar mensagem');
+        }
+        chatInput.value = '';
+        chatInput.focus();
+      } catch (error) {
+        console.error('Erro ao enviar mensagem:', error);
+        alert(`Erro ao enviar mensagem: ${error.message}`);
+      }
+    });
+    
+    // Alterar instância ao selecionar
+    document.getElementById('instance-select').addEventListener('change', function() {
+      const params = new URLSearchParams(window.location.search);
+      params.set('instance', this.value);
+      window.location.search = params.toString();
+    });
+    
+    // Limpar eventos ao sair da página
+    window.addEventListener('beforeunload', function() {
+      if (window.eventSource) {
+        window.eventSource.close();
+      }
+    });
+
+    // Listener para toggles de agent_state
+    document.querySelectorAll('.agent-toggle').forEach(toggle => {
+      toggle.addEventListener('change', async () => {
+        const remoteId = toggle.getAttribute('data-remote-id');
+        const newState = toggle.checked ? 'ai' : 'human';
+        try {
+          const res = await fetch(`/api/contacts/${encodeURIComponent(remoteId)}/state`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agent_state: newState })
+          });
+          if (!res.ok) throw new Error('Falha ao atualizar estado do agente');
+        } catch (err) {
+          console.error('Erro ao atualizar agent_state:', err);
+          alert('Erro ao atualizar estado: ' + err.message);
+          // Reverter toggle em caso de erro
+          toggle.checked = !toggle.checked;
+        }
+      });
+    });
+  });
+</script> 

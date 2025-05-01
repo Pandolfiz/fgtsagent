@@ -1,0 +1,38 @@
+// Utilitário para verificar a configuração do banco de dados
+const { supabaseAdmin } = require('../services/database');
+const logger = require('./logger');
+
+/**
+ * Verifica a conexão com o Supabase e as tabelas necessárias
+ */
+async function checkDatabaseSetup() {
+  if (!supabaseAdmin) {
+    logger.error('ERRO: Cliente Supabase não está configurado. Verifique as variáveis de ambiente.');
+    return false;
+  }
+  
+  try {
+    logger.info('Verificando conexão com o Supabase...');
+    
+    // Apenas verificar se conseguimos nos conectar ao Supabase usando o método auth.getSession()
+    // que não requer nenhuma permissão especial
+    const { data, error } = await supabaseAdmin.auth.getSession();
+    
+    // Mesmo se não tivermos uma sessão válida, o importante é que conseguimos nos conectar
+    // ao servidor sem erros de conexão
+    if (error && (error.message.includes('network') || error.message.includes('connect'))) {
+      logger.error(`Erro ao conectar ao Supabase: ${error.message}`);
+      return false;
+    }
+    
+    logger.info('Conexão com o Supabase estabelecida com sucesso!');
+    return true;
+  } catch (error) {
+    logger.error(`Erro ao verificar configuração do banco de dados: ${error.message}`);
+    return false;
+  }
+}
+
+module.exports = {
+  checkDatabaseSetup
+}; 

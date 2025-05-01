@@ -1,0 +1,846 @@
+<!-- src/views/dashboard/index.ejs -->
+<!-- Dashboard FGTS - Nova versão -->
+<div class="container-fluid py-4 px-md-5">
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <h1 class="h3 mb-0">Dashboard FGTS</h1>
+            <p class="text-muted">Acompanhe o desempenho das suas operações, 
+                <%= userName || 'Usuário' %>
+            </p>
+        </div>
+        <div class="col-md-6 d-flex justify-content-md-end mt-3 mt-md-0 align-items-center">
+            <a href="/leads/new" class="btn btn-primary py-2 px-3 text-center me-2">
+                <i class="fas fa-plus me-1"></i> Novo Lead
+            </a>
+            <a href="/proposals/new" class="btn btn-primary py-2 px-3 text-center">
+                <i class="fas fa-file-signature me-1"></i> Nova Proposta
+            </a>
+        </div>
+    </div>
+
+    <!-- Após o título do Dashboard -->
+    <div class="row mb-2">
+        <div class="col-12 d-flex justify-content-end">
+            <form id="periodForm" class="d-flex align-items-center">
+                <label for="periodSelect" class="me-2 text-muted mb-0">Período:</label>
+                <select id="periodSelect" name="period" class="form-select form-select-sm">
+                    <option value="daily" <%= period === 'daily' ? 'selected' : '' %>>Diário</option>
+                    <option value="weekly" <%= period === 'weekly' ? 'selected' : '' %>>Semanal</option>
+                    <option value="monthly" <%= period === 'monthly' ? 'selected' : '' %>>Mensal</option>
+                    <option value="range" <%= period === 'range' ? 'selected' : '' %>>Período personalizado</option>
+                </select>
+                <input type="text" id="rangeInput" name="rangeInput" class="form-control form-control-sm ms-2" style="display: none; width: 220px; min-width: 180px;" placeholder="Selecione o período" autocomplete="off" />
+                <span id="rangeFeedback" class="ms-2 text-muted small" style="display:none;"></span>
+                <button type="button" id="applyRangeBtn" class="btn btn-primary btn-sm ms-2" style="display:none;">Aplicar</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Indicadores Principais -->
+    <div class="row">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 bg-white">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs text-uppercase mb-1 text-success fw-bold">
+                                Saldo Total Consultado
+                            </div>
+                            <div class="h5 mb-0 fw-bold" id="totalBalance"><%= totalBalance %></div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-dollar-sign fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 bg-light-green">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs text-uppercase mb-1 text-success fw-bold">
+                                Saldo Simulado Total
+                            </div>
+                            <div class="h5 mb-0 fw-bold" id="totalSimulation"><%= totalSimulation %></div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-dollar-sign fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 bg-light-blue">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs text-uppercase mb-1 text-info fw-bold">
+                                Propostas Criadas
+                            </div>
+                            <div class="h5 mb-0 fw-bold" id="totalProposals"><%= totalProposals %></div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-file-signature fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 bg-light-blue">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs text-uppercase mb-1 text-info fw-bold">
+                                Valor Total de Propostas
+                            </div>
+                            <div class="h5 mb-0 fw-bold" id="totalProposalsValue"><%= totalProposalsValue %></div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-money-bill-wave fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Início: Propostas em Formalização (movido) -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 bg-light-blue">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs text-uppercase mb-1 text-info fw-bold">
+                                Propostas em Formalização
+                            </div>
+                            <div class="h5 mb-0 fw-bold" id="totalFormalizationProposals"><%= totalFormalizationProposals %></div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-file-signature fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 bg-light-blue">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs text-uppercase mb-1 text-info fw-bold">
+                                Valor Total de Propostas em Formalização
+                            </div>
+                            <div class="h5 mb-0 fw-bold" id="totalFormalizationProposalsValue"><%= totalFormalizationProposalsValue %></div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-money-bill-wave fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <!-- Fim: Propostas em Formalização (movido) -->
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 bg-light-darkblue">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs text-uppercase mb-1 text-primary fw-bold">
+                                Propostas Pagas
+                            </div>
+                            <div class="h5 mb-0 fw-bold" id="totalPaidProposals"><%= totalPaidProposals %></div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-check-circle fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 bg-light-darkblue">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs text-uppercase mb-1 text-primary fw-bold">
+                                Valor Total de Propostas Pagas
+                            </div>
+                            <div class="h5 mb-0 fw-bold" id="totalPaidProposalsValue"><%= totalPaidProposalsValue %></div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-dollar-sign fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 bg-light-darkblue">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs text-uppercase mb-1 text-primary fw-bold">
+                                Taxa de Conversão
+                            </div>
+                            <div class="h5 mb-0 fw-bold" id="conversionRate"><%= conversionRate %></div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-chart-line fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Novo Card: Propostas Pendentes -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 bg-light-pending">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs text-uppercase mb-1 text-warning fw-bold">
+                                Propostas Pendentes
+                            </div>
+                            <div class="h5 mb-0 fw-bold" id="totalPendingProposals"><%= totalPendingProposals %></div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-hourglass-half fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Valor Total de Propostas Pendentes -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 bg-light-pending">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs text-uppercase mb-1 text-warning fw-bold">
+                                Valor Total de Propostas Pendentes
+                            </div>
+                            <div class="h5 mb-0 fw-bold" id="totalPendingProposalsValue"><%= totalPendingProposalsValue %></div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-money-bill-wave fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Novo Card: Propostas Canceladas -->
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-0 shadow-sm h-100 bg-light-cancelled">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs text-uppercase mb-1 text-danger fw-bold">
+                                Propostas Canceladas
+                            </div>
+                            <div class="h5 mb-0 fw-bold" id="totalCancelledProposals"><%= totalCancelledProposals %></div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-times-circle fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Gráficos de Desempenho -->
+    <div class="row mb-4">
+        <div class="col-xl-6 col-lg-12 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 fw-bold">
+                        <%= period === 'daily' ? 'Propostas por Hora' : (period === 'weekly' ? 'Propostas por Dia' : 'Propostas') %>
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="proposalsChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-6 col-lg-12 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 fw-bold">
+                        <%= period === 'daily' ? 'Valor das Propostas por Hora' : (period === 'weekly' ? 'Valor das Propostas por Dia' : 'Valor das Propostas') %>
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="valueChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Propostas Recentes -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 fw-bold">Propostas Recentes</h6>
+                    <div>
+                      <select id="statusFilter" class="form-select form-select-sm">
+                        <option value="">Todos os Status</option>
+                        <option value="pending">Pendente</option>
+                        <option value="paid">Paga</option>
+                        <option value="formalization">Formalização</option>
+                        <option value="cancelled">Cancelada</option>
+                      </select>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>CPF</th>
+                                    <th>Valor</th>
+                                    <th>Status</th>
+                                    <th>Data de Atualização</th>
+                                    <th class="text-end">Ações</th>
+                                </tr>
+                            </thead>
+                            <tbody id="recentProposalsTable">
+                                <% if (recentProposals && recentProposals.length > 0) { %>
+                                    <% recentProposals.forEach(function(prop) { %>
+                                        <tr>
+                                            <td><%= prop.lead_name %></td>
+                                            <td><%= prop.lead_cpf %></td>
+                                            <td><%= prop.value %></td>
+                                            <td><span class="badge <%= prop.status === 'paid' ? 'bg-success' : (prop.status === 'pending' ? 'bg-warning' : (prop.status === 'cancelled' ? 'bg-danger' : 'bg-secondary')) %>"><%= prop.status %></span></td>
+                                            <td><%= prop.updated_at %></td>
+                                            <td class="text-end">
+                                                <div class="btn-group btn-group-sm">
+                                                    <a href="/proposals/<%= prop.id %>" class="btn btn-outline-primary">
+                                                        <i class="fas fa-eye"></i>
+                                                    </a>
+                                                    <% if (prop.status !== 'cancelled' && prop.status !== 'paid') { %>
+                                                        <button type="button" class="btn btn-outline-danger btn-delete-proposal" data-id="<%= prop.id %>">
+                                                            <i class="fas fa-trash"></i>
+                                                        </button>
+                                                    <% } %>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    <% }); %>
+                                <% } else { %>
+                                    <tr>
+                                        <td colspan="6" class="text-center py-4">
+                                            <div class="text-muted">
+                                                <i class="fas fa-info-circle me-2"></i>Nenhuma proposta encontrada
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <% } %>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- NOVA SEÇÃO: Gráficos e Lista de Leads -->
+    <div class="row mt-5">
+        <div class="col-xl-6 col-lg-12 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 fw-bold">Consultas de Saldo</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="leadsChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-6 col-lg-12 mb-4">
+            <div class="card border-0 shadow-sm h-100">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 fw-bold">Simulações de Saque</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="simulationsChart" height="300"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card border-0 shadow-sm">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 fw-bold">Leads que tentaram consultar/simular</h6>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Nome</th>
+                                    <th>CPF</th>
+                                    <th>Saldo</th>
+                                    <th>Simulado</th>
+                                    <th>Data de Atualização</th>
+                                    <th>Erro</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leadsTableBody">
+                                <% if (leadsList && leadsList.length > 0) { %>
+                                    <% leadsList.forEach(function(lead) { %>
+                                        <tr>
+                                            <td><%= lead.name %></td>
+                                            <td><%= lead.cpf %></td>
+                                            <td><%= lead.saldo %></td>
+                                            <td><%= lead.simulado %></td>
+                                            <td><%= lead.updated_at %></td>
+                                            <td><%= lead.erro %></td>
+                                        </tr>
+                                    <% }); %>
+                                <% } else { %>
+                                    <tr>
+                                        <td colspan="6" class="text-center py-4">
+                                            <div class="text-muted">
+                                                <i class="fas fa-info-circle me-2"></i>Nenhum lead encontrado
+                                            </div>
+                                        </td>
+                                    </tr>
+                                <% } %>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+<script>
+// Injetando dados do servidor como strings JSON e transformando em arrays
+const proposalsLabels = JSON.parse('<%- JSON.stringify(proposalsChartData.labels) %>');
+const proposalsDataCounts = JSON.parse('<%- JSON.stringify(proposalsChartData.values) %>');
+const valueLabels = JSON.parse('<%- JSON.stringify(valueChartData.labels) %>');
+const valueDataTotals = JSON.parse('<%- JSON.stringify(valueChartData.values) %>');
+
+// Gráficos de Leads (Consultas e Simulações)
+const leadsChartLabels = JSON.parse('<%- JSON.stringify(leadsChartData.labels) %>');
+const leadsChartCounts = JSON.parse('<%- JSON.stringify(leadsChartData.values) %>');
+const simulationsChartLabels = JSON.parse('<%- JSON.stringify(simulationsChartData.labels) %>');
+const simulationsChartCounts = JSON.parse('<%- JSON.stringify(simulationsChartData.values) %>');
+
+let leadsChart, simulationsChart;
+
+document.addEventListener('DOMContentLoaded', function() {
+  const periodSelect = document.getElementById('periodSelect');
+  const rangeInput = document.getElementById('rangeInput');
+  let selectedRange = [];
+
+  // Inicializar Flatpickr para range
+  const fp = flatpickr(rangeInput, {
+    mode: 'range',
+    dateFormat: 'Y-m-d',
+    locale: 'pt',
+    onChange: function(selectedDates, dateStr, instance) {
+      selectedRange = selectedDates;
+      if (periodSelect.value === 'range' && selectedRange.length === 2) {
+        atualizarDashboardComRange();
+      }
+    }
+  });
+
+  const proposalsCtx = document.getElementById('proposalsChart').getContext('2d');
+  const valueCtx = document.getElementById('valueChart').getContext('2d');
+
+  const proposalsChart = new Chart(proposalsCtx, {
+    type: 'line',
+    data: {
+      labels: proposalsLabels,
+      datasets: [{
+        label: 'Quantidade de Propostas',
+        data: proposalsDataCounts,
+        backgroundColor: 'rgba(78, 115, 223, 0.1)',
+        borderColor: 'rgba(78, 115, 223, 1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { precision: 0 },
+          grid: { display: false }
+        },
+        x: {
+          grid: { display: false }
+        }
+      },
+      plugins: { legend: { display: false } }
+    }
+  });
+
+  const valueChart = new Chart(valueCtx, {
+    type: 'line',
+    data: {
+      labels: valueLabels,
+      datasets: [{
+        label: 'Valor Total das Propostas (R$)',
+        data: valueDataTotals,
+        backgroundColor: 'rgba(78, 115, 223, 0.1)',
+        borderColor: 'rgba(78, 115, 223, 1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: { callback: v => 'R$ ' + v.toLocaleString('pt-BR') },
+          grid: { display: false }
+        },
+        x: {
+          grid: { display: false }
+        }
+      }
+    }
+  });
+
+  const rangeFeedback = document.getElementById('rangeFeedback');
+  const applyRangeBtn = document.getElementById('applyRangeBtn');
+  let isLoading = false;
+
+  function updateRangeFeedback() {
+    if (selectedRange.length === 2) {
+      const start = selectedRange[0];
+      const end = selectedRange[1];
+      // Só mostrar o feedback se o input estiver oculto
+      if (rangeInput.style.display === 'none') {
+        rangeFeedback.textContent = `${start.toLocaleDateString('pt-BR')} a ${end.toLocaleDateString('pt-BR')}`;
+        rangeFeedback.style.display = '';
+        rangeFeedback.style.whiteSpace = 'nowrap';
+      } else {
+        rangeFeedback.textContent = '';
+        rangeFeedback.style.display = 'none';
+      }
+      applyRangeBtn.disabled = false;
+    } else {
+      rangeFeedback.textContent = '';
+      rangeFeedback.style.display = 'none';
+      applyRangeBtn.disabled = true;
+    }
+  }
+
+  function toggleDateInputs() {
+    if (periodSelect.value === 'range') {
+      rangeInput.style.display = '';
+      applyRangeBtn.style.display = '';
+      updateRangeFeedback();
+    } else {
+      rangeInput.style.display = 'none';
+      rangeInput.value = '';
+      selectedRange = [];
+      rangeFeedback.textContent = '';
+      rangeFeedback.style.display = 'none';
+      applyRangeBtn.style.display = 'none';
+    }
+  }
+  periodSelect.addEventListener('change', function() {
+    toggleDateInputs();
+    // Limpar o campo de datas e selectedRange ao trocar o tipo
+    rangeInput.value = '';
+    selectedRange = [];
+    updateRangeFeedback();
+    // Se não for range, atualizar dashboard
+    if (periodSelect.value !== 'range') {
+      atualizarDashboardComPeriodo(periodSelect.value);
+    }
+  });
+  toggleDateInputs();
+
+  fp.config.onChange.push(function(selectedDates, dateStr, instance) {
+    selectedRange = selectedDates;
+    // Sincronizar o valor do input
+    if (selectedRange.length === 2) {
+      rangeInput.value = `${flatpickr.formatDate(selectedRange[0], 'Y-m-d')} a ${flatpickr.formatDate(selectedRange[1], 'Y-m-d')}`;
+    }
+    updateRangeFeedback();
+  });
+
+  applyRangeBtn.addEventListener('click', async function() {
+    if (isLoading || selectedRange.length !== 2) return;
+    isLoading = true;
+    applyRangeBtn.disabled = true;
+    applyRangeBtn.textContent = 'Carregando...';
+    await atualizarDashboardComRange();
+    isLoading = false;
+    applyRangeBtn.disabled = false;
+    applyRangeBtn.textContent = 'Aplicar';
+  });
+
+  function atualizarTabelaPropostas(proposals) {
+    const tbody = document.getElementById('recentProposalsTable');
+    tbody.innerHTML = '';
+    if (proposals && proposals.length > 0) {
+      proposals.forEach(function(prop) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${prop.lead_name}</td>
+          <td>${prop.lead_cpf}</td>
+          <td>${prop.value}</td>
+          <td><span class="badge ${prop.status === 'paid' ? 'bg-success' : (prop.status === 'pending' ? 'bg-warning' : (prop.status === 'cancelled' ? 'bg-danger' : 'bg-secondary'))}">${prop.status}</span></td>
+          <td>${prop.updated_at}</td>
+          <td class="text-end">
+            <div class="btn-group btn-group-sm">
+              <a href="/proposals/${prop.id}" class="btn btn-outline-primary">
+                <i class="fas fa-eye"></i>
+              </a>
+              ${prop.status !== 'cancelled' && prop.status !== 'paid' ? `
+                <button type="button" class="btn btn-outline-danger btn-delete-proposal" data-id="${prop.id}">
+                  <i class="fas fa-trash"></i>
+                </button>
+              ` : ''}
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } else {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4"><div class="text-muted"><i class="fas fa-info-circle me-2"></i>Nenhuma proposta encontrada</div></td></tr>`;
+    }
+  }
+
+  async function atualizarDashboardComRange() {
+    if (periodSelect.value !== 'range' || selectedRange.length !== 2) return;
+    const startDate = flatpickr.formatDate(selectedRange[0], 'Y-m-d');
+    const endDate = flatpickr.formatDate(selectedRange[1], 'Y-m-d');
+    let url = `/api/dashboard/stats?period=range&startDate=${startDate}&endDate=${endDate}`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const json = await res.json();
+    const stats = json.data;
+    // atualizar Propostas
+    proposalsChart.data.labels = stats.proposalsChartData.labels;
+    proposalsChart.data.datasets[0].data = stats.proposalsChartData.values;
+    proposalsChart.update();
+    // atualizar Valores
+    valueChart.data.labels = stats.valueChartData.labels;
+    valueChart.data.datasets[0].data = stats.valueChartData.values;
+    valueChart.update();
+    // atualizar cards principais
+    document.getElementById('totalBalance').textContent = stats.totalBalance;
+    document.getElementById('totalSimulation').textContent = stats.totalSimulation;
+    document.getElementById('totalProposals').textContent = stats.totalProposals;
+    document.getElementById('totalProposalsValue').textContent = stats.totalProposalsValue;
+    document.getElementById('totalFormalizationProposals').textContent = stats.totalFormalizationProposals;
+    document.getElementById('totalFormalizationProposalsValue').textContent = stats.totalFormalizationProposalsValue;
+    document.getElementById('totalPaidProposals').textContent = stats.totalPaidProposals;
+    document.getElementById('totalPaidProposalsValue').textContent = stats.totalPaidProposalsValue;
+    document.getElementById('conversionRate').textContent = stats.conversionRate;
+    document.getElementById('totalPendingProposals').textContent = stats.totalPendingProposals;
+    document.getElementById('totalPendingProposalsValue').textContent = stats.totalPendingProposalsValue;
+    document.getElementById('totalCancelledProposals').textContent = stats.totalCancelledProposals;
+    // atualizar tabela de propostas recentes
+    atualizarTabelaPropostas(stats.recentProposals);
+    // atualizar tabela de leads
+    atualizarTabelaLeads(stats.leadsList);
+    // atualizar gráfico de saldo
+    leadsChart.data.labels = stats.leadsChartData.labels;
+    leadsChart.data.datasets[0].data = stats.leadsChartData.values;
+    leadsChart.update();
+    // atualizar gráfico de simulação
+    simulationsChart.data.labels = stats.simulationsChartData.labels;
+    simulationsChart.data.datasets[0].data = stats.simulationsChartData.values;
+    simulationsChart.update();
+  }
+
+  async function atualizarDashboardComPeriodo(periodo) {
+    let url = `/api/dashboard/stats?period=${periodo}`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const json = await res.json();
+    const stats = json.data;
+    // atualizar Propostas
+    proposalsChart.data.labels = stats.proposalsChartData.labels;
+    proposalsChart.data.datasets[0].data = stats.proposalsChartData.values;
+    proposalsChart.update();
+    // atualizar Valores
+    valueChart.data.labels = stats.valueChartData.labels;
+    valueChart.data.datasets[0].data = stats.valueChartData.values;
+    valueChart.update();
+    // atualizar cards principais
+    document.getElementById('totalBalance').textContent = stats.totalBalance;
+    document.getElementById('totalSimulation').textContent = stats.totalSimulation;
+    document.getElementById('totalProposals').textContent = stats.totalProposals;
+    document.getElementById('totalProposalsValue').textContent = stats.totalProposalsValue;
+    document.getElementById('totalFormalizationProposals').textContent = stats.totalFormalizationProposals;
+    document.getElementById('totalFormalizationProposalsValue').textContent = stats.totalFormalizationProposalsValue;
+    document.getElementById('totalPaidProposals').textContent = stats.totalPaidProposals;
+    document.getElementById('totalPaidProposalsValue').textContent = stats.totalPaidProposalsValue;
+    document.getElementById('conversionRate').textContent = stats.conversionRate;
+    document.getElementById('totalPendingProposals').textContent = stats.totalPendingProposals;
+    document.getElementById('totalPendingProposalsValue').textContent = stats.totalPendingProposalsValue;
+    document.getElementById('totalCancelledProposals').textContent = stats.totalCancelledProposals;
+    // atualizar tabela de propostas recentes
+    atualizarTabelaPropostas(stats.recentProposals);
+    // atualizar tabela de leads
+    atualizarTabelaLeads(stats.leadsList);
+    // atualizar gráfico de saldo
+    leadsChart.data.labels = stats.leadsChartData.labels;
+    leadsChart.data.datasets[0].data = stats.leadsChartData.values;
+    leadsChart.update();
+    // atualizar gráfico de simulação
+    simulationsChart.data.labels = stats.simulationsChartData.labels;
+    simulationsChart.data.datasets[0].data = stats.simulationsChartData.values;
+    simulationsChart.update();
+  }
+
+  function atualizarTabelaLeads(leads) {
+    const tbody = document.getElementById('leadsTableBody');
+    tbody.innerHTML = '';
+    if (leads && leads.length > 0) {
+      leads.forEach(function(lead) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${lead.name}</td>
+          <td>${lead.cpf}</td>
+          <td>${lead.saldo}</td>
+          <td>${lead.simulado}</td>
+          <td>${lead.updated_at}</td>
+          <td>${lead.erro}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } else {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4"><div class="text-muted"><i class="fas fa-info-circle me-2"></i>Nenhum lead encontrado</div></td></tr>`;
+    }
+  }
+
+  const statusFilter = document.getElementById('statusFilter');
+  statusFilter.addEventListener('change', async function() {
+    const selectedStatus = this.value;
+    const period = document.getElementById('periodSelect').value;
+    let url = `/api/dashboard/stats?period=${period}`;
+    if (selectedStatus) url += `&status=${selectedStatus}`;
+    const res = await fetch(url);
+    if (!res.ok) return;
+    const json = await res.json();
+    const proposals = json.data.recentProposals;
+    const tbody = document.getElementById('recentProposalsTable');
+    tbody.innerHTML = '';
+    if (proposals && proposals.length > 0) {
+      proposals.forEach(function(prop) {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${prop.lead_name}</td>
+          <td>${prop.lead_cpf}</td>
+          <td>${prop.value}</td>
+          <td><span class="badge ${prop.status === 'paid' ? 'bg-success' : (prop.status === 'pending' ? 'bg-warning' : (prop.status === 'cancelled' ? 'bg-danger' : 'bg-secondary'))}">${prop.status}</span></td>
+          <td>${prop.updated_at}</td>
+          <td class="text-end">
+            <div class="btn-group btn-group-sm">
+              <a href="/proposals/${prop.id}" class="btn btn-outline-primary">
+                <i class="fas fa-eye"></i>
+              </a>
+              ${prop.status !== 'cancelled' && prop.status !== 'paid' ? `
+                <button type="button" class="btn btn-outline-danger btn-delete-proposal" data-id="${prop.id}">
+                  <i class="fas fa-trash"></i>
+                </button>
+              ` : ''}
+            </div>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    } else {
+      tbody.innerHTML = `<tr><td colspan="6" class="text-center py-4"><div class="text-muted"><i class="fas fa-info-circle me-2"></i>Nenhuma proposta encontrada</div></td></tr>`;
+    }
+  });
+
+  // Gráficos de Leads (Consultas e Simulações)
+  const leadsChartCtx = document.getElementById('leadsChart').getContext('2d');
+  const simulationsChartCtx = document.getElementById('simulationsChart').getContext('2d');
+
+  leadsChart = new Chart(leadsChartCtx, {
+    type: 'line',
+    data: {
+      labels: leadsChartLabels,
+      datasets: [{
+        label: 'Consultas',
+        data: leadsChartCounts,
+        backgroundColor: 'rgba(28, 200, 138, 0.1)',
+        borderColor: 'rgba(28, 200, 138, 1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 }, grid: { display: false } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+
+  simulationsChart = new Chart(simulationsChartCtx, {
+    type: 'line',
+    data: {
+      labels: simulationsChartLabels,
+      datasets: [{
+        label: 'Simulações',
+        data: simulationsChartCounts,
+        backgroundColor: 'rgba(28, 200, 138, 0.1)',
+        borderColor: 'rgba(28, 200, 138, 1)',
+        borderWidth: 2,
+        fill: true,
+        tension: 0.4
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      scales: {
+        y: { beginAtZero: true, ticks: { precision: 0 }, grid: { display: false } },
+        x: { grid: { display: false } }
+      }
+    }
+  });
+});
+</script>
+
+<style>
+.bg-light-green { background-color: rgba(28, 200, 138, 0.1); }
+.bg-light-blue  { background-color: rgba(78, 115, 223, 0.1); }
+.bg-light-purple{ background-color: rgba(153, 102, 255, 0.1); }
+.bg-light-orange{ background-color: rgba(246, 194, 62, 0.1); }
+.bg-light-teal  { background-color: rgba(54, 162, 235, 0.1); }
+.bg-light-pending  { background-color: rgba(255, 193, 7, 0.1); }
+.bg-light-cancelled{ background-color: rgba(220, 53, 69, 0.1); }
+.bg-light-darkblue { background-color: rgba(78, 115, 223, 0.2); }
+</style> 

@@ -1,0 +1,421 @@
+<!-- Página de notificações do perfil do usuário -->
+<div class="container mt-4">
+  <div class="row">
+    <div class="col-md-3">
+      <!-- Menu lateral -->
+      <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+          <h5 class="mb-0">Meu Perfil</h5>
+        </div>
+        <div class="list-group list-group-flush">
+          <a href="/profile" class="list-group-item list-group-item-action">
+            <i class="fas fa-user me-2"></i> Informações Pessoais
+          </a>
+          <a href="/profile/settings" class="list-group-item list-group-item-action">
+            <i class="fas fa-cog me-2"></i> Configurações
+          </a>
+          <a href="/profile/security" class="list-group-item list-group-item-action">
+            <i class="fas fa-lock me-2"></i> Segurança
+          </a>
+          <a href="/profile/notifications" class="list-group-item list-group-item-action active">
+            <i class="fas fa-bell me-2"></i> Notificações
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-md-9">
+      <!-- Conteúdo principal -->
+      <div class="card">
+        <div class="card-header bg-primary text-white">
+          <h5 class="mb-0">Preferências de Notificações</h5>
+        </div>
+        <div class="card-body">
+          <% if (messages.success && messages.success.length > 0) { %>
+            <div class="alert alert-success alert-dismissible fade show" role="alert">
+              <%= messages.success %>
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+            </div>
+          <% } %>
+          
+          <% if (messages.error && messages.error.length > 0) { %>
+            <div class="alert alert-danger alert-dismissible fade show" role="alert">
+              <%= messages.error %>
+              <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+            </div>
+          <% } %>
+
+          <form id="notificationSettingsForm" action="/profile/notifications" method="POST">
+            <!-- Canais de Notificação -->
+            <div class="mb-4">
+              <h5 class="border-bottom pb-2">Canais de Notificação</h5>
+              <p class="text-muted mb-3">Escolha como deseja receber notificações</p>
+              
+              <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="notifyEmail" name="email" 
+                  <%= (user && user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.email !== false) ? 'checked' : '' %>>
+                <label class="form-check-label" for="notifyEmail">Notificações por E-mail</label>
+                <div class="form-text">Receba atualizações importantes por e-mail</div>
+              </div>
+              
+              <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="notifyPush" name="push" 
+                  <%= (user && user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.push === true) ? 'checked' : '' %>>
+                <label class="form-check-label" for="notifyPush">Notificações Push</label>
+                <div class="form-text">Receba notificações no navegador (quando disponível)</div>
+              </div>
+              
+              <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="notifySMS" name="sms" 
+                  <%= (user && user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.sms === true) ? 'checked' : '' %>>
+                <label class="form-check-label" for="notifySMS">Notificações por SMS</label>
+                <div class="form-text">Receba alertas importantes por SMS (podem ser aplicadas taxas)</div>
+              </div>
+            </div>
+            
+            <!-- Tipos de Notificações -->
+            <div class="mb-4">
+              <h5 class="border-bottom pb-2">Tipos de Notificações</h5>
+              <p class="text-muted mb-3">Selecione quais tipos de notificações você deseja receber</p>
+              
+              <!-- Segurança -->
+              <div class="mb-3">
+                <h6>Segurança da Conta</h6>
+                
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" id="notifyLoginAttempts" name="login" 
+                    <%= (user && user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.security && user.user_metadata.notifications.security.login !== false) ? 'checked' : '' %>>
+                  <label class="form-check-label" for="notifyLoginAttempts">
+                    Tentativas de login incomuns
+                  </label>
+                </div>
+                
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" id="notifyPasswordChange" name="passwordChange" 
+                    <%= (user && user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.security && user.user_metadata.notifications.security.passwordChange !== false) ? 'checked' : '' %>>
+                  <label class="form-check-label" for="notifyPasswordChange">
+                    Alterações de senha
+                  </label>
+                </div>
+                
+                <div class="form-check mb-3">
+                  <input class="form-check-input" type="checkbox" id="notifyTwoFactorChange" name="twoFactorChange" 
+                    <%= (user && user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.security && user.user_metadata.notifications.security.twoFactorChange !== false) ? 'checked' : '' %>>
+                  <label class="form-check-label" for="notifyTwoFactorChange">
+                    Alterações nas configurações de dois fatores
+                  </label>
+                </div>
+              </div>
+              
+              <!-- Agentes e Organizações -->
+              <div class="mb-3">
+                <h6>Agentes e Organizações</h6>
+                
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" id="agentCreationNotification" name="agentCreationNotification" 
+                    <%= (user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.agents && user.user_metadata.notifications.agents.creation !== false) ? 'checked' : '' %>>
+                  <label class="form-check-label" for="agentCreationNotification">
+                    Criação de novos agentes
+                  </label>
+                </div>
+                
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" id="agentUpdateNotification" name="agentUpdateNotification" 
+                    <%= (user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.agents && user.user_metadata.notifications.agents.update !== false) ? 'checked' : '' %>>
+                  <label class="form-check-label" for="agentUpdateNotification">
+                    Atualizações de agentes
+                  </label>
+                </div>
+                
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" id="orgInviteNotification" name="orgInviteNotification" 
+                    <%= (user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.organizations && user.user_metadata.notifications.organizations.invites !== false) ? 'checked' : '' %>>
+                  <label class="form-check-label" for="orgInviteNotification">
+                    Convites para organizações
+                  </label>
+                </div>
+                
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" id="orgUpdateNotification" name="orgUpdateNotification" 
+                    <%= (user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.organizations && user.user_metadata.notifications.organizations.updates !== false) ? 'checked' : '' %>>
+                  <label class="form-check-label" for="orgUpdateNotification">
+                    Atualizações de organizações
+                  </label>
+                </div>
+              </div>
+              
+              <!-- Mensagens e Comunicações -->
+              <div class="mb-3">
+                <h6>Mensagens e Comunicações</h6>
+                
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" id="newMessageNotification" name="newMessageNotification" 
+                    <%= (user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.messages && user.user_metadata.notifications.messages.newMessage !== false) ? 'checked' : '' %>>
+                  <label class="form-check-label" for="newMessageNotification">
+                    Novas mensagens
+                  </label>
+                </div>
+                
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" id="mentionNotification" name="mentionNotification" 
+                    <%= (user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.messages && user.user_metadata.notifications.messages.mentions !== false) ? 'checked' : '' %>>
+                  <label class="form-check-label" for="mentionNotification">
+                    Menções em mensagens
+                  </label>
+                </div>
+              </div>
+              
+              <!-- Marketing e Novidades -->
+              <div class="mb-3">
+                <h6>Marketing e Novidades</h6>
+                
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" id="newsletterNotification" name="newsletterNotification" 
+                    <%= (user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.marketing && user.user_metadata.notifications.marketing.newsletter === true) ? 'checked' : '' %>>
+                  <label class="form-check-label" for="newsletterNotification">
+                    Newsletter mensal
+                  </label>
+                </div>
+                
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" id="productUpdatesNotification" name="productUpdatesNotification" 
+                    <%= (user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.marketing && user.user_metadata.notifications.marketing.productUpdates === true) ? 'checked' : '' %>>
+                  <label class="form-check-label" for="productUpdatesNotification">
+                    Atualizações do produto
+                  </label>
+                </div>
+                
+                <div class="form-check mb-2">
+                  <input class="form-check-input" type="checkbox" id="promotionsNotification" name="promotionsNotification" 
+                    <%= (user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.marketing && user.user_metadata.notifications.marketing.promotions === true) ? 'checked' : '' %>>
+                  <label class="form-check-label" for="promotionsNotification">
+                    Promoções e ofertas especiais
+                  </label>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Frequência de E-mail -->
+            <div class="mb-4">
+              <h5 class="border-bottom pb-2">Frequência de E-mail</h5>
+              <p class="text-muted mb-3">Defina a frequência com que deseja receber notificações por e-mail</p>
+              
+              <div class="form-group mb-3">
+                <label for="emailFrequency" class="form-label">Frequência de E-mails</label>
+                <select class="form-select" id="emailFrequency" name="emailFrequency">
+                  <option value="immediate" <%= (user && user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.emailFrequency === 'immediate') ? 'selected' : '' %>>Imediatamente</option>
+                  <option value="daily" <%= (user && user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.emailFrequency === 'daily') ? 'selected' : '' %>>Resumo diário</option>
+                  <option value="weekly" <%= (user && user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.emailFrequency === 'weekly') ? 'selected' : '' %>>Resumo semanal</option>
+                  <option value="never" <%= (user && user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.emailFrequency === 'never') ? 'selected' : '' %>>Nunca (apenas notificações críticas)</option>
+                </select>
+              </div>
+              
+              <div class="form-text text-muted mb-3">
+                <strong>Nota:</strong> Isso não afeta notificações de segurança importantes, que serão sempre enviadas imediatamente.
+              </div>
+            </div>
+            
+            <!-- Horário de Não Perturbe -->
+            <div class="mb-4">
+              <h5 class="border-bottom pb-2">Horário de Não Perturbe</h5>
+              <p class="text-muted mb-3">Defina um período em que você não deseja receber notificações push</p>
+              
+              <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" id="enableDnd" name="enableDnd" 
+                  <%= (user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.doNotDisturb && user.user_metadata.notifications.doNotDisturb.enabled === true) ? 'checked' : '' %>>
+                <label class="form-check-label" for="enableDnd">
+                  Ativar modo "Não Perturbe"
+                </label>
+              </div>
+              
+              <div class="row" id="dndTimeContainer">
+                <div class="col-md-6 mb-3">
+                  <label for="dndStart" class="form-label">Hora de Início</label>
+                  <input type="time" class="form-control" id="dndStart" name="dndStart" 
+                    value="<%= (user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.doNotDisturb && user.user_metadata.notifications.doNotDisturb.startTime) ? user.user_metadata.notifications.doNotDisturb.startTime : '22:00' %>">
+                </div>
+                
+                <div class="col-md-6 mb-3">
+                  <label for="dndEnd" class="form-label">Hora de Término</label>
+                  <input type="time" class="form-control" id="dndEnd" name="dndEnd" 
+                    value="<%= (user.user_metadata && user.user_metadata.notifications && user.user_metadata.notifications.doNotDisturb && user.user_metadata.notifications.doNotDisturb.endTime) ? user.user_metadata.notifications.doNotDisturb.endTime : '07:00' %>">
+                </div>
+              </div>
+            </div>
+            
+            <!-- Botões de ação -->
+            <div class="d-flex justify-content-end">
+              <button type="button" class="btn btn-outline-secondary me-2" id="resetNotificationsBtn">Restaurar Padrões</button>
+              <button type="submit" class="btn btn-primary">Salvar Preferências</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Toggle da seção "Não Perturbe"
+    const enableDnd = document.getElementById('enableDnd');
+    const dndTimeContainer = document.getElementById('dndTimeContainer');
+    
+    function toggleDndTimeVisibility() {
+      if (enableDnd.checked) {
+        dndTimeContainer.style.display = 'flex';
+      } else {
+        dndTimeContainer.style.display = 'none';
+      }
+    }
+    
+    // Inicializar visibilidade
+    toggleDndTimeVisibility();
+    
+    // Adicionar evento para toggle
+    enableDnd.addEventListener('change', toggleDndTimeVisibility);
+    
+    // Manipular o formulário de configurações de notificações
+    const form = document.getElementById('notificationSettingsForm');
+    
+    form.addEventListener('submit', function(e) {
+      e.preventDefault();
+      
+      // Coletar os dados do formulário
+      const formData = new FormData(form);
+      
+      // Criar objeto estruturado para as configurações de notificações
+      const notificationSettings = {
+        notifications: {
+          email: formData.has('emailNotifications'),
+          push: formData.has('pushNotifications'),
+          sms: formData.has('smsNotifications'),
+          
+          security: {
+            login: formData.has('loginNotification'),
+            passwordChange: formData.has('passwordChangeNotification'),
+            twoFactorChange: formData.has('profile2faChangeNotification')
+          },
+          
+          agents: {
+            creation: formData.has('agentCreationNotification'),
+            update: formData.has('agentUpdateNotification')
+          },
+          
+          organizations: {
+            invites: formData.has('orgInviteNotification'),
+            updates: formData.has('orgUpdateNotification')
+          },
+          
+          messages: {
+            newMessage: formData.has('newMessageNotification'),
+            mentions: formData.has('mentionNotification')
+          },
+          
+          marketing: {
+            newsletter: formData.has('newsletterNotification'),
+            productUpdates: formData.has('productUpdatesNotification'),
+            promotions: formData.has('promotionsNotification')
+          },
+          
+          emailFrequency: formData.get('emailFrequency'),
+          
+          doNotDisturb: {
+            enabled: formData.has('enableDnd'),
+            startTime: formData.get('dndStart'),
+            endTime: formData.get('dndEnd')
+          }
+        }
+      };
+      
+      // Enviar os dados para o servidor
+      fetch('/profile/notifications', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(notificationSettings)
+      })
+      .then(response => response.json())
+      .then(data => {
+        // Criar alerta baseado na resposta
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${data.success ? 'success' : 'danger'} alert-dismissible fade show`;
+        alertDiv.innerHTML = `
+          ${data.message}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+        `;
+        
+        // Inserir alerta no início do card-body
+        const cardBody = document.querySelector('.card-body');
+        cardBody.insertBefore(alertDiv, cardBody.firstChild);
+      })
+      .catch(error => {
+        console.error('Erro ao salvar configurações de notificações:', error);
+        
+        // Mostrar mensagem de erro
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-danger alert-dismissible fade show';
+        alertDiv.innerHTML = `
+          Erro ao salvar configurações de notificações. Tente novamente mais tarde.
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+        `;
+        
+        // Inserir alerta no início do card-body
+        const cardBody = document.querySelector('.card-body');
+        cardBody.insertBefore(alertDiv, cardBody.firstChild);
+      });
+    });
+    
+    // Botão para restaurar configurações padrão
+    document.getElementById('resetNotificationsBtn').addEventListener('click', function() {
+      // Restaurar checkboxes relacionados aos canais
+      document.getElementById('emailNotifications').checked = true;
+      document.getElementById('pushNotifications').checked = false;
+      document.getElementById('smsNotifications').checked = false;
+      
+      // Restaurar checkboxes relacionados à segurança
+      document.getElementById('loginNotification').checked = true;
+      document.getElementById('passwordChangeNotification').checked = true;
+      document.getElementById('profile2faChangeNotification').checked = true;
+      
+      // Restaurar checkboxes relacionados a agentes e organizações
+      document.getElementById('agentCreationNotification').checked = true;
+      document.getElementById('agentUpdateNotification').checked = true;
+      document.getElementById('orgInviteNotification').checked = true;
+      document.getElementById('orgUpdateNotification').checked = true;
+      
+      // Restaurar checkboxes relacionados a mensagens
+      document.getElementById('newMessageNotification').checked = true;
+      document.getElementById('mentionNotification').checked = true;
+      
+      // Restaurar checkboxes relacionados a marketing
+      document.getElementById('newsletterNotification').checked = false;
+      document.getElementById('productUpdatesNotification').checked = true;
+      document.getElementById('promotionsNotification').checked = false;
+      
+      // Restaurar frequência de e-mail
+      document.getElementById('emailFrequency').value = 'immediate';
+      
+      // Restaurar configurações de não perturbe
+      document.getElementById('enableDnd').checked = false;
+      document.getElementById('dndStart').value = '22:00';
+      document.getElementById('dndEnd').value = '07:00';
+      
+      // Atualizar visibilidade da seção de horário
+      toggleDndTimeVisibility();
+      
+      // Avisar que as configurações foram restauradas, mas não salvas
+      const infoAlert = document.createElement('div');
+      infoAlert.className = 'alert alert-info alert-dismissible fade show';
+      infoAlert.innerHTML = `
+        Configurações restauradas para o padrão. Clique em "Salvar Preferências" para aplicar as mudanças.
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Fechar"></button>
+      `;
+      
+      // Inserir a mensagem no topo do formulário
+      const alertContainer = document.querySelector('.card-body');
+      alertContainer.insertBefore(infoAlert, alertContainer.firstChild);
+    });
+  });
+</script> 

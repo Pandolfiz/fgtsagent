@@ -1,0 +1,453 @@
+/* Estilos Gerais */
+:root {
+  --primary-color: #4e73df;
+  --secondary-color: #6c757d;
+  --success-color: #1cc88a;
+  --info-color: #36b9cc;
+  --warning-color: #f6c23e;
+  --danger-color: #e74a3b;
+  --light-color: #f8f9fc;
+  --dark-color: #5a5c69;
+}
+
+body {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  font-family: 'Nunito', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  padding-top: 56px; /* ajuste conforme a altura real do seu navbar */
+}
+
+main {
+  flex: 1;
+}
+
+/* Estilos do Navbar */
+.navbar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  z-index: 1050;
+  transition: transform 0.3s;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.navbar-brand {
+    font-weight: 600;
+}
+
+.navbar-brand i {
+    font-size: 1.5rem;
+}
+
+.nav-link {
+    position: relative;
+    padding: 0.5rem 1rem;
+    transition: all 0.3s ease;
+}
+
+.nav-link.active {
+    font-weight: 600;
+}
+
+.nav-link.active::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 1rem;
+    right: 1rem;
+    height: 2px;
+    background-color: rgba(255,255,255,0.8);
+}
+
+.navbar .dropdown-menu {
+    border: none;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-radius: 0.5rem;
+    padding: 0.5rem;
+}
+
+.navbar .dropdown-item {
+    padding: 0.5rem 1rem;
+    border-radius: 0.25rem;
+    transition: all 0.2s ease;
+}
+
+.navbar .dropdown-item:hover {
+    background-color: rgba(0,0,0,0.05);
+}
+
+.navbar .dropdown-item.text-danger:hover {
+    background-color: rgba(220,53,69,0.1);
+}
+
+/* Cards e sombras */
+.card {
+    border-radius: 0.5rem;
+    border: none;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+}
+
+.card-header {
+    background-color: rgba(0, 0, 0, 0.03);
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    font-weight: 600;
+}
+
+/* Tabelas */
+.table thead th {
+    font-weight: 600;
+    border-top: none;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(78, 115, 223, 0.05);
+}
+
+/* Animações */
+.fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Ícones de agentes */
+.agent-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 123, 255, 0.1);
+}
+
+.agent-icon-large {
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: rgba(0, 123, 255, 0.1);
+    margin: 0 auto;
+}
+
+/* Badges e status */
+.badge {
+    font-weight: 500;
+    padding: 0.4em 0.6em;
+}
+
+/* Formulários */
+.form-control {
+    border-radius: 0.4rem;
+}
+
+.form-control:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 0.25rem rgba(78, 115, 223, 0.25);
+}
+
+.form-label {
+    font-weight: 500;
+}
+
+/* Botões */
+.btn {
+    border-radius: 0.4rem;
+    font-weight: 500;
+}
+
+.btn-primary {
+    background-color: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.btn-primary:hover {
+    background-color: #3a5ecd;
+    border-color: #3a5ecd;
+}
+
+/* Painéis para visualização de detalhes */
+.detail-panel {
+    padding: 1rem;
+    background-color: #f8f9fa;
+    border-radius: 0.5rem;
+    margin-bottom: 1rem;
+}
+
+/* Estado de carregamento */
+.loading-spinner {
+    margin: 2rem 0;
+}
+
+/* Modais */
+.modal-header {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.modal-footer {
+    border-top: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+/* Alertas */
+.alert {
+    border-radius: 0.5rem;
+}
+
+/* Tooltips */
+.tooltip {
+    font-size: 0.8rem;
+}
+
+/* Paginação */
+.pagination .page-link {
+    color: #0d6efd;
+    border: 1px solid #dee2e6;
+}
+
+.pagination .page-item.active .page-link {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    color: white;
+}
+
+/* Responsividade */
+@media (max-width: 768px) {
+    .table-responsive {
+        overflow-x: auto;
+    }
+    
+    .agent-icon-large {
+        width: 80px;
+        height: 80px;
+    }
+    
+    .card-header-tabs {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+    }
+    
+    .navbar-brand {
+        font-size: 1.25rem;
+    }
+    
+    .display-4 {
+        font-size: 2.5rem;
+    }
+}
+
+@media (max-width: 991.98px) {
+    .navbar-collapse {
+        padding: 1rem 0;
+    }
+    
+    .navbar-nav {
+        margin-bottom: 1rem;
+    }
+    
+    .nav-link {
+        padding: 0.75rem 1rem;
+    }
+    
+    .navbar .d-flex {
+        width: 100%;
+        justify-content: center;
+    }
+}
+
+/* Página 404 */
+.error-page {
+    text-align: center;
+    padding: 3rem 0;
+}
+
+.error-code {
+    font-size: 8rem;
+    font-weight: 700;
+    color: var(--primary-color);
+    line-height: 1;
+}
+
+/* Preloader */
+.preloader {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(255, 255, 255, 0.8);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999;
+}
+
+.spinner {
+    width: 4rem;
+    height: 4rem;
+    border: 0.5rem solid rgba(78, 115, 223, 0.2);
+    border-radius: 50%;
+    border-top-color: var(--primary-color);
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    0% {
+        transform: rotate(0deg);
+    }
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+/* Elementos customizados */
+.badge-outline-primary {
+    color: var(--primary-color);
+    border: 1px solid var(--primary-color);
+    background-color: transparent;
+}
+
+.badge-outline-success {
+    color: var(--success-color);
+    border: 1px solid var(--success-color);
+    background-color: transparent;
+}
+
+.badge-outline-danger {
+    color: var(--danger-color);
+    border: 1px solid var(--danger-color);
+    background-color: transparent;
+}
+
+/* Navegação de tabs */
+.nav-tabs .nav-link {
+    border-top-left-radius: 0.5rem;
+    border-top-right-radius: 0.5rem;
+    font-weight: 500;
+}
+
+.nav-tabs .nav-link.active {
+    color: var(--primary-color);
+    border-bottom: 3px solid var(--primary-color);
+}
+
+/* Barra lateral */
+.sidebar {
+    min-height: calc(100vh - 70px);
+    background-color: var(--primary-color);
+    color: white;
+}
+
+.sidebar .nav-link {
+    color: rgba(255, 255, 255, 0.7);
+    padding: 0.75rem 1rem;
+    border-radius: 0.25rem;
+    margin-bottom: 0.25rem;
+}
+
+.sidebar .nav-link:hover {
+    color: white;
+    background-color: rgba(255, 255, 255, 0.1);
+}
+
+.sidebar .nav-link.active {
+    color: white;
+    background-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Dashboard */
+.stat-card {
+    border-left: 0.25rem solid;
+    border-radius: 0.5rem;
+}
+
+.stat-card-primary {
+    border-left-color: var(--primary-color);
+}
+
+.stat-card-success {
+    border-left-color: var(--success-color);
+}
+
+.stat-card-info {
+    border-left-color: var(--info-color);
+}
+
+.stat-card-warning {
+    border-left-color: var(--warning-color);
+}
+
+/* Tabelas */
+.table {
+    vertical-align: middle;
+}
+
+/* Estilos do Chat WhatsApp */
+#chat-window {
+  background-color: #e5ddd5 !important;
+}
+.message-wrapper {
+  display: flex;
+  width: 100%;
+  margin-bottom: 0.5rem;
+}
+.message-wrapper.received {
+  justify-content: flex-start;
+}
+.message-wrapper.sent {
+  justify-content: flex-end;
+}
+/* Estilo base para bolha de mensagem */
+.message-bubble {
+  max-width: 70%;
+  padding: 8px 12px;
+  border-radius: 18px;
+  position: relative;
+  word-break: break-word;
+}
+.message-wrapper.received .message-bubble {
+  background-color: #ffffff;
+  color: #000000;
+  /* Tail to left */
+  border-radius: 18px 18px 18px 4px;
+}
+.message-wrapper.sent .message-bubble {
+  /* Bolha verde para mensagens enviadas (WhatsApp) */
+  background-color: #25d366 !important;
+  color: #ffffff;
+  /* Tail to right */
+  border-radius: 18px 18px 4px 18px !important;
+}
+.timestamp {
+  font-size: 0.75rem;
+  text-align: right;
+  margin-top: 4px;
+  color: rgba(0,0,0,0.45);
+}
+.date-separator {
+  display: inline-block;
+  margin: 16px auto;
+  background-color: #d3d3d3;
+  color: #ffffff;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 0.75rem;
+} 
