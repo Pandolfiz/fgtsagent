@@ -18,10 +18,7 @@ async function startServer() {
   // Criar servidor HTTP
   const server = http.createServer(app);
   
-  server.listen(PORT, () => {
-    logger.info(`Servidor iniciado na porta ${PORT} em modo ${config.nodeEnv}`);
-    logger.info(`Supabase configurado: ${config.supabase.url ? 'Sim' : 'Não'}`);
-    
+  server.listen(PORT, () => {    
     if (!isDatabaseConfigured) {
       logger.warn('ATENÇÃO: Banco de dados não está corretamente configurado. Algumas funcionalidades podem não funcionar.');
     }

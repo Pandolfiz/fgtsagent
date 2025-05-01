@@ -15,7 +15,6 @@ const flash = require('connect-flash');
 const config = require('./config');
 const userApiKeyMiddleware = require('./middleware/userApiKeyMiddleware');
 const { requireAuth } = require('./middleware/auth');
-const { migrate } = require('./config/migrate');
 const adminRoutes = require('./routes/adminRoutes');
 const apiRoutes = require('./routes/apiRoutes');
 const evolutionCredentialRoutes = require('./routes/evolutionCredentialRoutes');
@@ -271,25 +270,6 @@ app.use((err, req, res, next) => {
     message: err.message || 'Ocorreu um erro inesperado',
     error: process.env.NODE_ENV === 'development' ? err : {}
   });
-});
-
-// Adicionar migração para garantir que as tabelas existam
-async function runMigration() {
-  try {
-    const result = await migrate();
-    if (result.success) {
-      console.log(`Migração: ${result.message}`);
-    } else {
-      console.error(`Erro na migração: ${result.error}`);
-    }
-  } catch (error) {
-    console.error(`Erro na migração: ${error.message}`);
-  }
-}
-
-// Executar migração no início do aplicativo
-runMigration().catch(err => {
-  console.error('Falha na migração inicial:', err);
 });
 
 module.exports = app;

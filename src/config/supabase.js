@@ -29,9 +29,6 @@ const supabaseOptions = {
     }
   }
 };
-
-logger.info(`Configurando Supabase com flowType: ${supabaseOptions.auth.flowType}`);
-
 // Criar cliente Supabase
 const supabase = createClient(supabaseUrl, supabaseKey, supabaseOptions);
 

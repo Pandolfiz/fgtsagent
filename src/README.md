@@ -1,3 +1,56 @@
+# SAAS FGTS
+
+## Testes Automatizados e Boas Práticas
+
+Este projeto segue as melhores práticas de desenvolvimento moderno, incluindo:
+
+- **Testes unitários e de integração** com Jest e Supertest
+- **CI/CD automatizado** via GitHub Actions
+- **Sanitização e validação de dados**
+- **Rotas protegidas por autenticação**
+
+### Como rodar os testes
+
+```bash
+npm test
+```
+
+#### Exemplos de testes implementados:
+- Validação de dados (e-mail, campos obrigatórios)
+- Middleware de sanitização
+- Autenticação (login)
+- Rotas protegidas (exigem autenticação)
+
+Os testes estão localizados em:
+- `src/tests/unit/` — Testes unitários
+- `src/tests/integration/` — Testes de integração
+
+### CI/CD
+- O pipeline roda automaticamente em cada push/pull request na branch `main`.
+- Executa lint, testes e build.
+- Falha o deploy se algum teste falhar.
+
+## Configuração do Ambiente
+
+Crie um arquivo `.env` na raiz do projeto com as variáveis:
+
+```
+SUPABASE_URL=https://sua-instancia.supabase.co
+SUPABASE_SERVICE_KEY=sua-chave-de-serviço
+```
+
+## Estrutura do Banco de Dados
+
+O sistema utiliza as seguintes tabelas principais:
+
+1. `agent_templates` - Armazena os templates disponíveis para criar agentes
+2. `client_agents` - Armazena os agentes criados para os clientes
+
+## Notas Importantes
+- Sempre mantenha os testes atualizados ao adicionar novas funcionalidades.
+- O deploy só é realizado se todos os testes passarem no CI.
+- Para contribuir, crie uma branch, adicione testes para suas mudanças e abra um Pull Request.
+
 # Scripts para Gerenciamento de Agentes
 
 Este diretório contém scripts para gerenciar a criação e consulta de agentes no sistema. Os scripts interagem com a API Supabase para criar agentes a partir de templates predefinidos.

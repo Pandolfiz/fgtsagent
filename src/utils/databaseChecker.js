@@ -12,7 +12,6 @@ async function checkDatabaseSetup() {
   }
   
   try {
-    logger.info('Verificando conexão com o Supabase...');
     
     // Apenas verificar se conseguimos nos conectar ao Supabase usando o método auth.getSession()
     // que não requer nenhuma permissão especial
@@ -24,8 +23,6 @@ async function checkDatabaseSetup() {
       logger.error(`Erro ao conectar ao Supabase: ${error.message}`);
       return false;
     }
-    
-    logger.info('Conexão com o Supabase estabelecida com sucesso!');
     return true;
   } catch (error) {
     logger.error(`Erro ao verificar configuração do banco de dados: ${error.message}`);

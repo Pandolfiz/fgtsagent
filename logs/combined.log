@@ -16517,3 +16517,98 @@ Require stack:
 2025-05-01 12:29:22 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
 2025-05-01 12:29:22 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
 2025-05-01 12:29:22 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /dashboard
+2025-05-01 12:55:43 info: Verificando tabelas do sistema...
+2025-05-01 12:55:43 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 12:55:43 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 12:55:43 info: Token do cookie: não encontrado
+2025-05-01 12:55:43 warn: Acesso não autorizado - Token não encontrado
+2025-05-01 12:55:43 info: Redirecionando para o login com redirect=%2Fdashboard
+2025-05-01 12:55:49 info: Verificando tabelas do sistema...
+2025-05-01 12:55:49 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 12:55:49 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 12:55:49 info: Token do cookie: encontrado
+2025-05-01 12:55:49 info: DEBUG: ID do usuário: "b01ae214-8c3a-4335-8671-3153fe758af8"
+2025-05-01 12:55:49 info: Perfil não encontrado para o usuário b01ae214-8c3a-4335-8671-3153fe758af8, tentando criar...
+2025-05-01 12:55:49 info: Verificando tabelas do sistema...
+2025-05-01 12:55:49 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 12:55:49 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 12:55:49 info: Perfil criado com sucesso para o usuário b01ae214-8c3a-4335-8671-3153fe758af8
+2025-05-01 12:55:49 info: Usando full_name dos metadados para displayName: luiz
+2025-05-01 12:55:49 info: Usuário final: ID=b01ae214-8c3a-4335-8671-3153fe758af8, Email=fgtsbot@gmail.com, DisplayName="luiz"
+2025-05-01 12:55:49 info: Usuário autenticado: fgtsbot@gmail.com, ID: b01ae214-8c3a-4335-8671-3153fe758af8
+2025-05-01 12:55:49 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /dashboard
+2025-05-01 12:56:34 info: Verificando tabelas do sistema...
+2025-05-01 12:56:34 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 12:56:34 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 12:56:34 info: Token do cookie: encontrado
+2025-05-01 12:56:34 info: DEBUG: ID do usuário: "b01ae214-8c3a-4335-8671-3153fe758af8"
+2025-05-01 12:56:34 info: Perfil não encontrado para o usuário b01ae214-8c3a-4335-8671-3153fe758af8, tentando criar...
+2025-05-01 12:56:34 info: Verificando tabelas do sistema...
+2025-05-01 12:56:34 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 12:56:34 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 12:56:34 info: Perfil já existe para o usuário b01ae214-8c3a-4335-8671-3153fe758af8, usando o existente
+2025-05-01 12:56:34 info: Usando full_name dos metadados para displayName: luiz
+2025-05-01 12:56:34 info: Usuário final: ID=b01ae214-8c3a-4335-8671-3153fe758af8, Email=fgtsbot@gmail.com, DisplayName="luiz"
+2025-05-01 12:56:34 info: Usuário autenticado: fgtsbot@gmail.com, ID: b01ae214-8c3a-4335-8671-3153fe758af8
+2025-05-01 12:56:34 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 12:56:38 info: Verificando tabelas do sistema...
+2025-05-01 12:56:38 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 12:56:38 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 12:56:38 info: Token do cookie: encontrado
+2025-05-01 12:56:39 info: DEBUG: ID do usuário: "b01ae214-8c3a-4335-8671-3153fe758af8"
+2025-05-01 12:56:39 info: Perfil não encontrado para o usuário b01ae214-8c3a-4335-8671-3153fe758af8, tentando criar...
+2025-05-01 12:56:39 info: Verificando tabelas do sistema...
+2025-05-01 12:56:39 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 12:56:39 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 12:56:39 info: Perfil já existe para o usuário b01ae214-8c3a-4335-8671-3153fe758af8, usando o existente
+2025-05-01 12:56:39 info: Usando full_name dos metadados para displayName: luiz
+2025-05-01 12:56:39 info: Usuário final: ID=b01ae214-8c3a-4335-8671-3153fe758af8, Email=fgtsbot@gmail.com, DisplayName="luiz"
+2025-05-01 12:56:39 info: Usuário autenticado: fgtsbot@gmail.com, ID: b01ae214-8c3a-4335-8671-3153fe758af8
+2025-05-01 12:56:39 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 12:56:39 info: Criando instância em: https://evolutionapi.miceliumagent.shop/instance/create
+2025-05-01 12:56:39 info: Payload para criação de instância:
+2025-05-01 12:56:44 info: Instância criada com sucesso:
+2025-05-01 12:56:45 info: Verificando tabelas do sistema...
+2025-05-01 12:56:45 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 12:56:45 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 12:56:45 info: Token do cookie: encontrado
+2025-05-01 12:56:45 info: DEBUG: ID do usuário: "b01ae214-8c3a-4335-8671-3153fe758af8"
+2025-05-01 12:56:45 info: Perfil não encontrado para o usuário b01ae214-8c3a-4335-8671-3153fe758af8, tentando criar...
+2025-05-01 12:56:45 info: Verificando tabelas do sistema...
+2025-05-01 12:56:45 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 12:56:45 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 12:56:45 info: Perfil já existe para o usuário b01ae214-8c3a-4335-8671-3153fe758af8, usando o existente
+2025-05-01 12:56:45 info: Usando full_name dos metadados para displayName: luiz
+2025-05-01 12:56:45 info: Usuário final: ID=b01ae214-8c3a-4335-8671-3153fe758af8, Email=fgtsbot@gmail.com, DisplayName="luiz"
+2025-05-01 12:56:45 info: Usuário autenticado: fgtsbot@gmail.com, ID: b01ae214-8c3a-4335-8671-3153fe758af8
+2025-05-01 12:56:45 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 12:56:45 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20-%20jack
+2025-05-01 12:56:49 info: Verificando tabelas do sistema...
+2025-05-01 12:56:49 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 12:56:49 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 12:56:49 info: Token do cookie: encontrado
+2025-05-01 12:56:49 info: DEBUG: ID do usuário: "b01ae214-8c3a-4335-8671-3153fe758af8"
+2025-05-01 12:56:49 info: Perfil não encontrado para o usuário b01ae214-8c3a-4335-8671-3153fe758af8, tentando criar...
+2025-05-01 12:56:49 info: Verificando tabelas do sistema...
+2025-05-01 12:56:49 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 12:56:49 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 12:56:49 info: Perfil já existe para o usuário b01ae214-8c3a-4335-8671-3153fe758af8, usando o existente
+2025-05-01 12:56:49 info: Usando full_name dos metadados para displayName: luiz
+2025-05-01 12:56:49 info: Usuário final: ID=b01ae214-8c3a-4335-8671-3153fe758af8, Email=fgtsbot@gmail.com, DisplayName="luiz"
+2025-05-01 12:56:49 info: Usuário autenticado: fgtsbot@gmail.com, ID: b01ae214-8c3a-4335-8671-3153fe758af8
+2025-05-01 12:56:49 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /evolution-credentials
+2025-05-01 12:56:49 info: Buscando estado de conexão em: https://evolutionapi.miceliumagent.shop/instance/connectionState/luiz%20-%20jack
+2025-05-01 12:58:48 info: Verificando tabelas do sistema...
+2025-05-01 12:58:49 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 12:58:49 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 12:58:49 info: Token do cookie: encontrado
+2025-05-01 12:58:49 info: DEBUG: ID do usuário: "b01ae214-8c3a-4335-8671-3153fe758af8"
+2025-05-01 12:58:49 info: Perfil não encontrado para o usuário b01ae214-8c3a-4335-8671-3153fe758af8, tentando criar...
+2025-05-01 12:58:49 info: Verificando tabelas do sistema...
+2025-05-01 12:58:49 info: Verificação via RPC: tabela user_profiles existe
+2025-05-01 12:58:49 info: Tabela 'user_profiles' verificada e está disponível.
+2025-05-01 12:58:49 info: Perfil já existe para o usuário b01ae214-8c3a-4335-8671-3153fe758af8, usando o existente
+2025-05-01 12:58:49 info: Usando full_name dos metadados para displayName: luiz
+2025-05-01 12:58:49 info: Usuário final: ID=b01ae214-8c3a-4335-8671-3153fe758af8, Email=fgtsbot@gmail.com, DisplayName="luiz"
+2025-05-01 12:58:49 info: Usuário autenticado: fgtsbot@gmail.com, ID: b01ae214-8c3a-4335-8671-3153fe758af8
+2025-05-01 12:58:49 debug: commonViewData: Configurando res.locals.user a partir de req.user na rota /agents

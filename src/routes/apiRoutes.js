@@ -1,6 +1,4 @@
 require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
-console.log('N8N_API_URL carregada:', process.env.N8N_API_URL);
-
 // Rotas da API
 const express = require('express');
 const router = express.Router();
@@ -307,7 +305,6 @@ router.post('/auth/refresh-token', async (req, res) => {
       const { data: { user }, error } = await supabase.auth.getUser(token);
       if (!error && user) {
         supabaseUser = user;
-        logger.info(`Usuário verificado pelo Supabase: ${user.id}`);
         
         // Atualizar as informações do usuário caso tenha sido possível extrair do token
         if (!userId) userId = user.id;
