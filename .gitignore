@@ -1,5 +1,8 @@
-# Node
+# Dependências
 node_modules/
+.npm
+.pnp
+.pnp.js
 
 # Logs
 logs/
@@ -7,25 +10,96 @@ logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+lerna-debug.log*
+.pnpm-debug.log*
 
-# Environment
+# Ambiente
 .env
 .env.*
+!.env.example
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
-# Build
+# Build e arquivos de produção
 /dist
 /build
+/out
+/*.tgz
+*.tsbuildinfo
 
-# OS
+# Frontend
+/frontend/dist
+/frontend/build
+/frontend/.cache
+/frontend/coverage
+/frontend/.env*
+/frontend/node_modules
+
+# Testes e cobertura
+/coverage
+/.nyc_output
+/test-results
+cypress/videos
+cypress/screenshots
+
+# Suppabase
+/supabase/.branches
+/supabase/.temp
+.supabase
+
+# IDEs e editores
+.vscode/*
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
+.idea/
+*.sublime-project
+*.sublime-workspace
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*~
+.cursor
+
+# Arquivos temporários
+tmp/
+temp/
+.temp/
+.tmp/
 .DS_Store
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.pid
 
-# Test coverage
-coverage/
+# Uploads e arquivos de usuário
+/uploads
+/public/uploads
+/storage
 
-# IDEs
-.vscode/
-.idea/
+# Cache
+.eslintcache
+.stylelintcache
+.prettiercache
+*.tsbuildinfo
 
-# Others
-uploads/ 
+# Outros
+.vercel
+.netlify
+.docusaurus
+.next
+.cache
+*.bak
+*.swp
+.turbo 

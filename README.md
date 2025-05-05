@@ -1,39 +1,181 @@
-# SAAS FGTS
+# FGTS Manager
 
-Bem-vindo ao repositório do SAAS FGTS!
+Sistema de gerenciamento para consulta, simulação e formalização de contratos de antecipação de saque-aniversário do FGTS.
 
-Este projeto é uma plataforma completa para gestão de agentes, automação de atendimento, integrações e operações financeiras, utilizando Node.js, Supabase e React.
+## 📋 Sobre o Projeto
 
-## Documentação Completa
+FGTS Manager é uma aplicação web completa que permite a empresas parceiras gerenciar todo o processo de antecipação do saque-aniversário do FGTS, desde a consulta de saldo, simulação de valores, geração de propostas, até a formalização e acompanhamento dos contratos.
 
-A documentação detalhada do sistema, incluindo estrutura, banco de dados, testes, CI/CD e exemplos de uso, está disponível em:
+### Funcionalidades Principais
 
-➡️ [`src/README.md`](src/README.md)
+- **Consulta de Saldo FGTS**: Integração com APIs para verificação de saldo disponível
+- **Simulações de Antecipação**: Cálculo de valores e taxas para antecipação
+- **Geração de Propostas**: Criação de propostas para clientes
+- **Dashboard Analítico**: Visualização de métricas e desempenho
+- **Gerenciamento de Usuários**: Sistema de autenticação e permissões
+- **API Completa**: Endpoints para integração com outros sistemas
 
-## Estrutura do Projeto
+## 🔧 Tecnologias
 
-- `src/` — Código-fonte principal do backend, scripts, testes, integrações e dashboard React
-- `docker-compose.yml` — Orquestração de containers (opcional)
-- `Dockerfile` — Build do container da aplicação
+### Backend
+- **Node.js** e **Express**: API RESTful
+- **PostgreSQL/Supabase**: Banco de dados
+- **JWT**: Autenticação
+- **Swagger**: Documentação da API
 
-## Como iniciar o projeto
+### Frontend
+- **React**: UI Componentizada
+- **Vite**: Build tool
+- **TailwindCSS**: Estilização
+- **React Router**: Navegação
+- **ChartJS**: Gráficos para o dashboard
 
-1. Instale as dependências:
-   ```bash
-   npm install
-   ```
-2. Configure o arquivo `.env` conforme instruções em `src/README.md`.
-3. Inicie o servidor:
-   ```bash
-   npm start
-   ```
+## 🚀 Instalação
 
-## Contribuição
+### Pré-requisitos
+- Node.js (v16+)
+- npm ou yarn
+- PostgreSQL ou conta Supabase
 
-- Sempre crie uma branch para suas alterações.
-- Adicione testes para novas funcionalidades ou correções.
-- Abra um Pull Request para revisão.
+### Configuração do Ambiente
 
----
+1. Clone o repositório:
+```bash
+git clone https://github.com/seu-usuario/fgts-manager.git
+cd fgts-manager
+```
 
-Para detalhes completos, exemplos de testes, estrutura do banco de dados e scripts utilitários, consulte o [README detalhado](src/README.md). 
+2. Instale as dependências do backend:
+```bash
+npm install
+```
+
+3. Instale as dependências do frontend:
+```bash
+cd frontend
+npm install
+cd ..
+```
+
+4. Configure o arquivo `.env` na raiz do projeto:
+```
+# Servidor
+PORT=3000
+NODE_ENV=development
+
+# Supabase
+SUPABASE_URL=sua_url_supabase
+SUPABASE_SERVICE_KEY=sua_chave_servico
+SUPABASE_JWT_SECRET=seu_jwt_secret
+
+# Configurações de App
+APP_URL=http://localhost:3000
+CORS_ORIGIN=http://localhost:5173
+```
+
+5. Configure o arquivo `.env` no diretório `frontend`:
+```
+VITE_API_URL=http://localhost:3000/api
+VITE_SUPABASE_URL=sua_url_supabase
+VITE_SUPABASE_ANON_KEY=sua_chave_anon
+```
+
+## 🏃‍♂️ Executando o Projeto
+
+### Desenvolvimento
+
+1. Inicie o servidor backend:
+```bash
+npm run dev
+```
+
+2. Em outro terminal, inicie o frontend:
+```bash
+cd frontend
+npm run dev
+```
+
+3. Acesse o aplicativo em:
+- Frontend: http://localhost:5173
+- Backend API: http://localhost:3000/api
+
+### Produção
+
+1. Construa o frontend:
+```bash
+cd frontend
+npm run build
+cd ..
+```
+
+2. Inicie o servidor em modo produção:
+```bash
+npm start
+```
+
+## 📁 Estrutura do Projeto
+
+```
+/
+├── frontend/              # Frontend React
+│   ├── public/            # Arquivos estáticos
+│   │   ├── assets/        # Recursos (imagens, etc)
+│   │   ├── components/    # Componentes React
+│   │   ├── lib/           # Bibliotecas e utilitários
+│   │   ├── pages/         # Páginas/rotas
+│   │   └── utilities/     # Funções utilitárias
+│   └── package.json       # Dependências frontend
+│
+├── src/                   # Backend Node.js
+│   ├── config/            # Configurações
+│   ├── controllers/       # Controladores da API
+│   ├── middleware/        # Middlewares Express
+│   ├── models/            # Modelos de dados
+│   ├── routes/            # Rotas da API
+│   ├── services/          # Serviços do backend
+│   ├── utils/             # Utilitários
+│   └── views/             # Templates EJS
+│
+├── supabase/              # Configurações Supabase
+│   ├── migrations/        # Migrações de banco de dados
+│   └── functions/         # Edge Functions
+│
+└── package.json           # Dependências do projeto
+```
+
+## 📈 API RESTful
+
+A API segue princípios RESTful e está disponível em `/api`. Principais endpoints:
+
+- **Autenticação**
+  - `POST /api/auth/register` - Registro de usuário
+  - `POST /api/auth/login` - Login
+  - `GET /api/auth/me` - Usuário atual
+
+- **FGTS**
+  - `POST /api/fgts/consult` - Consultar saldo FGTS
+  - `POST /api/fgts/simulate` - Simular antecipação
+
+- **Propostas**
+  - `GET /api/proposals` - Listar propostas
+  - `POST /api/proposals` - Criar proposta
+  - `GET /api/proposals/:id` - Detalhes da proposta
+
+- **Dashboard**
+  - `GET /api/dashboard/stats` - Estatísticas gerais
+
+## 🤝 Contribuição
+
+1. Faça o fork do projeto
+2. Crie uma branch para sua feature (`git checkout -b feature/nova-funcionalidade`)
+3. Commit suas mudanças (`git commit -m 'Adiciona nova funcionalidade'`)
+4. Push para a branch (`git push origin feature/nova-funcionalidade`)
+5. Abra um Pull Request
+
+## 📄 Licença
+
+Este projeto está licenciado sob a MIT License - veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+
+## 📞 Contato
+
+Para questões ou suporte, entre em contato através de [seu-email@exemplo.com]. 
