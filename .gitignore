@@ -1,8 +1,23 @@
-# Dependências
+# Dependencies
+node_modules
 node_modules/
-.npm
 .pnp
 .pnp.js
+
+# Testing
+/coverage
+
+# Production
+/build
+/dist
+
+# Misc
+.DS_Store
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # Logs
 logs/
@@ -10,32 +25,21 @@ logs/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-lerna-debug.log*
-.pnpm-debug.log*
 
-# Ambiente
-.env
-.env.*
-!.env.example
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
-
-# Build e arquivos de produção
-/dist
-/build
-/out
-/*.tgz
-*.tsbuildinfo
+# Editor directories and files
+.idea
+.vscode
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
 
 # Frontend
-/frontend/dist
-/frontend/build
-/frontend/.cache
-/frontend/coverage
-/frontend/.env*
-/frontend/node_modules
+.temp
+.tmp
+Thumbs.db
+ehthumbs.db
 
 # Testes e cobertura
 /coverage
@@ -76,7 +80,6 @@ tmp/
 temp/
 .temp/
 .tmp/
-.DS_Store
 Thumbs.db
 ehthumbs.db
 Desktop.ini
