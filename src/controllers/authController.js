@@ -431,39 +431,180 @@ const logout = async (req, res) => {
  */
 const getMe = async (req, res) => {
   try {
-    // req.user é definido pelo middleware de autenticação
+    // Verificar se temos um usuário autenticado do middleware
     if (!req.user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Não autenticado'
-      });
-    }
-    
-    // Obter perfil completo
-    const { data: profile, error } = await supabase
-      .from('user_profiles')
-      .select('*')
-      .eq('id', req.user.id)
-      .single();
+      // Se não temos, tentar obter token diretamente do request
+      let token = null;
       
-    if (error) {
-      logger.error('Erro ao buscar perfil do usuário:', error.message);
-      return res.status(500).json({
-        success: false,
-        message: 'Erro ao obter informações do perfil'
-      });
+      // 1. Verificar nos headers de autorização
+      if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+        token = req.headers.authorization.substring(7);
+        logger.info('Token encontrado no header Authorization');
+      } 
+      // 2. Verificar nos cookies
+      else if (req.cookies && (req.cookies.authToken || req.cookies['supabase-auth-token'] || req.cookies['js-auth-token'])) {
+        token = req.cookies.authToken || req.cookies['supabase-auth-token'] || req.cookies['js-auth-token'];
+        logger.info('Token encontrado nos cookies');
+      }
+      
+      if (token) {
+        // Tentar obter o usuário com o token encontrado
+        try {
+          const { data: userResponse, error: userError } = await supabase.auth.getUser(token);
+          
+          if (userError) {
+            logger.error(`Erro ao obter usuário a partir do token: ${userError.message}`);
+            return res.status(401).json({
+              success: false,
+              message: 'Não autenticado - Token inválido'
+            });
+          }
+          
+          if (userResponse && userResponse.user) {
+            // Usar o usuário obtido
+            req.user = userResponse.user;
+            logger.info(`Usuário autenticado manualmente: ${req.user.id}`);
+          }
+        } catch (tokenError) {
+          logger.error(`Erro ao processar token manual: ${tokenError.message}`);
+          return res.status(401).json({
+            success: false,
+            message: 'Não autenticado - Erro ao processar token'
+          });
+        }
+      }
+      
+      // Se ainda não temos usuário, retornar erro de autenticação
+      if (!req.user) {
+        logger.warn('Acesso não autorizado - Usuário não encontrado');
+        return res.status(401).json({
+          success: false,
+          message: 'Não autenticado'
+        });
+      }
     }
     
-    return res.status(200).json({
-      success: true,
-      user: {
-        id: req.user.id,
-        email: req.user.email,
-        ...profile
+    try {
+      // Obter perfil completo - sem usar single() para evitar erro com múltiplos registros
+      const { data: profilesData, error } = await supabaseAdmin
+        .from('user_profiles')
+        .select('*')
+        .eq('id', req.user.id)
+        .order('updated_at', { ascending: false });
+        
+      if (error) {
+        logger.error(`Erro ao buscar perfil do usuário: ${error.message}`);
+        
+        // Extrair nome completo dos metadados do usuário
+        const userMetadataName = req.user.user_metadata?.full_name || 
+          (req.user.user_metadata?.first_name && req.user.user_metadata?.last_name ? 
+            `${req.user.user_metadata.first_name} ${req.user.user_metadata.last_name}` : '');
+        
+        // Log para depuração
+        logger.info(`Retornando dados do usuário a partir dos metadados: ${JSON.stringify(req.user.user_metadata)}`);
+            
+        // Mesmo com erro, retornar um perfil padrão em vez de falhar
+        return res.status(200).json({
+          success: true,
+          user: {
+            id: req.user.id,
+            email: req.user.email,
+            full_name: userMetadataName || '',
+            displayName: userMetadataName || req.user.email?.split('@')[0] || 'Usuário',
+            firstName: req.user.user_metadata?.first_name || '',
+            lastName: req.user.user_metadata?.last_name || '',
+            name: userMetadataName || req.user.email?.split('@')[0] || 'Usuário',
+            avatar_url: req.user.user_metadata?.avatar_url || null,
+            role: req.user.app_metadata?.role || 'user'
+          }
+        });
       }
-    });
+      
+      // Usar o primeiro registro (mais recente) ou um objeto vazio se não houver registros
+      const profile = (profilesData && profilesData.length > 0) ? profilesData[0] : {};
+      
+      // Se houver múltiplos perfis, registrar para análise posterior
+      if (profilesData && profilesData.length > 1) {
+        logger.warn(`Múltiplos perfis encontrados para o usuário ${req.user.id}. Total: ${profilesData.length}`);
+      }
+      
+      // Determinar nome final de exibição
+      let finalName = '';
+      if (profile.full_name) {
+        finalName = profile.full_name;
+        logger.info(`Nome extraído da tabela user_profiles.full_name: ${finalName}`);
+      } else {
+        // Tentar obter via Admin API do Supabase Auth
+        try {
+          const { data: adminData, error: adminError } = await supabaseAdmin.auth.admin.getUserById(req.user.id);
+          if (!adminError && adminData?.user?.user_metadata?.full_name) {
+            finalName = adminData.user.user_metadata.full_name;
+            logger.info(`Nome extraído de user_metadata via Admin API: ${finalName}`);
+          }
+        } catch (adminFetchError) {
+          logger.warn(`Falha ao buscar metadata de usuário via Admin API: ${adminFetchError.message}`);
+        }
+      }
+      if (!finalName) {
+        finalName = (profile.first_name && profile.last_name)
+          ? `${profile.first_name} ${profile.last_name}`
+          : profile.name || req.user.email?.split('@')[0] || 'Usuário';
+      }
+      const displayName = finalName;
+      
+      logger.info(`Nome final selecionado: "${displayName}"`);
+      
+      // Log para depuração dos dados retornados
+      logger.info(`Retornando perfil completo: usuário=${req.user.id}, displayName=${displayName}`);
+      
+      // Construir resposta com todas as possíveis propriedades de nome
+      const response = {
+        success: true,
+        user: {
+          id: req.user.id,
+          email: req.user.email,
+          ...profile, // Incluir todos os campos do perfil
+          // Garantir que os campos de nome estejam presentes
+          full_name: displayName, // Usar o nome correto aqui
+          displayName: displayName, // E aqui também
+          firstName: profile.first_name || req.user.user_metadata?.first_name || '',
+          lastName: profile.last_name || req.user.user_metadata?.last_name || '',
+          name: displayName, // E aqui também
+          // Incluir explicitamente os metadados para o frontend
+          user_metadata: req.user.user_metadata || {},
+          // Adicionar propriedades específicas para o frontend
+          avatar_url: req.user.user_metadata?.avatar_url || profile.avatar_url || null,
+          role: req.user.app_metadata?.role || 'user'
+        }
+      };
+      
+      logger.info(`Tamanho da resposta: ${JSON.stringify(response).length} bytes`);
+      
+      return res.status(200).json(response);
+    } catch (dbErr) {
+      logger.error(`Erro na consulta de perfil: ${dbErr.message || JSON.stringify(dbErr)}`);
+      // Em caso de erro na consulta, retornar os dados básicos do usuário
+      const userMetadataName = req.user.user_metadata?.full_name || 
+        (req.user.user_metadata?.first_name && req.user.user_metadata?.last_name ? 
+          `${req.user.user_metadata.first_name} ${req.user.user_metadata.last_name}` : '');
+      
+      return res.status(200).json({
+        success: true,
+        user: {
+          id: req.user.id,
+          email: req.user.email,
+          full_name: userMetadataName || '',
+          displayName: userMetadataName || req.user.email?.split('@')[0] || 'Usuário',
+          firstName: req.user.user_metadata?.first_name || '',
+          lastName: req.user.user_metadata?.last_name || '',
+          name: userMetadataName || req.user.email?.split('@')[0] || 'Usuário',
+          avatar_url: req.user.user_metadata?.avatar_url || null,
+          role: req.user.app_metadata?.role || 'user'
+        }
+      });
+    }
   } catch (err) {
-    logger.error('Erro ao buscar informações do usuário:', err);
+    logger.error(`Erro ao buscar informações do usuário: ${err.message || JSON.stringify(err)}`);
     return res.status(500).json({
       success: false,
       message: 'Erro interno do servidor'

@@ -3,6 +3,8 @@ const { supabaseAdmin } = require('./database');
 const { AppError } = require('../utils/errors');
 const logger = require('../utils/logger');
 const Client = require('../models/client');
+const axios = require('axios');
+const { google } = require('googleapis');
 
 class AuthService {
   async signUp(email, password, userData) {
@@ -624,6 +626,49 @@ class AuthService {
     } catch (error) {
       logger.error('Erro no createAdminSessionViaApi:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Obtém informações do usuário usando um token do Google
+   * @param {string} token - Token de acesso do Google
+   * @returns {Promise<Object>} - Informações do usuário
+   */
+  async getGoogleUserInfo(token) {
+    try {
+      logger.info('Obtendo informações do usuário Google');
+      
+      // Método 1: Usando a API OAuth2 do Google
+      try {
+        const oauth2Client = new google.auth.OAuth2();
+        oauth2Client.setCredentials({ access_token: token });
+        
+        const oauth2 = google.oauth2({
+          auth: oauth2Client,
+          version: 'v2'
+        });
+        
+        const { data } = await oauth2.userinfo.get();
+        logger.info(`Informações do usuário Google obtidas via API: ${data.email}`);
+        
+        return data;
+      } catch (googleApiError) {
+        logger.warn(`Erro ao obter informações via Google API: ${googleApiError.message}`);
+        logger.info('Tentando método alternativo via axios');
+        
+        // Método 2: Fazer requisição direta ao endpoint
+        const response = await axios.get('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: {
+            Authorization: `Bearer ${token}`
+          }
+        });
+        
+        logger.info(`Informações do usuário Google obtidas via Axios: ${response.data.email}`);
+        return response.data;
+      }
+    } catch (error) {
+      logger.error(`Erro ao obter informações do usuário Google: ${error.message}`);
+      throw new AppError('Erro ao obter informações do usuário do Google', 500);
     }
   }
 }

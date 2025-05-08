@@ -85,18 +85,27 @@ async function cancelProposalV8(proposalId, accessToken) {
     logger.info('[V8 Response] status:', response.status, 'data:', response.data);
     return response.data;
   } catch (err) {
-    // Log full error object for análise detalhada
-    logger.error('[V8 Error] Error object:', err);
-    // Configuração da requisição
-    if (err.config) logger.error('[V8 Error] Request config:', err.config);
-    // Objeto Request (raw)
-    if (err.request) logger.error('[V8 Error] Raw request:', err.request);
-    // Resposta, se disponível
+    // Log apenas informações essenciais do erro, evitando objetos circulares
+    logger.error('[V8 Error] Message:', err.message);
+    logger.error('[V8 Error] Name:', err.name);
+    
+    // Informações da configuração da requisição (só dados básicos)
+    if (err.config) {
+      logger.error('[V8 Error] Request config:', { 
+        url: err.config.url,
+        method: err.config.method,
+        baseURL: err.config.baseURL,
+        headers: err.config.headers
+      });
+    }
+    
+    // Informações da resposta, se disponível
     if (err.response) {
       logger.error('[V8 Error] Response status:', err.response.status);
       logger.error('[V8 Error] Response headers:', err.response.headers);
       logger.error('[V8 Error] Response data:', err.response.data);
     }
+    
     // Extrai mensagem de erro nativo ou fallback
     const status = err.response?.status;
     const data = err.response?.data;
@@ -140,7 +149,7 @@ exports.cancelProposal = async (req, res) => {
 };
 
 exports.deleteProposal = async (req, res) => {
-  logger.info('[DEBUG] Entrou no deleteProposal', { params: req.params, user: req.user });
+  logger.info('[DEBUG] Entrou no deleteProposal', { params: req.params, user: req.user?.id });
   try {
     if (!req.user || !req.user.id) {
       return res.status(401).json({ success: false, message: 'Usuário não autenticado ou ID do usuário ausente.' });
@@ -150,28 +159,62 @@ exports.deleteProposal = async (req, res) => {
     const proposal = await Proposal.findById(proposal_id);
     logger.info('[DEBUG] Proposal encontrado:', proposal);
     if (!proposal) return res.status(404).json({ success: false, message: 'Proposta não encontrada.' });
-    // Cancelar na V8 se necessário
+
+    let v8CancelSuccess = false;
+    // Tentar cancelar na V8 se possível
     try {
       const token = await getV8AccessToken(req.user.id);
       logger.info('[V8 DEBUG] accessToken:', token);
       logger.info('[V8 DEBUG] Chamando cancelProposalV8 com proposal_id:', proposal_id);
       await cancelProposalV8(proposal_id, token);
       logger.info(`Proposta ${proposal_id} cancelada no V8.`);
+      v8CancelSuccess = true;
     } catch (v8Err) {
-      logger.error('[V8 DEBUG] Erro completo ao cancelar na V8:', v8Err);
-      if (!v8Err.message.includes('Operation does not allow cancelation')) {
-        return res.status(400).json({ success: false, message: 'Falha ao cancelar na V8.', error: v8Err.message });
+      // Evitar log de objetos completos que podem conter estruturas circulares
+      logger.error('[V8 DEBUG] Erro ao cancelar na V8:', { 
+        message: v8Err.message,
+        name: v8Err.name,
+        code: v8Err.code,
+        status: v8Err.response?.status
+      });
+      
+      // Se for erro de credenciais, continue com cancelamento local
+      if (v8Err.message.includes('Credenciais do parceiro não encontradas')) {
+        logger.warn(`Credenciais não encontradas para usuário ${req.user.id}, continuando com cancelamento local apenas`);
+        // Não retornar erro, apenas continuar com o cancelamento local
+      } 
+      // Se for outro erro que não permita ignorar, retornar o erro
+      else if (!v8Err.message.includes('Operation does not allow cancelation')) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Falha ao cancelar na V8.', 
+          error: v8Err.message 
+        });
       }
     }
-    // Atualizar status para 'cancelled' em vez de deletar
+
+    // Atualizar status para 'cancelled' localmente
     const { error } = await supabaseAdmin
       .from('proposals')
       .update({ status: 'cancelled' })
       .eq('proposal_id', proposal_id);
+    
     if (error) throw error;
-    return res.json({ success: true, message: 'Proposta cancelada com sucesso.' });
+    
+    // Mensagem de sucesso adaptada conforme contexto
+    const message = v8CancelSuccess 
+      ? 'Proposta cancelada com sucesso na V8 e localmente.' 
+      : 'Proposta cancelada localmente com sucesso.';
+    
+    return res.json({ success: true, message });
   } catch (err) {
-    logger.error('[DEBUG] Erro final ao excluir proposta:', err);
+    // Registrar apenas informações seguras do erro
+    logger.error('[DEBUG] Erro final ao excluir proposta:', { 
+      message: err.message,
+      name: err.name,
+      code: err.code,
+      stack: err.stack?.split('\n').slice(0, 3).join('\n') // Incluir apenas as 3 primeiras linhas da stack
+    });
     return res.status(500).json({ success: false, message: 'Erro ao excluir proposta.', error: err.message });
   }
 }; 

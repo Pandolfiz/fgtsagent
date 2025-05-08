@@ -472,23 +472,19 @@ function updateUserInterface(userData) {
 }
 
 /**
- * Efetua logout do usuário
+ * Faz logout do usuário
  */
 function logout() {
-    // Remover token do armazenamento
+    // Limpar tokens de autenticação
     localStorage.removeItem('authToken');
     sessionStorage.removeItem('authToken');
     
-    // Enviar requisição para o servidor
-    fetch('/api/auth/logout', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        }
-    }).finally(() => {
-        // Redirecionar para a página de login
-        window.location.href = '/auth/login';
-    });
+    // Limpar outros dados relacionados ao usuário
+    localStorage.removeItem('userData');
+    sessionStorage.removeItem('userData');
+    
+    // Redirecionar para a página de login
+    window.location.href = '/login';
 }
 
 /**
@@ -610,8 +606,8 @@ function redirectToLogin(message, sessionExpired = false) {
     // Salvar a URL atual para redirecionamento após o login
     const currentUrl = encodeURIComponent(window.location.pathname + window.location.search);
     
-    // Construir URL de redirecionamento
-    let redirectUrl = `/auth/login?redirect=${currentUrl}`;
+    // Construir URL de redirecionamento para a nova página de login em React
+    let redirectUrl = `/login?redirect=${currentUrl}`;
     
     // Adicionar mensagem se fornecida
     if (message) {
@@ -623,7 +619,7 @@ function redirectToLogin(message, sessionExpired = false) {
         redirectUrl += '&sessionExpired=true';
     }
     
-    // Redirecionar para a página de login
+    // Redirecionar para a página de login em React
     window.location.href = redirectUrl;
 }
 
@@ -639,7 +635,10 @@ function isPublicPath(path) {
         '/terms', 
         '/',
         '/auth/callback',
-        '/auth/confirm'
+        '/auth/confirm',
+        '/login',
+        '/signup',
+        '/reset-password'
     ];
     return publicPaths.some(publicPath => path === publicPath || path.startsWith(publicPath));
 }
@@ -794,7 +793,7 @@ function setupTokenRefreshInterval() {
         if (!token) {
           console.warn('Token não encontrado após tentativa de renovação, redirecionando...');
           clearInterval(intervalId);
-          window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}&message=Sua sessão expirou. Faça login novamente.`;
+          window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}&message=Sua sessão expirou. Faça login novamente.`;
         }
       }
     } catch (err) {

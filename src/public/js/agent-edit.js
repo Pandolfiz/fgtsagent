@@ -172,7 +172,7 @@ document.addEventListener('DOMContentLoaded', function() {
                                     Sua sessão expirou. Por favor faça login novamente.
                                 </div>
                                 <div class="mt-3">
-                                    <a href="/auth/login?redirect=${encodeURIComponent(window.location.pathname)}" class="btn btn-primary">
+                                    <a href="/login?redirect=${encodeURIComponent(window.location.pathname)}" class="btn btn-primary">
                                         <i class="fas fa-sign-in-alt me-2"></i>Fazer Login
                                     </a>
                                 </div>
@@ -741,7 +741,7 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Se falhou ao renovar, redirecionar para login
                         showNotification('Sua sessão expirou. Redirecionando para a página de login...', 'error', function() {
-                            window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}`;
+                            window.location.href = `/login?redirect=${encodeURIComponent(window.location.pathname)}`;
                         });
                         
                         return; // Sair da função

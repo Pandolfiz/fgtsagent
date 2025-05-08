@@ -16,7 +16,8 @@ async function getDashboardStats(req, userId, period = 'daily') {
     // FIM DA REMOÇÃO
 
     // 2. Buscar dados de propostas com filtro de período
-    let proposalsQuery = supabase.from('proposals').select('*').eq('client_id', userId);
+    let proposalsQuery = supabaseAdmin.from('proposals').select('*').eq('client_id', userId);
+    const saoPauloOffset = -3; // UTC-3
     if (period === 'range') {
       logger.info(`[DASHBOARD] startDate: ${req.query.startDate}, endDate: ${req.query.endDate}`);
       if (!req.query.startDate || !req.query.endDate) {
@@ -26,9 +27,9 @@ async function getDashboardStats(req, userId, period = 'daily') {
           message: 'Intervalo de datas incompleto.'
         };
       }
-      const start = new Date(req.query.startDate);
-      const end = new Date(req.query.endDate);
-      if (isNaN(start) || isNaN(end)) {
+      const startDateObj = new Date(req.query.startDate);
+      const endDateObj = new Date(req.query.endDate);
+      if (isNaN(startDateObj) || isNaN(endDateObj)) {
         logger.warn('[DASHBOARD] Datas inválidas.');
         return {
           error: true,
@@ -37,28 +38,50 @@ async function getDashboardStats(req, userId, period = 'daily') {
       }
       // Limitar intervalo para 90 dias
       const maxDays = 90;
-      if ((end - start) / (1000 * 60 * 60 * 24) > maxDays) {
+      if ((endDateObj - startDateObj) / (1000 * 60 * 60 * 24) > maxDays) {
         logger.warn('[DASHBOARD] Intervalo muito grande.');
         return {
           error: true,
           message: 'Intervalo muito grande. Máximo permitido: 90 dias.'
         };
       }
-      start.setUTCHours(0,0,0,0);
-      end.setUTCHours(23,59,59,999);
+      const start = new Date(Date.UTC(startDateObj.getUTCFullYear(), startDateObj.getUTCMonth(), startDateObj.getUTCDate(), 0 - saoPauloOffset, 0, 0, 0));
+      const end = new Date(Date.UTC(endDateObj.getUTCFullYear(), endDateObj.getUTCMonth(), endDateObj.getUTCDate(), 23 - saoPauloOffset, 59, 59, 999));
       proposalsQuery = proposalsQuery.gte('updated_at', start.toISOString()).lte('updated_at', end.toISOString());
     } else if (period === 'daily') {
-      const start = new Date(now); start.setHours(0,0,0,0);
-      const end = new Date(now); end.setHours(23,59,59,999);
-      proposalsQuery = proposalsQuery.gte('updated_at', start.toISOString()).lte('updated_at', end.toISOString());
+      // Corrigido: use a data local para Brasil em vez de UTC 
+      // O problema estava aqui: precisamos obter o dia atual no fuso horário local do Brasil
+      // e criar limites de data que capturem todo o dia na hora local, independentemente de
+      // como o banco de dados possa armazenar as datas no UTC
+      
+      // Obtenha a data atual sem ajuste de hora
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
+      // Início do dia (00:00:00.000)
+      const startOfDay = new Date(today);
+      startOfDay.setHours(0, 0, 0, 0);
+      
+      // Fim do dia (23:59:59.999)
+      const endOfDay = new Date(today);
+      endOfDay.setHours(23, 59, 59, 999);
+      
+      // Log para debug das datas
+      logger.info(`[DASHBOARD] Filtro diário - Data local: ${today.toLocaleDateString()}`);
+      logger.info(`[DASHBOARD] Filtro diário - Início: ${startOfDay.toISOString()}, Fim: ${endOfDay.toISOString()}`);
+      
+      proposalsQuery = proposalsQuery.gte('updated_at', startOfDay.toISOString()).lte('updated_at', endOfDay.toISOString());
     } else if (period === 'weekly') {
-      const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay()); startOfWeek.setHours(0,0,0,0);
-      const endOfWeek = new Date(startOfWeek); endOfWeek.setDate(startOfWeek.getDate() + 6); endOfWeek.setHours(23,59,59,999);
-      proposalsQuery = proposalsQuery.gte('updated_at', startOfWeek.toISOString()).lte('updated_at', endOfWeek.toISOString());
+      const startOfWeek = new Date(now);
+      startOfWeek.setDate(now.getDate() - now.getDay());
+      const start = new Date(Date.UTC(startOfWeek.getUTCFullYear(), startOfWeek.getUTCMonth(), startOfWeek.getUTCDate(), 0 - saoPauloOffset, 0, 0, 0));
+      const endOfWeek = new Date(startOfWeek);
+      endOfWeek.setDate(startOfWeek.getDate() + 6);
+      const end = new Date(Date.UTC(endOfWeek.getUTCFullYear(), endOfWeek.getUTCMonth(), endOfWeek.getUTCDate(), 23 - saoPauloOffset, 59, 59, 999));
+      proposalsQuery = proposalsQuery.gte('updated_at', start.toISOString()).lte('updated_at', end.toISOString());
     } else if (period === 'monthly') {
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-      proposalsQuery = proposalsQuery.gte('updated_at', startOfMonth.toISOString()).lte('updated_at', endOfMonth.toISOString());
+      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0 - saoPauloOffset, 0, 0, 0));
+      const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23 - saoPauloOffset, 59, 59, 999));
+      proposalsQuery = proposalsQuery.gte('updated_at', start.toISOString()).lte('updated_at', end.toISOString());
     }
     const { data: proposalsData, error: proposalsError } = await proposalsQuery;
     if (proposalsError) logger.error(`Erro ao buscar propostas: ${proposalsError.message}`);
@@ -86,8 +109,15 @@ async function getDashboardStats(req, userId, period = 'daily') {
     // Definir limites de data conforme o período selecionado
     let balanceStart, balanceEnd;
     if (period === 'daily') {
-      balanceStart = new Date(now); balanceStart.setHours(0,0,0,0);
-      balanceEnd = new Date(now); balanceEnd.setHours(23,59,59,999);
+      // Usar a mesma lógica do filtro diário das propostas
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      balanceStart = new Date(today);
+      balanceStart.setHours(0, 0, 0, 0);
+      
+      balanceEnd = new Date(today);
+      balanceEnd.setHours(23, 59, 59, 999);
+      
+      logger.info(`[DASHBOARD] Filtro balance diário - Início: ${balanceStart.toISOString()}, Fim: ${balanceEnd.toISOString()}`);
     } else if (period === 'weekly') {
       balanceStart = new Date(now); balanceStart.setDate(now.getDate() - now.getDay()); balanceStart.setHours(0,0,0,0);
       balanceEnd = new Date(balanceStart); balanceEnd.setDate(balanceStart.getDate() + 6); balanceEnd.setHours(23,59,59,999);
@@ -103,15 +133,20 @@ async function getDashboardStats(req, userId, period = 'daily') {
     const filteredBalanceData = (balanceData || []).filter(b => {
       const d = new Date(b.updated_at);
       if (period === 'daily') {
-        return d.getFullYear() === balanceStart.getFullYear() &&
-               d.getMonth() === balanceStart.getMonth() &&
-               d.getDate() === balanceStart.getDate();
+        // Usar comparação direta com os limites da data
+        return d >= balanceStart && d <= balanceEnd;
       }
       if (period === 'range' && balanceStart && balanceEnd) {
         return d >= balanceStart && d <= balanceEnd;
       }
       return d >= balanceStart && d <= balanceEnd;
     });
+
+    // Debug para verificar os resultados da filtragem
+    logger.info(`[DASHBOARD] Registros de balance - Total: ${balanceData?.length || 0}, Filtrados para período ${period}: ${filteredBalanceData?.length || 0}`);
+    if (filteredBalanceData && filteredBalanceData.length > 0) {
+      logger.info(`[DASHBOARD] Exemplo de balance filtrado: ${JSON.stringify(filteredBalanceData[0])}`);
+    }
 
     // Mapear o balance mais recente para cada lead, considerando apenas o período filtrado
     const latestBalanceByLead = {};
@@ -170,12 +205,27 @@ async function getDashboardStats(req, userId, period = 'daily') {
     let groupValues = [];
     if (period === 'daily') {
       // Por hora
+      // Obter a data de hoje sem componente de hora
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      
       for (let h = 0; h < 24; h++) {
         groupLabels.push(`${h}:00`);
-        const filtered = proposalsData.filter(p => new Date(p.updated_at).getHours() === h &&
-          new Date(p.updated_at).getDate() === now.getDate() &&
-          new Date(p.updated_at).getMonth() === now.getMonth() &&
-          new Date(p.updated_at).getFullYear() === now.getFullYear());
+        
+        // Criar intervalos de hora
+        const hourStart = new Date(today);
+        hourStart.setHours(h, 0, 0, 0);
+        
+        const hourEnd = new Date(today);
+        hourEnd.setHours(h, 59, 59, 999);
+        
+        // Filtrar propostas nesta hora
+        const filtered = proposalsData.filter(p => {
+          const proposalDate = new Date(p.updated_at);
+          return proposalDate >= hourStart && proposalDate <= hourEnd;
+        });
+        
+        logger.info(`[DASHBOARD] Hora ${h}:00 - Encontradas ${filtered.length} propostas`);
+        
         groupCounts.push(filtered.length);
         groupValues.push(filtered.reduce((s, p) => s + parseFloat(p.value || 0), 0));
       }

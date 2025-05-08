@@ -1,29 +1,65 @@
-<div class="container">
-    <div class="row justify-content-center">
-        <div class="col-md-8 text-center mt-5">
-            <div class="mb-4">
-                <i class="fas fa-exclamation-triangle text-warning fa-5x"></i>
-            </div>
-            <h1 class="display-4 mb-4"><%= title %></h1>
-            <p class="lead mb-5"><%= message %></p>
-            
-            <% if (error && Object.keys(error).length > 0) { %>
-                <div class="card text-start mb-4">
-                    <div class="card-header">Detalhes do erro</div>
-                    <div class="card-body">
-                        <pre class="mb-0"><%= JSON.stringify(error, null, 2) %></pre>
-                    </div>
-                </div>
-            <% } %>
-            
-            <div class="mt-4">
-                <a href="javascript:history.back()" class="btn btn-outline-primary me-2">
-                    <i class="fas fa-arrow-left me-1"></i> Voltar
-                </a>
-                <a href="/" class="btn btn-primary">
-                    <i class="fas fa-home me-1"></i> Página Inicial
-                </a>
-            </div>
-        </div>
-    </div>
-</div> 
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= title || 'Erro' %></title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f7f8fc;
+      color: #333;
+      margin: 0;
+      padding: 20px;
+      line-height: 1.6;
+    }
+    .container {
+      max-width: 800px;
+      margin: 50px auto;
+      padding: 30px;
+      background-color: #fff;
+      border-radius: 10px;
+      box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+    }
+    h1 {
+      color: #e53e3e;
+      margin-bottom: 20px;
+    }
+    .error-details {
+      background-color: #f8f9fa;
+      padding: 15px;
+      border-radius: 5px;
+      margin-top: 20px;
+      overflow-x: auto;
+    }
+    .back-link {
+      display: inline-block;
+      margin-top: 20px;
+      background-color: #3182ce;
+      color: white;
+      padding: 10px 20px;
+      border-radius: 5px;
+      text-decoration: none;
+      font-weight: bold;
+    }
+    .back-link:hover {
+      background-color: #2b6cb0;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1><%= title || 'Erro' %></h1>
+    <p><%= message || 'Ocorreu um erro inesperado.' %></p>
+    
+    <% if (process.env.NODE_ENV === 'development' && typeof error === 'object' && error !== null) { %>
+      <div class="error-details">
+        <h3>Detalhes técnicos:</h3>
+        <pre><%= error.stack || JSON.stringify(error, null, 2) %></pre>
+      </div>
+    <% } %>
+    
+    <a href="/" class="back-link">Voltar para a página inicial</a>
+  </div>
+</body>
+</html> 

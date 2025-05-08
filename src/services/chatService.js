@@ -47,6 +47,13 @@ async function handleWebhookEvent(body) {
       ? new Date(msg.messageTimestamp * 1000)
       : new Date();
     const metadata = msg;
+    
+    // Determinar o role da mensagem respeitando qualquer valor já definido
+    const role = msg.role || (fromMe ? 'ME' : 'USER');
+    
+    // Registrar para debug
+    console.log(`Processando mensagem do webhook: fromMe=${fromMe}, content=${content.substring(0, 30)}..., role=${role}, sender_id=${sender_id}, recipient_id=${recipient_id}`);
+    
     const saved = await messageRepository.saveMessage({
       id,
       conversation_id,
@@ -56,7 +63,8 @@ async function handleWebhookEvent(body) {
       metadata,
       timestamp,
       status: 'received',
-      instanceId: msg.instanceId
+      instanceId: msg.instanceId,
+      role // Definir explicitamente o role
     });
     emitter.emit('message', saved);
   }
@@ -65,7 +73,7 @@ async function handleWebhookEvent(body) {
 /**
  * Envia mensagem via instância selecionada
  */
-async function handleOutgoing({ to, content, conversationId, senderId, instanceId }) {
+async function handleOutgoing({ to, content, conversationId, senderId, instanceId, role }) {
   // Validar instância
   if (!instanceId) {
     throw new AppError('Instância é obrigatória para enviar mensagem', 400);
@@ -88,7 +96,8 @@ async function handleOutgoing({ to, content, conversationId, senderId, instanceI
     metadata: { instanceId },
     timestamp: new Date(),
     status: 'sent',
-    instanceId
+    instanceId,
+    role: role || 'ME' // Usar o role fornecido ou definir 'ME' como padrão
   });
   emitter.emit('message', saved);
   return saved;

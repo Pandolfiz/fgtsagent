@@ -11,6 +11,61 @@ class CredentialsService {
   }
 
   /**
+   * Salva uma credencial
+   * @param {Object} credentialData - Dados da credencial
+   * @returns {Promise<Object>} - Credencial salva ou erro
+   */
+  async saveCredential(credentialData) {
+    try {
+      logger.info('Salvando credencial com método padrão');
+      
+      // Verificar dados essenciais
+      if (!credentialData.name || !credentialData.type || !credentialData.organization_id) {
+        throw new Error('Dados incompletos: name, type e organization_id são obrigatórios');
+      }
+      
+      // Preparar objeto para inserção
+      const credentialObj = {
+        name: credentialData.name,
+        type: credentialData.type,
+        organization_id: credentialData.organization_id,
+        data: credentialData.data || {},
+        created_by: credentialData.created_by || null,
+        created_at: credentialData.created_at || new Date().toISOString(),
+        updated_at: credentialData.updated_at || new Date().toISOString(),
+        status: 'active'
+      };
+      
+      const { data, error } = await supabase
+        .from('credentials')
+        .insert(credentialObj)
+        .select()
+        .single();
+        
+      if (error) {
+        logger.error(`Erro ao salvar credencial: ${error.message}`);
+        
+        // Tentar método alternativo com service_role
+        logger.info('Tentando salvar com método service_role alternativo');
+        return await this.saveCredentialAsServiceRole(credentialData);
+      }
+      
+      logger.info(`Credencial ${data.id} salva com sucesso`);
+      return data;
+    } catch (error) {
+      logger.error(`Erro ao salvar credencial: ${error.message}`);
+      
+      // Tentar método alternativo
+      try {
+        return await this.saveCredentialAsServiceRole(credentialData);
+      } catch (serviceRoleError) {
+        // Se falhar em ambos os métodos, lançar o erro
+        throw new Error(`Falha ao salvar credencial: ${error.message}`);
+      }
+    }
+  }
+
+  /**
    * Salva uma credencial usando autenticação de serviço
    * Útil para callbacks OAuth2 onde o usuário não está autenticado via JWT
    * @param {Object} credentialData - Dados da credencial

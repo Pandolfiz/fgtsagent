@@ -84,7 +84,7 @@ router.use('/credentials', require('./credentialsRoutes'));
 router.use('/api/clients', require('./clientRoutes'));
 
 // Rotas de EvolutionCredentials
-router.use('/api/evolution-credentials', require('./evolutionCredentialRoutes'));
+router.use('/api/whatsapp-credentials', require('./evolutionCredentialRoutes'));
 
 // Rotas de Leads
 router.use('/api/leads', require('./leadRoutes'));

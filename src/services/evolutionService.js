@@ -121,7 +121,7 @@ class EvolutionService {
         token: this.apiKey,
         number,
         qrcode: true,
-        integration: 'WHATSAPP-BAILEYS',
+        integration: 'EVOLUTION',
         webhook:{
           enabled: true,
           url: 'https://n8n-n8n.8cgx4t.easypanel.host/webhook/fgtsAgent',
@@ -178,8 +178,65 @@ class EvolutionService {
         headers: { apikey: this.apiKey }
       });
       // A API retorna { code, pairingCode, ... }
-      return response.data;
+      const qrData = response.data;
+      if (qrData.qrcode?.base64) {
+        logger.info('QR Code encontrado em formato base64');
+        return {
+          base64: qrData.qrcode.base64,
+          pairingCode: qrData.pairingCode || null,
+          code: qrData.code || null
+        };
+      } else if (qrData.base64) {
+        logger.info('QR Code encontrado em formato base64 direto');
+        return qrData;
+      } else if (qrData.code) {
+        logger.info('QR Code encontrado em formato code');
+        return qrData;
+      } else {
+        logger.warn('QR Code em formato não reconhecido, tentando extrair', Object.keys(qrData));
+        // Tentar encontrar qualquer campo que possa conter o QR Code
+        return qrData;
+      }
     } catch (error) {
+      // Se a instância não existe, tentar usar o endpoint de QR Code direto
+      if (error.response && (error.response.status === 404 || error.response.status === 409)) {
+        try {
+          // Tentar endpoint específico de QR Code
+          logger.info(`Instância não encontrada, tentando usar endpoint QR direto para ${this.instanceName}`);
+          const qrEndpoint = `${this.baseUrl}/instance/qr/${encodeURIComponent(this.instanceName)}`;
+          const response = await axios.get(qrEndpoint, { 
+            headers: { apikey: this.apiKey }
+          });
+          const qrData = response.data;
+          if (qrData) {
+            logger.info('QR Code encontrado via endpoint alternativo');
+            return qrData;
+          }
+        } catch (qrError) {
+          logger.error('Erro ao tentar obter QR Code alternativo:', qrError.message);
+          
+          // Terceira tentativa - verificar status
+          try {
+            const statusEndpoint = `${this.baseUrl}/instance/connectionState/${encodeURIComponent(this.instanceName)}`;
+            logger.info(`Tentando verificar status da instância: ${statusEndpoint}`);
+            const statusResponse = await axios.get(statusEndpoint, {
+              headers: { apikey: this.apiKey }
+            });
+            
+            if (statusResponse.data && statusResponse.data.qrcode) {
+              logger.info('QR Code encontrado via endpoint de status');
+              return {
+                base64: statusResponse.data.qrcode.base64 || null,
+                code: statusResponse.data.qrcode.code || null,
+                pairingCode: statusResponse.data.qrcode.pairingCode || null
+              };
+            }
+          } catch (statusErr) {
+            logger.error('Erro ao verificar status da instância:', statusErr.message);
+          }
+        }
+      }
+
       if (error.code === 'ENOTFOUND' || error.code === 'EAI_AGAIN') {
         throw new Error(`Host não encontrado (${this.baseUrl}). Verifique a configuração EVOLUTION_API_URL.`);
       }
@@ -244,6 +301,23 @@ class EvolutionService {
         throw new Error(errorMsg);
       }
       logger.error('Erro ao deletar instância:', err.message);
+      throw err;
+    }
+  }
+
+  // Logout da instância sem deletar
+  async logoutInstance() {
+    const logoutEndpoint = `${this.baseUrl}/instance/logout/${encodeURIComponent(this.instanceName)}`;
+    try {
+      logger.info(`Desconectando instância via logout em: ${logoutEndpoint}`);
+      const response = await axios.delete(logoutEndpoint, { headers: { apikey: this.apiKey } });
+      return response.data;
+    } catch (err) {
+      if (err.response && err.response.status === 404) {
+        logger.warn(`Instância ${this.instanceName} não estava conectada (404)`);
+        return null;
+      }
+      logger.error('Erro ao desconectar instância:', err.message);
       throw err;
     }
   }

@@ -84,13 +84,26 @@ exports.streamMessages = async (req, res) => {
 exports.sendMessage = async (req, res) => {
   try {
     // Extrair dados do body e fallback instanceId da query se necessário
-    let { to, message, instanceId, conversationId } = req.body;
+    let { to, message, instanceId, conversationId, role, sender_id } = req.body;
     if (!instanceId && req.query.instance) {
       instanceId = req.query.instance;
     }
     if (!to || !message || !conversationId || !instanceId) {
       throw new AppError('Destinatário, mensagem, ID da conversa e instância são obrigatórios', 400);
     }
+    
+    // Garantir que role seja um dos valores aceitos
+    if (role && !['ME', 'AI', 'USER'].includes(role)) {
+      console.warn(`Valor de role inválido: ${role}. Usando 'ME' como padrão.`);
+      role = 'ME'; // Valor padrão se não for válido
+    } else if (!role) {
+      role = 'ME'; // Valor padrão se não for fornecido
+    }
+    
+    console.log(`[DEBUG] Enviando mensagem com role=${role}, to=${to}, conversationId=${conversationId}, sender_id=${sender_id || req.user.id}`);
+    
+    // IMPORTANTE: Usar o ID do usuário da requisição mesmo que tenha um sender_id fornecido
+    // Isso garante que a identidade seja correta no backend, mas mantém o role como único critério de renderização
     const senderId = req.user.id;
     // Buscar Nome do Agente
     const cred = await EvolutionCredential.findById(instanceId);
@@ -104,7 +117,13 @@ exports.sendMessage = async (req, res) => {
     const n8nRes = await fetch(n8nUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ to, message, instanceId, instanceName })
+      body: JSON.stringify({ 
+        to, 
+        message, 
+        instanceId, 
+        instanceName,
+        role
+      })
     });
     if (!n8nRes.ok) {
       let errorMsg = `Erro ao enviar mensagem para o n8n (status: ${n8nRes.status})`;
@@ -122,12 +141,17 @@ exports.sendMessage = async (req, res) => {
       content: message,
       conversationId,
       senderId,
-      instanceId
+      instanceId,
+      role: role || 'ME' // Passar o role para o serviço ou usar 'ME' como padrão
     });
-    return res.status(200).json(saved);
+    return res.status(200).json({
+      success: true,
+      message: saved
+    });
   } catch (error) {
     console.error('Erro ao enviar mensagem:', error);
     return res.status(error.statusCode || 500).json({
+      success: false,
       error: error.message || 'Erro ao enviar mensagem'
     });
   }

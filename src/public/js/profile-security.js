@@ -122,7 +122,11 @@ function setupPasswordFormHandling(form) {
         
         // Dar tempo para o usuário ler a mensagem e então redirecionar
         setTimeout(() => {
-          window.location.href = '/auth/login?message=Sua sessão expirou. Por favor, faça login novamente.';
+          localStorage.removeItem('authToken');
+          sessionStorage.removeItem('authToken');
+          
+          console.log('Redirecionando para login após sessão expirada');
+          window.location.href = '/login?message=Sua sessão expirou. Por favor, faça login novamente.';
         }, 3000);
         return;
       }
@@ -260,7 +264,16 @@ function setupSessionButtons() {
         .then(response => response.json())
         .then(data => {
           if (data.success) {
-            window.location.href = '/auth/login?message=Todas as sessões foram encerradas. Por favor, faça login novamente.';
+            // Limpar tokens e redirecionar
+            localStorage.removeItem('authToken');
+            sessionStorage.removeItem('authToken');
+            
+            showToast('Todas as sessões foram encerradas com sucesso!', 'success');
+            
+            // Redirecionar para login após breve pausa
+            setTimeout(() => {
+                window.location.href = '/login?message=Todas as sessões foram encerradas. Por favor, faça login novamente.';
+            }, 2000);
           } else {
             showAlert(false, data.message || 'Erro ao encerrar sessões. Tente novamente.');
           }

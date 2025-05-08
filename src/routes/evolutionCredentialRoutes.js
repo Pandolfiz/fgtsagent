@@ -28,4 +28,7 @@ router.post('/:id/setup', evolutionCredentialController.setupInstance);
 // Reiniciar instância na Evolution API
 router.post('/:id/restart', evolutionCredentialController.restartInstance);
 
+// Adicionar rota para obter QR Code de instância
+router.get('/:id/qrcode', evolutionCredentialController.fetchQrCode);
+
 module.exports = router; 

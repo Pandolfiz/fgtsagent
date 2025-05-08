@@ -14,6 +14,7 @@ const chatController = require('../controllers/chatController');
 const partnerCredentialsController = require('../controllers/partnerCredentialsController');
 const dashboardController = require('../controllers/dashboardController');
 const agentsController = require('../controllers/agentsController');
+const path = require('path');
 
 // Inicializar res.locals em todas as requisições
 router.use((req, res, next) => {
@@ -260,10 +261,13 @@ router.get('/auth/logout', (req, res) => {
   }
 });
 
-// Rotas protegidas
-router.get('/dashboard', requireAuth, commonViewData, dashboardController.renderDashboard);
+// Rotas protegidas - Redirecionando para o React Dashboard 
+router.get('/dashboard', requireAuth, (req, res) => {
+  // Servir o aplicativo React
+  return res.sendFile(path.join(__dirname, '../../frontend/dist/index.html'));
+});
 
-// Rota para fornecer stats em JSON para frontend quando requisita via AJAX
+// Manter a rota para fornecer stats em JSON para o frontend React
 router.get('/dashboard/stats', requireAuth, dashboardController.getApiDashboardStats);
 
 // Rotas de perfil de usuário
@@ -827,7 +831,7 @@ router.post('/organizations/:id/edit', requireAuth, commonViewData, async (req, 
 });
 
 // Rotas Evolution API
-router.get('/evolution-credentials', requireAuth, commonViewData, async (req, res) => {
+router.get('/whatsapp-credentials', requireAuth, commonViewData, async (req, res) => {
   try {
     // Buscar todas as credenciais do usuário
     const credentials = await EvolutionCredential.findAllByClientId(req.user.id);
@@ -868,7 +872,7 @@ router.get('/evolution-credentials', requireAuth, commonViewData, async (req, re
 });
 
 // Handler para criar nova credencial localmente e exibir QR Code da resposta
-router.post('/evolution-credentials', requireAuth, commonViewData, async (req, res) => {
+router.post('/whatsapp-credentials', requireAuth, commonViewData, async (req, res) => {
   try {
     const { phone, instance_name } = req.body;
 
@@ -924,21 +928,21 @@ router.post('/evolution-credentials', requireAuth, commonViewData, async (req, r
     req.flash('qrImage', qrImage);
     req.flash('pairingCode', pairingCode);
     req.flash('success', 'Credencial criada com sucesso');
-    return res.redirect('/evolution-credentials');
+    return res.redirect('/whatsapp-credentials');
   } catch (err) {
     logger.error('Erro ao criar credencial na UI:', err);
     req.flash('error', err.message || JSON.stringify(err));
-    return res.redirect('/evolution-credentials');
+    return res.redirect('/whatsapp-credentials');
   }
 });
 
 // Handler de conexão via formulário (setupInstance)
-router.post('/evolution-credentials/:id/setup', requireAuth, async (req, res) => {
+router.post('/whatsapp-credentials/:id/setup', requireAuth, async (req, res) => {
   try {
     const existing = await EvolutionCredential.findById(req.params.id);
     if (!existing || existing.client_id !== req.user.id) {
       req.flash('error', 'Credencial não encontrada');
-      return res.redirect('/evolution-credentials');
+      return res.redirect('/whatsapp-credentials');
     }
     
     // Verificar se o Nome do Agente existe ou gerar um
@@ -949,7 +953,7 @@ router.post('/evolution-credentials/:id/setup', requireAuth, async (req, res) =>
     
     // Concatenar nome do usuário ao nome da instância existente
     let userName = req.user.displayName || req.user.user_metadata?.full_name || req.user.profile?.full_name || req.user.user_metadata?.first_name || req.user.email?.split('@')[0] || 'Usuario';
-    const instanceName = `${userName} - ${existing.instance_name}`;
+    const instanceName = `${userName} - ${existing.agent_name || existing.instance_name}`;
     const service = new EvolutionService({
       baseUrl: config.evolutionApi.url,
       apiKey: config.evolutionApi.apiKey,
@@ -966,23 +970,23 @@ router.post('/evolution-credentials/:id/setup', requireAuth, async (req, res) =>
     logger.error('Erro ao configurar instância na UI:', err);
     req.flash('error', err.message);
   }
-  return res.redirect('/evolution-credentials');
+  return res.redirect('/whatsapp-credentials');
 });
 
 // Rotas específicas de Evolution API (deve vir antes do catch-all)
 // Buscar QR Code de uma instância (exibe JSON com base64 e code)
-router.get('/evolution-credentials/:id/qrcode', requireAuth, commonViewData, evolutionCredentialController.fetchQrCode);
+router.get('/whatsapp-credentials/:id/qrcode', requireAuth, commonViewData, evolutionCredentialController.fetchQrCode);
 // Atualizar credencial existente (JSON API)
-router.post('/evolution-credentials/:id/update', requireAuth, commonViewData, evolutionCredentialController.update);
+router.post('/whatsapp-credentials/:id/update', requireAuth, commonViewData, evolutionCredentialController.update);
 // Deletar instância e credencial
-router.post('/evolution-credentials/:id/delete', requireAuth, commonViewData, evolutionCredentialController.deleteInstance);
+router.post('/whatsapp-credentials/:id/delete', requireAuth, commonViewData, evolutionCredentialController.deleteInstance);
 
 // Rota da interface de chat
 router.get('/chat', requireAuth, prepareUserData, commonViewData, async (req, res) => {
   try {
     // Verificar se o usuário está autenticado
     if (!req.user) {
-      return res.redirect('/auth/login?redirect=/chat');
+      return res.redirect('/login?redirect=/chat');
     }
 
     // Carregar conversas do usuário e garantir valores únicos

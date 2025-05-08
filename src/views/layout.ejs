@@ -1,366 +1,136 @@
 <!DOCTYPE html>
-<html lang="pt-BR" class="h-100">
+<html lang="pt-BR">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, shrink-to-fit=no">
-    <meta http-equiv="X-UA-Compatible" content="ie=edge">
-    <title><%= typeof title !== 'undefined' ? title : 'Sistema de Gerenciamento de Agentes IA' %></title>
-    
-    <!-- Bootstrap 5 CSS -->
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    
-    <!-- Font Awesome -->
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
-    <!-- Toastify CSS -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
-    
-    <!-- Custom CSS -->
-    <link rel="stylesheet" href="/css/style.css">
-    
-    <!-- Página-específica CSS -->
-    <% if (typeof styles !== 'undefined') { %>
-        <%- styles %>
-    <% } %>
-    
-    <% if (path === '/') { %>
-      <!-- Estilos futuristas para landing page -->
-      <style>
-        .hero {
-          background: linear-gradient(135deg, #0d47a1, #00bcd4, #651fff, #00bfa5);
-          background-size: 400% 400%;
-          animation: gradientBG 15s ease infinite;
-          color: #ffffff;
-          padding: 100px 0;
-          position: relative;
-          overflow: hidden;
-        }
-        @keyframes gradientBG {
-          0% { background-position: 0% 50%; }
-          50% { background-position: 100% 50%; }
-          100% { background-position: 0% 50%; }
-        }
-        .hero h1 {
-          font-size: 4rem;
-          font-weight: 700;
-          text-shadow: 0 0 8px rgba(0,255,255,0.8), 0 0 16px rgba(0,191,255,0.8);
-          animation: neonPulse 2s ease-in-out infinite;
-        }
-        @keyframes neonPulse {
-          0%,100% { text-shadow: 0 0 8px rgba(0,255,255,0.8), 0 0 16px rgba(0,191,255,0.8); }
-          50%   { text-shadow: 0 0 16px rgba(0,255,255,1),   0 0 24px rgba(0,191,255,1); }
-        }
-        .hero p {
-          font-size: 1.25rem;
-          opacity: 0;
-          animation: fadeIn 2s ease-out 0.5s forwards;
-        }
-        @keyframes fadeIn { to { opacity:1; } }
-        .features { padding: 80px 0; background: rgba(255,255,255,0.02); }
-        .feature-card {
-          backdrop-filter: blur(10px);
-          background: rgba(255,255,255,0.05);
-          border-radius: 12px;
-          transition: transform 0.3s ease, box-shadow 0.3s ease;
-        }
-        .feature-card:hover {
-          transform: translateY(-15px) scale(1.02);
-          box-shadow: 0 15px 30px rgba(0,0,0,0.3);
-        }
-        .cta {
-          background: #00bcd4;
-          color: #fff;
-          padding: 80px 0;
-          position: relative;
-          overflow: hidden;
-        }
-        .cta .btn {
-          min-width: 200px;
-          font-size: 1.25rem;
-          padding: 15px 30px;
-          box-shadow: 0 0 10px rgba(255,255,255,0.6);
-          transition: box-shadow 0.3s ease;
-        }
-        .cta .btn:hover { box-shadow:0 0 20px rgba(255,255,255,1); }
-        .particles-container {
-          position: absolute;
-          width: 100%; height: 100%; top: 0; left: 0;
-          z-index: 0;
-        }
-        .hero-content { position: relative; z-index: 1; }
-      </style>
-      <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.css" />
-    <% } %>
-    
-    <style>
-        body, main.flex-grow-1 {
-            background-color: #f3f7fd !important; /* Azul muito claro */
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title><%= typeof title !== 'undefined' ? title : 'FgtsAgent - Painel Admin' %></title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background-color: #f7f8fc;
+      color: #333;
+      margin: 0;
+      padding: 0;
+      line-height: 1.6;
+    }
+    .admin-container {
+      display: flex;
+      min-height: 100vh;
+    }
+    .admin-sidebar {
+      width: 250px;
+      background-color: #0f172a;
+      color: #fff;
+      padding: 20px 0;
+    }
+    .admin-content {
+      flex: 1;
+      padding: 20px;
+    }
+    .admin-logo {
+      padding: 0 20px 20px;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #334155;
+      display: flex;
+      align-items: center;
+    }
+    .admin-logo img {
+      height: 40px;
+      margin-right: 10px;
+    }
+    .admin-logo h1 {
+      margin: 0;
+      font-size: 1.2rem;
+      color: #38bdf8;
+    }
+    .admin-nav {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+    }
+    .admin-nav li {
+      margin-bottom: 5px;
+    }
+    .admin-nav a {
+      display: block;
+      padding: 10px 20px;
+      color: #cbd5e1;
+      text-decoration: none;
+      transition: all 0.3s;
+    }
+    .admin-nav a:hover, 
+    .admin-nav a.active {
+      background-color: #1e293b;
+      color: #38bdf8;
+    }
+    .admin-nav i {
+      margin-right: 10px;
+      width: 20px;
+      text-align: center;
+    }
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 30px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .admin-user {
+      display: flex;
+      align-items: center;
+    }
+    .admin-user img {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      margin-right: 10px;
+    }
+    .admin-alerts {
+      margin-bottom: 20px;
+    }
+    .alert {
+      padding: 15px;
+      border-radius: 5px;
+      margin-bottom: 10px;
+    }
+    .alert-success {
+      background-color: #d1fae5;
+      color: #047857;
+    }
+    .alert-error {
+      background-color: #fee2e2;
+      color: #b91c1c;
+    }
+  </style>
+  <%- typeof styles !== 'undefined' ? styles : '' %>
 </head>
-<body class="d-flex flex-column h-100">
-    <!-- Cabeçalho -->
-    <header>
-        <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
-            <div class="container-fluid px-md-5">
-                <a class="navbar-brand d-flex align-items-center" href="<% if ((typeof user !== 'undefined' && user) || (path !== '/' && !path.startsWith('/auth/'))) { %>/dashboard<% } else { %>/<% } %>">
-                    <i class="fas fa-robot me-2"></i>
-                    <span>FgtsAgent</span>
-                </a>
-                
-                <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarMain">
-                    <span class="navbar-toggler-icon"></span>
-                </button>
-                
-                <div class="collapse navbar-collapse" id="navbarMain">
-                    <ul class="navbar-nav me-auto">
-                        <% if ((typeof user !== 'undefined' && user) || (path !== '/' && !path.startsWith('/auth/'))) { %>
-                            <li class="nav-item">
-                                <a class="nav-link <%= path === '/dashboard' ? 'active' : '' %>" href="/dashboard">
-                                    <i class="fas fa-tachometer-alt me-1"></i> Dashboard
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link <%= path.startsWith('/agents') ? 'active' : '' %>" href="/agents">
-                                    <i class="fas fa-robot me-1"></i> Agente
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link <%= path.startsWith('/chat') ? 'active' : '' %>" href="/chat">
-                                    <i class="fas fa-comments me-1"></i> Chat
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link <%= path === '/evolution-credentials' ? 'active' : '' %>" href="/evolution-credentials">
-                                    <i class="fab fa-whatsapp me-1"></i> WhatsApp
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link <%= path.startsWith('/partner-credentials') ? 'active' : '' %>" href="/partner-credentials">
-                                    <i class="fas fa-key me-1"></i> V8
-                                </a>
-                            </li>
-                        <% } else { %>
-                            <li class="nav-item">
-                                <a class="nav-link" href="/#features">
-                                    <i class="fas fa-star me-1"></i> Funcionalidades
-                                </a>
-                            </li>
-                            <li class="nav-item">
-                                <a class="nav-link" href="/#pricing">
-                                    <i class="fas fa-tags me-1"></i> Preços
-                                </a>
-                            </li>
-                        <% } %>
-                    </ul>
-                    
-                    <div class="d-flex align-items-center">
-                        <% if ((typeof user !== 'undefined' && user) || (path !== '/' && !path.startsWith('/auth/'))) { %>
-                            <div class="dropdown">
-                                <button class="btn btn-outline-light dropdown-toggle d-flex align-items-center" type="button" id="userDropdown" data-bs-toggle="dropdown" aria-expanded="false">
-                                    <i class="fas fa-user-circle me-2"></i>
-                                    <span class="d-none d-md-inline user-display-name">
-                                        <% 
-                                            let displayName = 'Usuário';
-                                            if (typeof user !== 'undefined' && user) {
-                                                if (user.displayName) displayName = user.displayName;
-                                                else if (user.user_metadata?.full_name) displayName = user.user_metadata.full_name;
-                                                else if (user.profile?.full_name) displayName = user.profile.full_name;
-                                                else if (user.profile?.first_name && user.profile?.last_name) displayName = `${user.profile.first_name} ${user.profile.last_name}`;
-                                                else if (user.user_metadata?.first_name) displayName = user.user_metadata.first_name;
-                                                else if (user.email) displayName = user.email.split('@')[0];
-                                            }
-                                        %>
-                                        <%= displayName %>
-                                    </span>
-                                </button>
-                                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
-                                    <li>
-                                        <a class="dropdown-item" href="/profile">
-                                            <i class="fas fa-user me-2"></i> Meu Perfil
-                                        </a>
-                                    </li>
-                                    <li>
-                                        <a class="dropdown-item" href="/profile/settings">
-                                            <i class="fas fa-cog me-2"></i> Configurações
-                                        </a>
-                                    </li>
-                                    <li><hr class="dropdown-divider"></li>
-                                    <li>
-                                        <a class="dropdown-item text-danger" href="/auth/logout">
-                                            <i class="fas fa-sign-out-alt me-2"></i> Sair
-                                        </a>
-                                    </li>
-                                </ul>
-                            </div>
-                        <% } else { %>
-                            <a href="/auth/login" class="btn btn-outline-light me-2">
-                                <i class="fas fa-sign-in-alt me-1"></i> Login
-                            </a>
-                            <a href="/auth/signup" class="btn btn-light">
-                                <i class="fas fa-user-plus me-1"></i> Cadastrar
-                            </a>
-                        <% } %>
-                    </div>
-                </div>
-            </div>
-        </nav>
-    </header>
-    
-    <!-- Mensagens de alerta -->
-    <% if (messages && messages.success && messages.success.length > 0) { %>
-        <div class="container-fluid mt-3 px-md-5">
-            <div class="alert alert-success alert-dismissible fade show">
-                <%= messages.success %>
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-        </div>
-    <% } %>
-    
-    <% if (messages && messages.error && messages.error.length > 0) { %>
-        <div class="container-fluid mt-3 px-md-5">
-            <div class="alert alert-danger alert-dismissible fade show">
-                <%= messages.error %>
-                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
-            </div>
-        </div>
-    <% } %>
-    
-    <!-- Conteúdo principal -->
-    <main class="flex-grow-1">
-        <%- body %>
-    </main>
-    
-    <!-- Rodapé -->
-    <footer class="footer mt-auto py-4" style="background-color: #f3f7fd !important;">
-        <div class="container-fluid px-md-5">
-            <div class="row">
-                <div class="col-md-6">
-                    <p class="mb-0">
-                        <i class="fas fa-robot me-2"></i>
-                        <strong>FgtsAgent</strong> - Sistema de Gerenciamento de Agentes IA
-                    </p>
-                    <p class="text-muted small">© <%= new Date().getFullYear() %> Todos os direitos reservados</p>
-                </div>
-                <div class="col-md-6 text-md-end">
-                    <ul class="list-inline mb-0">
-                        <li class="list-inline-item">
-                            <a href="#" class="text-decoration-none text-muted">
-                                <i class="fab fa-github"></i>
-                            </a>
-                        </li>
-                        <li class="list-inline-item">
-                            <a href="#" class="text-decoration-none text-muted">
-                                <i class="fab fa-linkedin"></i>
-                            </a>
-                        </li>
-                        <li class="list-inline-item">
-                            <a href="#" class="text-decoration-none text-muted">
-                                <i class="fab fa-twitter"></i>
-                            </a>
-                        </li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-    </footer>
-    
-    <!-- Bootstrap 5 JS Bundle -->
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <!-- Toastify JS -->
-    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
-    
-    <!-- Custom JS -->
-    <script src="/js/main.js"></script>
-    
-    <!-- OAuth2 Handler -->
-    <script src="/js/oauth2-handler.js"></script>
-    
-    <!-- Logout Script -->
-    <% if (typeof user !== 'undefined' && user) { %>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-            const logoutBtn = document.getElementById('logoutBtn');
-            
-            if (logoutBtn) {
-                logoutBtn.addEventListener('click', async function(e) {
-                    e.preventDefault();
-                    
-                    try {
-                        const response = await fetch('/api/auth/logout', {
-                            method: 'POST',
-                            headers: {
-                                'Content-Type': 'application/json'
-                            }
-                        });
-                        
-                        const data = await response.json();
-                        
-                        if (response.ok) {
-                            // Redirecionar para a página inicial após logout
-                            window.location.href = '/?message=Logout realizado com sucesso&success=true';
-                        } else {
-                            Toastify({
-                                text: data.message || 'Erro ao fazer logout',
-                                duration: 3000,
-                                close: true,
-                                gravity: 'top',
-                                position: 'right',
-                                backgroundColor: '#dc3545'
-                            }).showToast();
-                        }
-                    } catch (error) {
-                        console.error('Erro ao fazer logout:', error);
-                        Toastify({
-                            text: 'Erro ao fazer logout',
-                            duration: 3000,
-                            close: true,
-                            gravity: 'top',
-                            position: 'right',
-                            backgroundColor: '#dc3545'
-                        }).showToast();
-                    }
-                });
-            }
-        });
-    </script>
-    <% } %>
-    
-    <!-- Página-específica JS -->
-    <% if (typeof script !== 'undefined') { %>
-        <%- script %>
-    <% } %>
-    
-    <% if (path === '/') { %>
-      <!-- Partículas -->
-      <script src="https://cdn.jsdelivr.net/npm/particles.js"></script>
-      <script>
-        particlesJS('particles-js', {
-          particles: {
-            number: { value: 80, density: { enable: true, value_area: 800 } },
-            color: { value: '#ffffff' }, shape: { type: 'circle' },
-            opacity: { value: 0.5 }, size: { value: 3, random: true },
-            line_linked: { enable: true, distance: 150, color: '#00bcd4', opacity: 0.4, width: 1 },
-            move: { enable: true, speed: 3, out_mode: 'out' }
-          },
-          interactivity: {
-            detect_on: 'canvas',
-            events: { onhover: { enable: true, mode: 'repulse' }, onclick: { enable: true, mode: 'push' } },
-            modes: { repulse: { distance: 100 }, push: { particles_nb: 4 } }
-          }, retina_detect: true
-        });
-      </script>
-      <!-- AOS -->
-      <script src="https://cdn.jsdelivr.net/npm/aos@2.3.4/dist/aos.js"></script>
-      <script> AOS.init({ duration: 1000, once: true }); </script>
-      <!-- VanillaTilt -->
-      <script src="https://cdnjs.cloudflare.com/ajax/libs/vanilla-tilt/1.7.0/vanilla-tilt.min.js"></script>
-      <script>
-        document.addEventListener('DOMContentLoaded', () => {
-          VanillaTilt.init(document.querySelectorAll('.feature-card'), { max: 15, speed: 400, glare: true, 'max-glare': 0.2 });
-        });
-      </script>
-    <% } %>
+<body>
+  <!-- Sistema de mensagens flash -->
+  <% if (typeof messages !== 'undefined' && messages) { %>
+    <div class="admin-alerts">
+      <% if (messages.success && messages.success.length > 0) { %>
+        <% messages.success.forEach(function(message) { %>
+          <div class="alert alert-success">
+            <i class="fas fa-check-circle"></i> <%= message %>
+          </div>
+        <% }); %>
+      <% } %>
+      <% if (messages.error && messages.error.length > 0) { %>
+        <% messages.error.forEach(function(message) { %>
+          <div class="alert alert-error">
+            <i class="fas fa-exclamation-circle"></i> <%= message %>
+          </div>
+        <% }); %>
+      <% } %>
+    </div>
+  <% } %>
+
+  <!-- Conteúdo da página -->
+  <%- body %>
+
+  <!-- Scripts -->
+  <%- typeof script !== 'undefined' ? script : '' %>
 </body>
 </html> 

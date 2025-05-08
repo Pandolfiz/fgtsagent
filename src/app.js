@@ -20,9 +20,14 @@ const apiRoutes = require('./routes/apiRoutes');
 const evolutionCredentialRoutes = require('./routes/evolutionCredentialRoutes');
 const chatWebhookRoutes = require('./routes/chatWebhookRoutes');
 const chatRoutes = require('./routes/chatRoutes');
+const contactsRoutes = require('./routes/contacts');
+const messagesRoutes = require('./routes/messages');
 const { webhookAuth } = require('./middleware/webhookAuth');
 
-// Inicializar o aplicativo Express
+// Definir variáveis de ambiente para autenticação OAuth2
+process.env.USE_SUPABASE_AUTH = process.env.USE_SUPABASE_AUTH || 'true';
+
+// Inicializar o aplicativo Express - criar uma nova instância limpa
 const app = express();
 
 // Configurar o Express para confiar em proxies
@@ -31,36 +36,27 @@ app.set('trust proxy', 1);
 // Configurar limites de requisição
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 300, // Máximo de 300 requisições por janela de tempo
-  standardHeaders: true,
-  message: { success: false, message: 'Muitas requisições. Por favor, tente novamente mais tarde.' }
+  max: 300 // Máximo de 300 requisições por janela de tempo
 });
 
 // Limiter mais restritivo para rotas de API
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 200, // Máximo de 200 requisições por janela de tempo
-  standardHeaders: true,
-  message: { success: false, message: 'Muitas requisições à API. Por favor, tente novamente mais tarde.' }
+  max: 200 // Máximo de 200 requisições por janela de tempo
 });
 
 // Limiter ainda mais restritivo para rotas de autenticação
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 30, // Máximo de 30 requisições por janela de tempo
-  standardHeaders: true,
-  message: { success: false, message: 'Muitas tentativas de autenticação. Por favor, tente novamente mais tarde.' }
+  max: 30 // Máximo de 30 requisições por janela de tempo
 });
 
 // Speed limiter para rotas de API
 const speedLimiter = slowDown({
   windowMs: 15 * 60 * 1000, // 15 minutos
   delayAfter: 100, // Começar a atrasar depois de 100 requisições
-  delayMs: (used, req) => {
-    const delayAfter = req.slowDown.limit;
-    return (used - delayAfter) * 500; // 500ms de atraso multiplicado pelo número de requisições acima do limite
-  },
-  validate: { delayMs: true } // Habilitar validação explícita para seguir a nova versão
+  delayMs: () => 500, // 500ms de atraso fixo por requisição acima do limite
+  validate: { delayMs: false } // Desabilitar a validação para evitar o aviso
 });
 
 // Aplicar limitadores globalmente, exceto para ambientes de desenvolvimento
@@ -83,7 +79,15 @@ app.use(helmet({
     }
   }
 }));
-app.use(cors());
+
+// Configurar CORS para permitir requisições do frontend
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173'],
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
@@ -92,8 +96,11 @@ app.use(cookieParser());
 // Aplicar sanitização de dados para todas as rotas
 app.use(sanitizeRequest(['body', 'query', 'params']));
 
-// Servir arquivos estáticos
+// Servir arquivos estáticos - primeiro as assets do backend
 app.use(express.static(path.join(__dirname, 'public')));
+
+// Servir arquivos estáticos do frontend (build)
+app.use(express.static(path.join(__dirname, '../frontend/dist')));
 
 // Configurar engine de templates
 app.set('view engine', 'ejs');
@@ -132,7 +139,7 @@ app.use((req, res, next) => {
   next();
 });
 
-// Rotas
+// Rotas API e de autenticação
 const webRoutes = require('./routes/webRoutes');
 const authRoutes = require('./routes/authRoutes');
 const credentialsRoutes = require('./routes/credentialsRoutes');
@@ -145,110 +152,63 @@ app.get('/health', (req, res) => {
 // Rota do webhook (deve vir antes das rotas autenticadas)
 app.use('/api/webhooks/evolution', webhookAuth, chatWebhookRoutes);
 
-// Rotas que precisam de autenticação
+// Rotas API - estas devem vir antes da rota catch-all para o React
 app.use('/api', apiRoutes);
-app.use('/auth', authLimiter, authRoutes); // Aplicar rate limiting às rotas de autenticação
-app.use('/api/auth', authLimiter, authRoutes); // Aplicar rate limiting às rotas de autenticação da API
-app.use('/api/evolution-credentials', requireAuth, evolutionCredentialRoutes);
+app.use('/auth', authLimiter, authRoutes);
+app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/whatsapp-credentials', requireAuth, evolutionCredentialRoutes);
 app.use('/api/credentials', credentialsRoutes);
 app.use('/api', credentialsRoutes);
 app.use('/api/chat', requireAuth, chatRoutes);
 app.use('/api/admin', adminRoutes);
-app.use('/', webRoutes.router);  // Atualizado para usar webRoutes.router
 
-// Adicionar rota específica para o callback OAuth2 na raiz do aplicativo
-app.get('/oauth2-credential/callback', (req, res) => {
-  // Esta rota vai receber apenas o fragmento de hash da URL após autenticação
-  // Como os parâmetros estão após # (hash fragment), eles não são enviados ao servidor
-  // Precisamos usar JavaScript do lado do cliente para extraí-los
+// Novas rotas para gerenciamento de contatos e mensagens
+app.use('/api/contacts', requireAuth, contactsRoutes);
+app.use('/api/messages', requireAuth, messagesRoutes);
+
+// Rotas específicas do backend com renderização de template
+app.use('/admin', webRoutes.router);
+
+// Rotas específicas de OAuth2 - tratadas separadamente
+app.get('/auth/v1/callback', (req, res) => {
+  console.log('Detectado callback do Supabase:', req.path, req.query);
+  res.redirect(`/oauth2-credential/callback?${new URLSearchParams(req.query).toString()}`);
+});
+
+app.get(['/auth/callback', '/auth/callback/'], (req, res) => {
+  console.log('Detectado callback específico do Google:', req.path);
+  res.sendFile(path.join(__dirname, '../frontend/dist/oauth-handler.html'));
+});
+
+app.get(['/oauth2-credential/callback', '/oauth2-credential/callback/'], (req, res) => {
+  console.log('Detectado callback OAuth2 específico:', req.path);
+  res.sendFile(path.join(__dirname, '../frontend/dist/oauth-handler.html'));
+});
+
+// Rota genérica para qualquer padrão de callback OAuth
+app.get('*/callback*', (req, res) => {
+  console.log('Detectado padrão de callback OAuth genérico:', req.path);
+  res.sendFile(path.join(__dirname, '../frontend/dist/oauth-handler.html'));
+});
+
+// Todas as outras solicitações são tratadas pelo React Router
+// Esta rota deve vir DEPOIS de todas as rotas API e callback OAuth específicas
+app.get('*', (req, res) => {
+  // Lista de rotas do backend que não devem ser tratadas pelo React Router
+  const backendRoutes = ['/api/', '/auth/', '/admin/', '/health', '/webhooks/'];
+  const isBackendRoute = backendRoutes.some(route => req.path.startsWith(route));
   
-  return res.send(`
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-      <meta charset="UTF-8">
-      <title>Processando Autenticação</title>
-      <script>
-        // Extrair parâmetros do fragmento de hash
-        const hashParams = window.location.hash.substring(1).split('&').reduce((acc, param) => {
-          const [key, value] = param.split('=');
-          acc[key] = decodeURIComponent(value);
-          return acc;
-        }, {});
-        
-        // Verificar token
-        if (hashParams.access_token) {
-          // Enviar o token para seu backend para processar a autenticação
-          fetch('/auth/process-token', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify(hashParams)
-          })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              // Redirecionar para o dashboard
-              window.location.href = '/dashboard';
-            } else {
-              // Redirecionar para a página de login com erro
-              window.location.href = '/auth/login?error=' + encodeURIComponent(data.error || 'Falha na autenticação');
-            }
-          })
-          .catch(error => {
-            console.error('Erro:', error);
-            window.location.href = '/auth/login?error=erro_de_processamento';
-          });
-        } else {
-          // Sem token, redirecionar para a página de login
-          window.location.href = '/auth/login?error=token_ausente';
-        }
-      </script>
-    </head>
-    <body>
-      <div style="display: flex; justify-content: center; align-items: center; height: 100vh; font-family: Arial, sans-serif;">
-        <div style="text-align: center;">
-          <h2>Processando sua autenticação...</h2>
-          <p>Por favor, aguarde enquanto redirecionamos você.</p>
-        </div>
-      </div>
-    </body>
-    </html>
-  `);
-});
-
-// Verificar se existem outras referências a arquivos OAuth2 e remover
-app.get('/api/credentials/oauth2/callback/:provider', async (req, res) => {
-  // Esta rota não é mais necessária após a remoção das credenciais do Google
-  res.status(404).send("Esta rota não está mais disponível");
-});
-
-// Outras rotas OAuth2 que precisam ser removidas
-app.get('/api/credentials/oauth2/authorize/:organizationId/:provider', async (req, res) => {
-  // Esta rota não é mais necessária após a remoção das credenciais do Google
-  res.status(404).send("Esta rota não está mais disponível");
-});
-
-app.get('/api/credentials/oauth2/popup/:provider', async (req, res) => {
-  // Esta rota não é mais necessária após a remoção das credenciais do Google
-  res.status(404).send("Esta rota não está mais disponível");
-});
-
-// Middleware para rotas não encontradas
-app.use((req, res, next) => {
-  if (req.path.startsWith('/api/')) {
+  if (isBackendRoute) {
+    // Se for uma rota de API ou backend não encontrada, retornar 404
     return res.status(404).json({
       success: false,
       message: 'Endpoint não encontrado'
     });
   }
   
-  res.status(404).render('error', {
-    title: 'Página não encontrada',
-    message: 'A página que você está procurando não existe',
-    error: {}
-  });
+  // Para qualquer outra rota, servir o index.html do React
+  console.log('Servindo App React para:', req.path);
+  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 
 // Middleware para tratamento de erros
@@ -264,7 +224,12 @@ app.use((err, req, res, next) => {
     });
   }
   
-  // Responder com página de erro para requisições web
+  // Se for uma requisição para o dashboard ou front React, usar o SPA React
+  if (req.path.startsWith('/dashboard') || !req.path.startsWith('/admin/')) {
+    return res.status(err.statusCode || 500).sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+  }
+  
+  // Responder com página de erro para requisições web (apenas admin)
   res.status(err.statusCode || 500).render('error', {
     title: 'Erro',
     message: err.message || 'Ocorreu um erro inesperado',

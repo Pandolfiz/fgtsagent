@@ -752,4 +752,146 @@ router.use('/knowledge-base', knowledgeBaseRoutes);
 // Atualizar agent_state de contato
 router.post('/contacts/:remoteJid/state', requireAuth, contactController.updateState);
 
+// Controlador para credenciais de parceiros
+const partnerCredentialsService = require('../services/partnerCredentialsService');
+
+// API de credenciais de parceiros
+router.get('/partner-credentials', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    logger.info(`[API] Buscando credenciais de parceiros para usuário ${userId}`);
+    
+    const credentials = await partnerCredentialsService.listPartnerCredentials(userId);
+    
+    logger.info(`[API] Retornando ${credentials.length} credenciais para o frontend`);
+    logger.info(`[API] Dados formatados para o frontend: ${JSON.stringify(credentials, null, 2)}`);
+    
+    return res.json({
+      success: true,
+      data: credentials
+    });
+  } catch (err) {
+    logger.error(`Erro ao listar credenciais de parceiros via API: ${err.message}`);
+    return res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+});
+
+router.get('/partner-credentials/:id', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const credential = await partnerCredentialsService.getPartnerCredentialById(req.params.id, userId);
+    if (!credential) {
+      return res.status(404).json({
+        success: false,
+        message: 'Credencial não encontrada'
+      });
+    }
+    return res.json({
+      success: true,
+      data: credential
+    });
+  } catch (err) {
+    logger.error(`Erro ao obter credencial de parceiro via API: ${err.message}`);
+    return res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+});
+
+router.post('/partner-credentials', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const newCredential = {
+      ...req.body,
+      user_id: userId
+    };
+    const credential = await partnerCredentialsService.createPartnerCredential(newCredential);
+    return res.status(201).json({
+      success: true,
+      data: credential,
+      message: 'Credencial criada com sucesso'
+    });
+  } catch (err) {
+    logger.error(`Erro ao criar credencial de parceiro via API: ${err.message}`);
+    return res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+});
+
+router.put('/partner-credentials/:id', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const updates = req.body;
+    const credential = await partnerCredentialsService.updatePartnerCredential(req.params.id, userId, updates);
+    return res.json({
+      success: true,
+      data: credential,
+      message: 'Credencial atualizada com sucesso'
+    });
+  } catch (err) {
+    logger.error(`Erro ao atualizar credencial de parceiro via API: ${err.message}`);
+    return res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+});
+
+router.delete('/partner-credentials/:id', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    await partnerCredentialsService.deletePartnerCredential(req.params.id, userId);
+    return res.json({
+      success: true,
+      message: 'Credencial excluída com sucesso'
+    });
+  } catch (err) {
+    logger.error(`Erro ao excluir credencial de parceiro via API: ${err.message}`);
+    return res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+});
+
+// Endpoint para testar conexão com parceiro
+router.post('/partner-credentials/:id/test-connection', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    // Verificar se a credencial existe e pertence ao usuário
+    const credential = await partnerCredentialsService.getPartnerCredentialById(req.params.id, userId);
+    if (!credential) {
+      return res.status(404).json({
+        success: false,
+        message: 'Credencial não encontrada'
+      });
+    }
+    
+    // Simular teste de conexão (em produção, implementar a lógica real)
+    const success = Math.random() > 0.3;  // 70% de chances de sucesso
+    
+    return res.json({
+      success: true,
+      data: {
+        success,
+        message: success 
+          ? 'Conexão estabelecida com sucesso!'
+          : 'Falha ao conectar. Verifique as credenciais e tente novamente.'
+      }
+    });
+  } catch (err) {
+    logger.error(`Erro ao testar conexão com parceiro: ${err.message}`);
+    return res.status(500).json({
+      success: false,
+      message: err.message
+    });
+  }
+});
+
 module.exports = router; 

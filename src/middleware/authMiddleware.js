@@ -3,6 +3,177 @@ const { supabase, supabaseAdmin } = require('../config/supabase');
 const logger = require('../config/logger');
 
 /**
+ * Verifica e cria o perfil do usuário no banco de dados se não existir
+ * @param {Object} user - Objeto do usuário autenticado
+ */
+async function ensureUserProfile(user) {
+  if (!user || !user.id) {
+    logger.error('ensureUserProfile: Usuário inválido');
+    return false;
+  }
+
+  try {
+    logger.info(`Verificando perfil de usuário para ${user.id}`);
+    
+    // Verificar se o perfil já existe
+    const { data: existingProfile, error: profileError } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id')
+      .eq('id', user.id)
+      .maybeSingle(); // Usar maybeSingle() em vez de single()
+    
+    if (profileError) {
+      logger.error(`Erro ao verificar perfil: ${profileError.message}`);
+    }
+    
+    // Se o perfil não existe, criar um novo
+    if (!existingProfile) {
+      logger.info(`Perfil não encontrado para o usuário ${user.id}, criando um novo...`);
+      
+      // Extrair informações relevantes da autenticação
+      const userMetadata = user.user_metadata || {};
+      const appMetadata = user.app_metadata || {};
+      
+      // Construir dados do perfil
+      const profileData = {
+        id: user.id,
+        email: user.email,
+        first_name: userMetadata.first_name || userMetadata.given_name || '',
+        last_name: userMetadata.last_name || userMetadata.family_name || '',
+        full_name: userMetadata.full_name || 
+                   userMetadata.name || 
+                   `${userMetadata.first_name || userMetadata.given_name || ''} ${userMetadata.last_name || userMetadata.family_name || ''}`.trim(),
+        avatar_url: userMetadata.avatar_url || userMetadata.picture || null,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      };
+      
+      // Inserir o perfil
+      const { error: insertError } = await supabaseAdmin
+        .from('user_profiles')
+        .upsert(profileData, { onConflict: 'id' }); // Usar upsert para evitar conflitos
+      
+      if (insertError) {
+        logger.error(`Erro ao criar perfil: ${insertError.message}`);
+        return false;
+      }
+      
+      logger.info(`Perfil criado com sucesso para o usuário ${user.id}`);
+      
+      // Também criar entrada na tabela clients se necessário
+      try {
+        // Verificar se já existe na tabela clients
+        const { data: existingClient, error: clientError } = await supabaseAdmin
+          .from('clients')
+          .select('id')
+          .eq('id', user.id)
+          .maybeSingle();
+        
+        if (clientError) {
+          logger.error(`Erro ao verificar cliente: ${clientError.message}`);
+        }
+        
+        // Se não existe, criar
+        if (!existingClient) {
+          logger.info(`Cliente não encontrado para o usuário ${user.id}, criando...`);
+          
+          const { error: insertClientError } = await supabaseAdmin
+            .from('clients')
+            .upsert({
+              id: user.id,
+              name: profileData.full_name,
+              email: user.email,
+              status: 'active',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'id' }); // Usar upsert para evitar conflitos
+          
+          if (insertClientError) {
+            logger.error(`Erro ao criar cliente: ${insertClientError.message}`);
+          } else {
+            logger.info(`Cliente criado com sucesso para o usuário ${user.id}`);
+          }
+        }
+      } catch (clientErr) {
+        logger.error(`Erro ao processar cliente: ${clientErr.message}`);
+      }
+      
+      return true;
+    } else {
+      logger.info(`Perfil já existe para o usuário ${user.id}, usando o existente`);
+      
+      // Verificar se o cliente também existe
+      try {
+        const { data: existingClient, error: clientError } = await supabaseAdmin
+          .from('clients')
+          .select('id')
+          .eq('id', user.id)
+          .maybeSingle();
+          
+        if (clientError) {
+          logger.error(`Erro ao verificar cliente existente: ${clientError.message}`);
+        }
+        
+        // Se o cliente não existe, criar mesmo que o perfil já exista
+        if (!existingClient) {
+          logger.info(`Perfil existe, mas cliente não encontrado para o usuário ${user.id}, criando cliente...`);
+          
+          const userMetadata = user.user_metadata || {};
+          const fullName = userMetadata.full_name || 
+                          userMetadata.name || 
+                          `${userMetadata.first_name || userMetadata.given_name || ''} ${userMetadata.last_name || userMetadata.family_name || ''}`.trim();
+          
+          const { error: insertClientError } = await supabaseAdmin
+            .from('clients')
+            .upsert({
+              id: user.id,
+              name: fullName || user.email,
+              email: user.email,
+              status: 'active',
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            }, { onConflict: 'id' });
+          
+          if (insertClientError) {
+            logger.error(`Erro ao criar cliente para perfil existente: ${insertClientError.message}`);
+          } else {
+            logger.info(`Cliente criado com sucesso para perfil existente do usuário ${user.id}`);
+          }
+        } else {
+          logger.info(`Cliente já existe para o usuário ${user.id}`);
+        }
+      } catch (clientCheckErr) {
+        logger.error(`Erro ao verificar cliente para perfil existente: ${clientCheckErr.message}`);
+      }
+      
+      return true;
+    }
+  } catch (err) {
+    logger.error(`Erro ao processar perfil do usuário: ${err.message}`);
+    return false;
+  }
+}
+
+// Função auxiliar para determinar a URL de login correta para o frontend React
+function getReactLoginUrl(req, redirectPath, message) {
+  const redirectUrl = encodeURIComponent(redirectPath);
+  const clientAppUrl = req.headers['referer'] || '/';
+  const baseUrl = clientAppUrl.split('?')[0].replace(/\/+$/, '');
+  
+  // Verificar se estamos usando Hash Router ou Browser Router
+  // Por padrão, assumimos Browser Router no React moderno
+  const isHashRouter = process.env.REACT_ROUTER_TYPE === 'hash';
+  
+  if (isHashRouter) {
+    // Hash Router (#/login)
+    return `${baseUrl}/#/login?redirect=${redirectUrl}&message=${encodeURIComponent(message)}`;
+  } else {
+    // Browser Router (/login)
+    return `${baseUrl}/login?redirect=${redirectUrl}&message=${encodeURIComponent(message)}`;
+  }
+}
+
+/**
  * Middleware para verificar se o usuário está autenticado
  */
 const requireAuth = async (req, res, next) => {
@@ -33,6 +204,12 @@ const requireAuth = async (req, res, next) => {
       logger.info(`Token da query: ${token ? 'encontrado' : 'não encontrado'}`);
     }
     
+    // 4. Verificar nos parâmetros do body para API
+    if (!token && req.body && req.body.token) {
+      token = req.body.token;
+      logger.info(`Token do body: ${token ? 'encontrado' : 'não encontrado'}`);
+    }
+    
     if (!token) {
       // Não autenticado
       logger.warn('Acesso não autorizado - Token não encontrado');
@@ -46,9 +223,21 @@ const requireAuth = async (req, res, next) => {
       }
       
       // Para acesso web, redirecionar para o login com parâmetro redirect
-      const redirectUrl = encodeURIComponent(req.originalUrl);
-      logger.info(`Redirecionando para o login com redirect=${redirectUrl}`);
-      return res.redirect(`/auth/login?redirect=${redirectUrl}&message=Faça login para acessar esta página`);
+      // Em vez de redirecionar diretamente para /login, verificamos o tipo de cliente
+      const isReactClient = !req.headers['accept'] || req.headers['accept'].includes('text/html');
+      
+      if (isReactClient) {
+        // Aplicativo React - redirecionar para a URL base e deixar o React Router lidar
+        const loginPath = getReactLoginUrl(req, req.originalUrl, 'Faça login para acessar esta página');
+        
+        logger.info(`Redirecionando cliente React para: ${loginPath}`);
+        return res.redirect(loginPath);
+      } else {
+        // Cliente tradicional - redirecionar para a rota /login convencional
+        const redirectUrl = encodeURIComponent(req.originalUrl);
+        logger.info(`Redirecionando para o login com redirect=${redirectUrl}`);
+        return res.redirect(`/login?redirect=${redirectUrl}&message=Faça login para acessar esta página`);
+      }
     }
     
     // Analisar o token JWT para verificar a expiração
@@ -88,18 +277,54 @@ const requireAuth = async (req, res, next) => {
                     user_id: userId
                   });
                   
-                  if (!sessionError && sessionData && sessionData.access_token) {
-                    logger.info(`Novo token gerado com sucesso para usuário ${userId}`);
-                    // Definir novo token e continuar
-                    token = sessionData.access_token;
-                    res.cookie('authToken', token, {
-                      httpOnly: true,
-                      secure: process.env.NODE_ENV === 'production',
-                      maxAge: 24 * 60 * 60 * 1000 // 1 dia
-                    });
-                    // Continuar com o token renovado
-                  } else {
-                    logger.error(`Erro ao gerar novo token: ${sessionError?.message || 'Erro desconhecido'}`);
+                  // Corrigir a API para usar a versão correta do Supabase
+                  try {
+                    // Verificar qual API está disponível e usar a correta
+                    let newSession = null;
+                    let newSessionError = null;
+                    
+                    // Tentativa 1: Nova API (v2.x)
+                    if (typeof supabaseAdmin.auth.admin.createSession === 'function') {
+                      const result = await supabaseAdmin.auth.admin.createSession({
+                        user_id: userId
+                      });
+                      newSession = result.data;
+                      newSessionError = result.error;
+                    } 
+                    // Tentativa 2: Método alternativo - criar um JWT manualmente
+                    else if (typeof supabaseAdmin.auth.createSession === 'function') {
+                      const result = await supabaseAdmin.auth.createSession({
+                        userId: userId,
+                        expiresIn: 3600 // 1 hora
+                      });
+                      newSession = result.data;
+                      newSessionError = result.error;
+                    }
+                    // Tentativa 3: Método alternativo - signInById
+                    else if (typeof supabaseAdmin.auth.signInWithId === 'function') {
+                      const result = await supabaseAdmin.auth.signInWithId(userId);
+                      newSession = result.data;
+                      newSessionError = result.error;
+                    }
+                    
+                    if (newSessionError) {
+                      logger.error(`Erro ao gerar novo token: ${newSessionError.message}`);
+                      throw new Error('Não foi possível renovar o token');
+                    } else if (newSession && newSession.access_token) {
+                      logger.info(`Novo token gerado com sucesso para usuário ${userId}`);
+                      // Definir novo token e continuar
+                      token = newSession.access_token;
+                      res.cookie('authToken', token, {
+                        httpOnly: true,
+                        secure: process.env.NODE_ENV === 'production',
+                        maxAge: 24 * 60 * 60 * 1000 // 1 dia
+                      });
+                      // Continuar com o token renovado
+                    } else {
+                      throw new Error('Falha ao gerar novo token');
+                    }
+                  } catch (retryError) {
+                    logger.error(`Erro nas tentativas adicionais: ${retryError.message}`);
                     throw new Error('Não foi possível renovar o token');
                   }
                 } else {
@@ -126,7 +351,20 @@ const requireAuth = async (req, res, next) => {
               // Para acesso web, redirecionar para o login com parâmetro redirect
               const redirectUrl = encodeURIComponent(req.originalUrl);
               logger.info(`Redirecionando para o login após expiração de token: redirect=${redirectUrl}`);
-              return res.redirect(`/auth/login?redirect=${redirectUrl}&message=Sua sessão expirou. Faça login novamente.`);
+              
+              // Verificar se é cliente React
+              const isReactClient = !req.headers['accept'] || req.headers['accept'].includes('text/html');
+              
+              if (isReactClient) {
+                // Aplicativo React - redirecionar para a rota base
+                const loginPath = getReactLoginUrl(req, req.originalUrl, 'Sua sessão expirou. Faça login novamente.');
+                
+                logger.info(`Redirecionando cliente React para: ${loginPath}`);
+                return res.redirect(loginPath);
+              } else {
+                // Cliente tradicional
+                return res.redirect(`/login?redirect=${redirectUrl}&message=Sua sessão expirou. Faça login novamente.`);
+              }
             }
           }
         }
@@ -207,7 +445,20 @@ const requireAuth = async (req, res, next) => {
         // Para acesso web, redirecionar para o login com parâmetro redirect
         const redirectUrl2 = encodeURIComponent(req.originalUrl);
         logger.info(`Redirecionando para o login após falha de recuperação: redirect=${redirectUrl2}`);
-        return res.redirect(`/auth/login?redirect=${redirectUrl2}&message=Sua sessão expirou. Faça login novamente.`);
+        
+        // Verificar se é cliente React
+        const isReactClient = !req.headers['accept'] || req.headers['accept'].includes('text/html');
+        
+        if (isReactClient) {
+          // Aplicativo React - redirecionar para a rota base
+          const loginPath = getReactLoginUrl(req, req.originalUrl, 'Sua sessão expirou. Faça login novamente.');
+          
+          logger.info(`Redirecionando cliente React para: ${loginPath}`);
+          return res.redirect(loginPath);
+        } else {
+          // Cliente tradicional
+          return res.redirect(`/login?redirect=${redirectUrl2}&message=Sua sessão expirou. Faça login novamente.`);
+        }
       }
     }
     
@@ -227,7 +478,20 @@ const requireAuth = async (req, res, next) => {
       // Para acesso web, redirecionar para o login com parâmetro redirect
       const redirectUrl3 = encodeURIComponent(req.originalUrl);
       logger.info(`Redirecionando para o login após usuário não encontrado: redirect=${redirectUrl3}`);
-      return res.redirect(`/auth/login?redirect=${redirectUrl3}&message=Sua sessão expirou. Faça login novamente.`);
+      
+      // Verificar se é cliente React
+      const isReactClient = !req.headers['accept'] || req.headers['accept'].includes('text/html');
+      
+      if (isReactClient) {
+        // Aplicativo React - redirecionar para a rota base
+        const loginPath = getReactLoginUrl(req, req.originalUrl, 'Sua sessão expirou. Faça login novamente.');
+        
+        logger.info(`Redirecionando cliente React para: ${loginPath}`);
+        return res.redirect(loginPath);
+      } else {
+        // Cliente tradicional
+        return res.redirect(`/login?redirect=${redirectUrl3}&message=Sua sessão expirou. Faça login novamente.`);
+      }
     }
     
     // Verificar se o usuário tem metadados
@@ -239,6 +503,11 @@ const requireAuth = async (req, res, next) => {
     // DEBUG: Imprimir ID do usuário para diagnóstico
     logger.info(`DEBUG: ID do usuário: "${user.id}"`);
     
+    // IMPORTANTE: Verificar e criar o perfil do usuário se não existir
+    // Chama a função para qualquer tipo de autenticação (formulário ou OAuth)
+    const profileCreated = await ensureUserProfile(user);
+    logger.info(`Resultado da verificação/criação de perfil: ${profileCreated ? 'sucesso' : 'falha'}`);
+
     // Verificar e tentar corrigir os metadados do usuário
     try {
       // Se não temos full_name nos metadados, mas temos first_name e last_name, vamos construir
@@ -959,5 +1228,6 @@ module.exports = {
   checkAndCreateTables,
   isAuthenticatedApi,
   prepareUserData,
-  commonViewData
+  commonViewData,
+  ensureUserProfile
 };
