@@ -3,6 +3,7 @@ const router = express.Router();
 const { supabase } = require('../lib/supabaseClient');
 const { requireAuth } = require('../middleware/auth');
 const logger = require('../utils/logger');
+const whatsappService = require('../services/whatsappService');
 
 /**
  * @route GET /api/messages/:conversationId
@@ -122,7 +123,7 @@ router.post('/', async (req, res) => {
       recipient_id: recipientId || contactData.phone,
       content: content,
       timestamp: msgTimestamp,
-      status: 'sent',
+      status: 'pending', // Status inicial: pendente
       metadata: {},
       client_id: userId,
       contact: contactData.phone,
@@ -131,18 +132,91 @@ router.post('/', async (req, res) => {
     
     logger.info(`Enviando nova mensagem para conversa ${conversationId}`);
     
+    // Inserir a mensagem no banco de dados
     const { data, error } = await supabase
       .from('messages')
       .insert(newMsg)
       .select();
     
     if (error) {
-      logger.error(`Erro ao enviar mensagem: ${error.message}`, { error });
+      logger.error(`Erro ao inserir mensagem no banco: ${error.message}`, { error });
       return res.status(500).json({
         success: false,
         message: 'Erro ao enviar mensagem',
         error: error.message
       });
+    }
+    
+    // Apenas enviar pelo WhatsApp se for uma mensagem do usuário ou do assistente
+    // Mensagens com role 'USER' são mensagens recebidas e não precisam ser enviadas
+    if (validRole === 'ME' || validRole === 'AI') {
+      const recipientPhone = recipientId || contactData.phone;
+      
+      try {
+        // Adicionar indicador de digitação para melhorar a experiência do usuário
+        await whatsappService.sendTypingIndicator(recipientPhone, userId);
+        
+        // Aguardar um tempo para simular digitação (entre 1 e 3 segundos dependendo do tamanho da mensagem)
+        const typingDelay = Math.min(Math.max(content.length * 30, 1000), 3000);
+        await new Promise(resolve => setTimeout(resolve, typingDelay));
+        
+        // Enviar a mensagem de texto
+        const whatsappResponse = await whatsappService.sendTextMessage(recipientPhone, content, userId);
+        
+        // Atualizar o status da mensagem com base na resposta da API
+        const messageStatus = whatsappResponse.success ? 'sent' : 'failed';
+        let messageMetadata = {};
+        
+        if (whatsappResponse.success) {
+          messageMetadata = {
+            whatsapp_message_id: whatsappResponse.data.messages[0].id,
+            response_data: whatsappResponse.data
+          };
+        } else {
+          messageMetadata = {
+            error_details: whatsappResponse.error
+          };
+        }
+        
+        // Atualizar a mensagem no banco com o status e os metadados
+        await supabase
+          .from('messages')
+          .update({
+            status: messageStatus,
+            metadata: messageMetadata
+          })
+          .eq('id', data[0].id);
+        
+        // Incluir informações do WhatsApp na resposta
+        return res.status(201).json({
+          success: true,
+          message: {
+            id: data[0].id,
+            content: data[0].content,
+            sender_id: data[0].sender_id,
+            receiver_id: data[0].recipient_id,
+            created_at: data[0].timestamp,
+            is_read: false,
+            whatsapp_status: messageStatus,
+            role: data[0].role || validRole
+          },
+          whatsapp_response: whatsappResponse.success 
+            ? { success: true } 
+            : { success: false, error: whatsappResponse.error }
+        });
+      } catch (whatsappError) {
+        logger.error(`Erro ao enviar mensagem pelo WhatsApp: ${whatsappError.message}`, { whatsappError });
+        
+        // Mesmo com erro no WhatsApp, a mensagem foi salva no banco
+        // Atualizar status da mensagem para failed
+        await supabase
+          .from('messages')
+          .update({
+            status: 'failed',
+            metadata: { error_details: whatsappError.message }
+          })
+          .eq('id', data[0].id);
+      }
     }
     
     // Formatar para retornar ao cliente
@@ -152,11 +226,11 @@ router.post('/', async (req, res) => {
       sender_id: data[0].sender_id,
       receiver_id: data[0].recipient_id,
       created_at: data[0].timestamp,
-      is_read: data[0].status === 'read',
+      is_read: false,
       role: data[0].role || validRole
     };
     
-    logger.info(`Mensagem enviada com sucesso: ${data[0].id}`);
+    logger.info(`Mensagem processada: ${data[0].id}`);
     
     return res.status(201).json({
       success: true,

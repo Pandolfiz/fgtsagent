@@ -28,10 +28,11 @@ type CredentialFormProps = {
   onSubmit: (e: React.FormEvent) => Promise<void>;
   buttonText: string;
   onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => void;
+  onCancel: () => void;
 };
 
 // Componente de formulário memoizado para evitar re-renderizações desnecessárias
-const CredentialForm = React.memo(({ formData, onSubmit, buttonText, onChange }: CredentialFormProps) => {
+const CredentialForm = React.memo(({ formData, onSubmit, buttonText, onChange, onCancel }: CredentialFormProps) => {
   return (
     <form onSubmit={onSubmit} className="space-y-4">
       <div>
@@ -158,7 +159,7 @@ const CredentialForm = React.memo(({ formData, onSubmit, buttonText, onChange }:
       <div className="flex justify-end space-x-3 pt-4">
         <button
           type="button"
-          onClick={() => window.location.href === '#add' ? window.history.back() : window.history.back()}
+          onClick={onCancel}
           className="inline-flex justify-center py-2 px-4 border border-cyan-800/30 shadow-sm text-sm font-medium rounded-md text-cyan-300 bg-cyan-900/30 hover:bg-cyan-800/40 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500"
         >
           Cancelar
@@ -181,12 +182,28 @@ export function PartnerCredentialsPage() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
   const [selectedCredential, setSelectedCredential] = useState<PartnerCredential | null>(null);
   const [showApiKey, setShowApiKey] = useState<{[key: string]: boolean}>({});
   const [testingConnection, setTestingConnection] = useState<{[key: string]: boolean}>({});
   const [testResults, setTestResults] = useState<{[key: string]: { success: boolean; message: string } | null}>({});
   const [showFilterDropdown, setShowFilterDropdown] = useState(false);
   const [selectedFilter, setSelectedFilter] = useState('Todos os tipos');
+  // Estado para notificação de atalho
+  const [shortcutNotification, setShortcutNotification] = useState<{ visible: boolean; message: string }>({ 
+    visible: false, 
+    message: '' 
+  });
+  // Estado para notificações toast
+  const [toast, setToast] = useState<{ 
+    visible: boolean; 
+    message: string; 
+    type: 'success' | 'error' | 'info' | 'warning' 
+  }>({ 
+    visible: false, 
+    message: '',
+    type: 'info'
+  });
   
   // Estados para busca e paginação
   const [searchTerm, setSearchTerm] = useState('');
@@ -234,6 +251,27 @@ export function PartnerCredentialsPage() {
     loadCredentials();
   }, []);
 
+  // Exibir notificação toast por 3 segundos
+  const showToast = (message: string, type: 'success' | 'error' | 'info' | 'warning' = 'info') => {
+    setToast({ visible: true, message, type });
+    setTimeout(() => {
+      setToast(prev => ({ ...prev, visible: false }));
+    }, 3000);
+  };
+
+  // Copiar chave API para o clipboard
+  const copyApiKeyToClipboard = (apiKey: string) => {
+    navigator.clipboard.writeText(apiKey)
+      .then(() => {
+        // Adicionar notificação de sucesso
+        showToast('Chave API copiada com sucesso!', 'success');
+      })
+      .catch(err => {
+        console.error('Erro ao copiar chave API:', err);
+        showToast('Erro ao copiar chave API para a área de transferência', 'error');
+      });
+  };
+
   // Alternar visibilidade da chave API
   const toggleApiKeyVisibility = (id: string) => {
     setShowApiKey(prev => ({
@@ -242,18 +280,6 @@ export function PartnerCredentialsPage() {
     }));
   };
   
-  // Copiar chave API para o clipboard
-  const copyApiKeyToClipboard = (apiKey: string) => {
-    navigator.clipboard.writeText(apiKey)
-      .then(() => {
-        // Poderíamos adicionar uma notificação de sucesso aqui
-        console.log('Chave API copiada com sucesso!');
-      })
-      .catch(err => {
-        console.error('Erro ao copiar chave API:', err);
-      });
-  };
-
   // Resetar form para adicionar nova credencial
   const handleAddNew = () => {
     setFormData(initialFormState);
@@ -344,8 +370,13 @@ export function PartnerCredentialsPage() {
       setCredentials(prev => [...prev, response.data as PartnerCredential]);
       setShowAddModal(false);
       setError(null);
+      
+      // Mostrar toast de sucesso
+      showToast(`Credencial "${formData.name}" criada com sucesso!`, 'success');
     } catch (err) {
       setError('Erro ao salvar credencial: ' + (err instanceof Error ? err.message : String(err)));
+      // Mostrar toast de erro
+      showToast('Erro ao salvar credencial: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally {
       setLoading(false);
     }
@@ -379,8 +410,13 @@ export function PartnerCredentialsPage() {
       );
       setShowEditModal(false);
       setError(null);
+      
+      // Mostrar toast de sucesso
+      showToast(`Credencial "${formData.name}" atualizada com sucesso!`, 'success');
     } catch (err) {
       setError('Erro ao atualizar credencial: ' + (err instanceof Error ? err.message : String(err)));
+      // Mostrar toast de erro
+      showToast('Erro ao atualizar credencial: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally {
       setLoading(false);
     }
@@ -401,8 +437,13 @@ export function PartnerCredentialsPage() {
       setCredentials(prev => prev.filter(cred => cred.id !== selectedCredential.id));
       setShowDeleteModal(false);
       setError(null);
+      
+      // Mostrar toast de sucesso
+      showToast(`Credencial "${selectedCredential.name}" excluída com sucesso!`, 'success');
     } catch (err) {
       setError('Erro ao excluir credencial: ' + (err instanceof Error ? err.message : String(err)));
+      // Mostrar toast de erro
+      showToast('Erro ao excluir credencial: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally {
       setLoading(false);
     }
@@ -426,6 +467,13 @@ export function PartnerCredentialsPage() {
       };
       
       setTestResults(prev => ({ ...prev, [credential.id]: result }));
+      
+      // Mostrar toast com o resultado do teste
+      if (result.success) {
+        showToast(`Conexão com "${credential.name}" testada com sucesso!`, 'success');
+      } else {
+        showToast(`Falha no teste de conexão: ${result.message}`, 'warning');
+      }
     } catch (err) {
       setTestResults(prev => ({ 
         ...prev, 
@@ -434,6 +482,9 @@ export function PartnerCredentialsPage() {
           message: 'Erro ao testar conexão: ' + (err instanceof Error ? err.message : String(err))
         } 
       }));
+      
+      // Mostrar toast de erro
+      showToast('Erro ao testar conexão: ' + (err instanceof Error ? err.message : String(err)), 'error');
     } finally {
       setTestingConnection(prev => ({ ...prev, [credential.id]: false }));
       
@@ -557,6 +608,67 @@ export function PartnerCredentialsPage() {
     currentPage * itemsPerPage
   );
   
+  // Gerenciador de atalhos de teclado (movido para depois da definição de totalPages)
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // ESC fecha modais
+      if (event.key === 'Escape') {
+        if (showAddModal) {
+          setShowAddModal(false);
+          showShortcutNotification('Modal fechado');
+        }
+        else if (showEditModal) {
+          setShowEditModal(false);
+          showShortcutNotification('Modal fechado');
+        }
+        else if (showDeleteModal) {
+          setShowDeleteModal(false);
+          showShortcutNotification('Modal fechado');
+        }
+        else if (showFilterDropdown) {
+          setShowFilterDropdown(false);
+          showShortcutNotification('Filtro fechado');
+        }
+      }
+      
+      // Atalhos adicionais usando combinações de teclas (Alt+)
+      if (event.altKey) {
+        // Alt+N para nova credencial
+        if (event.key === 'n') {
+          event.preventDefault();
+          handleAddNew();
+          showShortcutNotification('Adicionando nova credencial');
+        }
+        
+        // Alt+F para focar na busca
+        if (event.key === 'f') {
+          event.preventDefault();
+          const searchInput = document.querySelector('input[type="text"][placeholder*="Buscar"]') as HTMLInputElement;
+          if (searchInput) {
+            searchInput.focus();
+            showShortcutNotification('Focando na busca');
+          }
+        }
+        
+        // Alt+1, Alt+2, etc para navegar entre páginas
+        const pageNum = parseInt(event.key);
+        if (!isNaN(pageNum) && pageNum > 0 && pageNum <= totalPages) {
+          event.preventDefault();
+          handlePageChange(pageNum);
+          showShortcutNotification(`Navegando para página ${pageNum}`);
+        }
+      }
+    };
+
+    // Adicionar event listener
+    document.addEventListener('keydown', handleKeyDown);
+    
+    // Limpar event listener quando o componente for desmontado
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [showAddModal, showEditModal, showDeleteModal, showFilterDropdown, totalPages]);
+  
   // Manipular mudança de página
   const handlePageChange = (page: number) => {
     setCurrentPage(page);
@@ -575,9 +687,72 @@ export function PartnerCredentialsPage() {
     setShowFilterDropdown(false);
   };
 
+  // Exibir notificação de atalho por 2 segundos
+  const showShortcutNotification = (message: string) => {
+    setShortcutNotification({ visible: true, message });
+    setTimeout(() => {
+      setShortcutNotification({ visible: false, message: '' });
+    }, 2000);
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 text-white">
       <Navbar fullWidth={true} />
+      
+      {/* Notificação de atalho */}
+      <Transition
+        show={shortcutNotification.visible}
+        enter="transition-opacity duration-300"
+        enterFrom="opacity-0"
+        enterTo="opacity-100"
+        leave="transition-opacity duration-200"
+        leaveFrom="opacity-100"
+        leaveTo="opacity-0"
+        as="div"
+        className="fixed top-20 left-1/2 transform -translate-x-1/2 z-50"
+      >
+        <div className="bg-cyan-900/90 backdrop-blur-sm text-white px-4 py-2 rounded-md shadow-lg border border-cyan-800/40">
+          <div className="flex items-center">
+            <span className="mr-2">⌨️</span>
+            <span>{shortcutNotification.message}</span>
+          </div>
+        </div>
+      </Transition>
+      
+      {/* Toast notification */}
+      <Transition
+        show={toast.visible}
+        enter="transition ease-out duration-300"
+        enterFrom="transform opacity-0 scale-95 translate-y-2"
+        enterTo="transform opacity-100 scale-100 translate-y-0"
+        leave="transition ease-in duration-200"
+        leaveFrom="transform opacity-100 scale-100 translate-y-0"
+        leaveTo="transform opacity-0 scale-95 translate-y-2"
+        as="div"
+        className="fixed bottom-4 right-4 z-50"
+      >
+        <div className={`flex items-center px-6 py-3 rounded-lg shadow-lg ${
+          toast.type === 'success' ? 'bg-emerald-900/90 border-emerald-600/40 text-white' :
+          toast.type === 'error' ? 'bg-red-900/90 border-red-600/40 text-white' :
+          toast.type === 'warning' ? 'bg-amber-900/90 border-amber-600/40 text-white' :
+          'bg-cyan-900/90 border-cyan-600/40 text-white'
+        } backdrop-blur-sm border`}>
+          <div className="flex items-center">
+            <span className="mr-3">
+              {toast.type === 'success' ? '✅' :
+               toast.type === 'error' ? '❌' :
+               toast.type === 'warning' ? '⚠️' : 'ℹ️'}
+            </span>
+            <span className="font-medium">{toast.message}</span>
+          </div>
+          <button 
+            onClick={() => setToast(prev => ({ ...prev, visible: false }))}
+            className="ml-4 text-white/80 hover:text-white"
+          >
+            &times;
+          </button>
+        </div>
+      </Transition>
       
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {/* Header principal com ícone e texto */}
@@ -593,6 +768,14 @@ export function PartnerCredentialsPage() {
               </p>
             </div>
             <div className="mt-4 flex md:mt-0 md:ml-4 space-x-3">
+              <button
+                onClick={() => setShowKeyboardShortcuts(true)}
+                className="inline-flex items-center px-4 py-2 border border-cyan-800/30 shadow-sm text-sm font-medium rounded-md text-cyan-300 bg-cyan-900/30 hover:bg-cyan-800/40 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500"
+                title="Mostrar atalhos de teclado"
+              >
+                <span className="mr-2">⌨️</span>
+                Atalhos
+              </button>
               <button
                 onClick={handleAddNew}
                 className="inline-flex items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-cyan-800 bg-opacity-80 hover:bg-opacity-100 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500"
@@ -1064,6 +1247,7 @@ export function PartnerCredentialsPage() {
                       onSubmit={handleSaveNew} 
                       buttonText="Adicionar" 
                       onChange={handleChange}
+                      onCancel={() => setShowAddModal(false)}
                     />
                   </div>
                 </Dialog.Panel>
@@ -1113,6 +1297,7 @@ export function PartnerCredentialsPage() {
                       onSubmit={handleUpdate} 
                       buttonText="Atualizar" 
                       onChange={handleChange}
+                      onCancel={() => setShowEditModal(false)}
                     />
                   </div>
                 </Dialog.Panel>
@@ -1176,6 +1361,90 @@ export function PartnerCredentialsPage() {
                       onClick={handleConfirmDelete}
                     >
                       Excluir
+                    </button>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition>
+
+      {/* Modal de atalhos de teclado */}
+      <Transition appear show={showKeyboardShortcuts} as={Fragment}>
+        <Dialog as="div" className="relative z-10" onClose={() => setShowKeyboardShortcuts(false)}>
+          <Transition.Child
+            as={Fragment}
+            enter="ease-out duration-300"
+            enterFrom="opacity-0"
+            enterTo="opacity-100"
+            leave="ease-in duration-200"
+            leaveFrom="opacity-100"
+            leaveTo="opacity-0"
+          >
+            <div className="fixed inset-0 bg-black bg-opacity-50" />
+          </Transition.Child>
+
+          <div className="fixed inset-0 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Transition.Child
+                as={Fragment}
+                enter="ease-out duration-300"
+                enterFrom="opacity-0 scale-95"
+                enterTo="opacity-100 scale-100"
+                leave="ease-in duration-200"
+                leaveFrom="opacity-100 scale-100"
+                leaveTo="opacity-0 scale-95"
+              >
+                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-950 to-cyan-950 p-6 text-left align-middle shadow-xl transition-all border border-cyan-800/30">
+                  <Dialog.Title
+                    as="h3"
+                    className="text-lg font-medium leading-6 text-white flex items-center"
+                  >
+                    <span className="mr-2">⌨️</span>
+                    Atalhos de Teclado
+                  </Dialog.Title>
+                  <div className="mt-4 space-y-4">
+                    <div className="bg-cyan-900/40 rounded-md p-4 border border-cyan-800/30">
+                      <h4 className="font-medium text-cyan-100 mb-2">Navegação</h4>
+                      <ul className="space-y-2 text-sm">
+                        <li className="flex justify-between">
+                          <span className="text-cyan-300">Alt + F</span>
+                          <span className="text-white">Focar na busca</span>
+                        </li>
+                        <li className="flex justify-between">
+                          <span className="text-cyan-300">Alt + N</span>
+                          <span className="text-white">Nova credencial</span>
+                        </li>
+                        <li className="flex justify-between">
+                          <span className="text-cyan-300">Alt + 1,2,3...</span>
+                          <span className="text-white">Navegar para a página</span>
+                        </li>
+                      </ul>
+                    </div>
+                    
+                    <div className="bg-cyan-900/40 rounded-md p-4 border border-cyan-800/30">
+                      <h4 className="font-medium text-cyan-100 mb-2">Modais</h4>
+                      <ul className="space-y-2 text-sm">
+                        <li className="flex justify-between">
+                          <span className="text-cyan-300">ESC</span>
+                          <span className="text-white">Fechar qualquer modal</span>
+                        </li>
+                        <li className="flex justify-between">
+                          <span className="text-cyan-300">Enter</span>
+                          <span className="text-white">Confirmar formulário</span>
+                        </li>
+                      </ul>
+                    </div>
+                  </div>
+
+                  <div className="mt-6">
+                    <button
+                      type="button"
+                      className="w-full inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-gradient-to-r from-emerald-600 to-cyan-600 hover:from-emerald-700 hover:to-cyan-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500"
+                      onClick={() => setShowKeyboardShortcuts(false)}
+                    >
+                      Entendi
                     </button>
                   </div>
                 </Dialog.Panel>

@@ -18,7 +18,9 @@ import {
   FaCheckCircle,
   FaChartLine,
   FaHourglassHalf,
-  FaTimesCircle
+  FaTimesCircle,
+  FaUserPlus,
+  FaPercentage
 } from 'react-icons/fa'
 import { DateRange } from 'react-date-range'
 import 'react-date-range/dist/styles.css'
@@ -200,58 +202,85 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (period === 'custom' && (!dateRange[0].startDate || !dateRange[0].endDate)) return
-    const apiPeriod = period === 'custom' ? 'range' : period
-    let url = `/api/dashboard/stats?period=${apiPeriod}`
-    if (period === 'custom') {
-      const start = dateRange[0].startDate.toISOString().slice(0, 10)
-      const end = dateRange[0].endDate.toISOString().slice(0, 10)
-      url += `&startDate=${start}&endDate=${end}`
-    }
     
     // Flag para controlar se o componente está montado
     let isMounted = true;
-
-    const fetchData = async () => {
-      try {
-        const res = await fetch(url, { credentials: 'include' });
-        
-        // Verificar se o token expirou (status 401)
-        if (res.status === 401) {
-          console.error('Erro de autenticação: Token expirado ou inválido');
-          
-          // Limpar tokens locais
-          localStorage.removeItem('supabase_tokens');
-          
-          // Salvar a URL atual para redirecionamento pós-login
-          localStorage.setItem('redirectAfterLogin', '/dashboard');
-          
-          // Redirecionar para a página de login com mensagem
-          navigate('/login?error=session_expired&message=Sua sessão expirou. Por favor, faça login novamente.');
-          return;
-        }
-        
-        if (!res.ok) {
-          throw new Error(`Erro ao buscar dados: ${res.status} ${res.statusText}`);
-        }
-        
-        const data = await res.json();
-        if (isMounted) {
-          setStats(data.data);
-        }
-      } catch (error) {
-        console.error('Erro ao buscar dados do dashboard:', error);
-        if (error.message?.includes('401') || error.message?.includes('autoriza')) {
-          // Situação adicional de erro de autorização
-          navigate('/login?error=auth_error&message=Erro de autenticação. Por favor, faça login novamente.');
-        }
-      }
-    };
     
-    fetchData();
+    // Usar um temporizador para evitar múltiplas chamadas em sequência
+    const timeoutId = setTimeout(() => {
+      const apiPeriod = period === 'custom' ? 'range' : period
+      
+      // Formatar datas explicitamente para garantir que não haja problemas de timezone
+      let url = `/api/dashboard/stats?period=${apiPeriod}`
+      if (period === 'custom') {
+        // Garantir que estamos formatando corretamente as datas para o backend
+        // Formato YYYY-MM-DD sem considerar timezone
+        const formatDateToYYYYMMDD = (date) => {
+          const year = date.getFullYear();
+          const month = String(date.getMonth() + 1).padStart(2, '0');
+          const day = String(date.getDate()).padStart(2, '0');
+          return `${year}-${month}-${day}`;
+        };
+        
+        const start = formatDateToYYYYMMDD(dateRange[0].startDate);
+        const end = formatDateToYYYYMMDD(dateRange[0].endDate);
+        
+        url += `&startDate=${start}&endDate=${end}`;
+        
+        // Logs para depuração
+        console.log(`[API-DEBUG] Data início objeto: ${dateRange[0].startDate}`);
+        console.log(`[API-DEBUG] Data início formatada: ${start}`);
+        console.log(`[API-DEBUG] Data fim objeto: ${dateRange[0].endDate}`);
+        console.log(`[API-DEBUG] Data fim formatada: ${end}`);
+      }
+      
+      console.log(`[DASHBOARD] Buscando dados com: ${url}`);
+      
+      const fetchData = async () => {
+        try {
+          const res = await fetch(url, { credentials: 'include' });
+          
+          // Verificar se o token expirou (status 401)
+          if (res.status === 401) {
+            console.error('Erro de autenticação: Token expirado ou inválido');
+            
+            // Limpar tokens locais
+            localStorage.removeItem('supabase_tokens');
+            
+            // Salvar a URL atual para redirecionamento pós-login
+            localStorage.setItem('redirectAfterLogin', '/dashboard');
+            
+            // Redirecionar para a página de login com mensagem
+            navigate('/login?error=session_expired&message=Sua sessão expirou. Por favor, faça login novamente.');
+            return;
+          }
+          
+          if (!res.ok) {
+            throw new Error(`Erro ao buscar dados: ${res.status} ${res.statusText}`);
+          }
+          
+          const data = await res.json();
+          if (isMounted) {
+            console.log(`[DASHBOARD] Dados recebidos:`, data.data);
+            setStats(data.data);
+            console.log(`[DASHBOARD] Dados atualizados para período: ${period}`);
+          }
+        } catch (error) {
+          console.error('Erro ao buscar dados do dashboard:', error);
+          if (error.message?.includes('401') || error.message?.includes('autoriza')) {
+            // Situação adicional de erro de autorização
+            navigate('/login?error=auth_error&message=Erro de autenticação. Por favor, faça login novamente.');
+          }
+        }
+      };
+      
+      fetchData();
+    }, 300); // Espera 300ms antes de fazer a chamada para evitar várias em sequência
     
     // Cleanup function
     return () => {
       isMounted = false;
+      clearTimeout(timeoutId);
     };
   }, [period, dateRange, navigate]);
 
@@ -360,6 +389,9 @@ export default function Dashboard() {
   }
 
   const cards = [
+    { title: 'Leads Novos', value: stats.newLeadsCount, icon: <FaUserPlus className="text-green-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-green-400' },
+    { title: 'Porcentagem de Consultas', value: `${stats.consultationPercentage || '0'}%`, icon: <FaPercentage className="text-blue-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-blue-400' },
+    { title: 'Consultas Válidas', value: `${stats.validConsultationsPercentage || '0'}%`, icon: <FaPercentage className="text-teal-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-teal-400' },
     { title: 'Saldo Total Consultado', value: stats.totalBalance, icon: <FaDollarSign className="text-emerald-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-emerald-400' },
     { title: 'Saldo Simulado Total', value: stats.totalSimulation, icon: <FaDollarSign className="text-emerald-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-emerald-400' },
     { title: 'Propostas Criadas', value: stats.totalProposals, icon: <FaFileSignature className="text-cyan-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-cyan-400' },
@@ -504,33 +536,77 @@ export default function Dashboard() {
                     <Button onClick={() => {
                       setIsCalendarOpen(false);
                       setPeriod('custom');
+                      
+                      // O useEffect cuidará da chamada à API quando os estados forem atualizados
+                      console.log('[DASHBOARD] Botão "Aplicar" do calendário clicado - atualizando estado');
                     }} className="ml-2">Aplicar</Button>
                   </div>
                 )}
               </div>
             </div>
             <Button onClick={() => {
-              const now = new Date()
-              const yesterday = new Date(now)
-              yesterday.setDate(now.getDate() - 1)
-              setPeriod('custom')
-              setDateRange([{ startDate: yesterday, endDate: yesterday, key: 'selection' }])
-              setIsCalendarOpen(false)
+              const now = new Date();
+              // Criar data de ontem explicitamente com hora, minuto, segundo zerados
+              const yesterday = new Date(now);
+              yesterday.setDate(now.getDate() - 1);
+              yesterday.setHours(0, 0, 0, 0);
+              
+              // Criar também data fim (fim do dia de ontem)
+              const yesterdayEnd = new Date(yesterday);
+              yesterdayEnd.setHours(23, 59, 59, 999);
+              
+              // Log detalhado para depuração
+              console.log(`[ONTEM] Data de ontem início: ${yesterday.toISOString()}`);
+              console.log(`[ONTEM] Data de ontem fim: ${yesterdayEnd.toISOString()}`);
+              console.log(`[ONTEM] Data início formatada: ${yesterday.toISOString().slice(0, 10)}`);
+              
+              // Configurar as datas e atualizar o estado
+              const newDateRange = [{ 
+                startDate: yesterday, 
+                endDate: yesterday, // Mantemos a mesma data para que seja apenas um dia
+                key: 'selection' 
+              }];
+              
+              // Apenas atualizamos o estado - o useEffect cuidará da chamada à API
+              console.log('[DASHBOARD] Botão "Ontem" clicado - atualizando estado');
+              setPeriod('custom');
+              setDateRange(newDateRange);
+              setIsCalendarOpen(false);
             }} className="text-sm px-3 py-1 whitespace-nowrap flex-shrink-0">Ontem</Button>
             
             <Button onClick={() => {
               const end = new Date()
               const start = subDays(end, 7)
+              
+              // Configurar as datas e atualizar o estado
+              const newDateRange = [{ 
+                startDate: start, 
+                endDate: end, 
+                key: 'selection' 
+              }]
+              
+              // Apenas atualizamos o estado - o useEffect cuidará da chamada à API
+              console.log('[DASHBOARD] Botão "7 dias" clicado - atualizando estado');
               setPeriod('custom')
-              setDateRange([{ startDate: start, endDate: end, key: 'selection' }])
+              setDateRange(newDateRange)
               setIsCalendarOpen(false)
             }} className="text-sm px-3 py-1 whitespace-nowrap flex-shrink-0">7 dias</Button>
             
             <Button onClick={() => {
               const end = new Date()
               const start = subDays(end, 30)
+              
+              // Configurar as datas e atualizar o estado
+              const newDateRange = [{ 
+                startDate: start, 
+                endDate: end, 
+                key: 'selection' 
+              }]
+              
+              // Apenas atualizamos o estado - o useEffect cuidará da chamada à API
+              console.log('[DASHBOARD] Botão "30 dias" clicado - atualizando estado');
               setPeriod('custom')
-              setDateRange([{ startDate: start, endDate: end, key: 'selection' }])
+              setDateRange(newDateRange)
               setIsCalendarOpen(false)
             }} className="text-sm px-3 py-1 whitespace-nowrap flex-shrink-0">30 dias</Button>
             
@@ -538,8 +614,18 @@ export default function Dashboard() {
               const last = subMonths(new Date(), 1)
               const start = startOfMonth(last)
               const end = endOfMonth(last)
+              
+              // Configurar as datas e atualizar o estado
+              const newDateRange = [{ 
+                startDate: start, 
+                endDate: end, 
+                key: 'selection' 
+              }]
+              
+              // Apenas atualizamos o estado - o useEffect cuidará da chamada à API
+              console.log('[DASHBOARD] Botão "Último mês" clicado - atualizando estado');
               setPeriod('custom')
-              setDateRange([{ startDate: start, endDate: end, key: 'selection' }])
+              setDateRange(newDateRange)
               setIsCalendarOpen(false)
             }} className="text-sm px-3 py-1 whitespace-nowrap flex-shrink-0">Último mês</Button>
           </div>

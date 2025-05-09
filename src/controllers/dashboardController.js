@@ -4,21 +4,54 @@ const logger = require('../utils/logger');
 async function getDashboardStats(req, userId, period = 'daily') {
   try {
     const now = new Date();
-    // 1. Buscar total de saldo consultado
-    // REMOVER a busca anterior de balance (balanceQuery) e usar apenas a busca completa:
-    // let balanceQuery = supabaseAdmin
-    //   .from('balance')
-    //   .select('balance, simulation')
-    //   .eq('client_id', userId);
-    // ...
-    // const { data: balanceData, error: balanceError } = await balanceQuery.order('created_at', { ascending: false });
-    // if (balanceError) logger.error(`Erro ao buscar saldos: ${balanceError.message}`);
-    // FIM DA REMOÇÃO
-
-    // 2. Buscar dados de propostas com filtro de período
-    let proposalsQuery = supabaseAdmin.from('proposals').select('*').eq('client_id', userId);
     const saoPauloOffset = -3; // UTC-3
-    if (period === 'range') {
+
+    // Função auxiliar para criar datas com o timezone correto de São Paulo
+    function createSaoPauloDate(year, month, day, hour = 0, minute = 0, second = 0, millisecond = 0) {
+      // Convertemos para UTC e aplicamos o offset para obter a data local correta
+      const date = new Date(Date.UTC(year, month, day, hour - saoPauloOffset, minute, second, millisecond));
+      
+      // Log detalhado para depuração
+      logger.info(`[DATETIME-DEBUG] Criando data: ano=${year}, mês=${month+1}, dia=${day}, hora=${hour}`);
+      logger.info(`[DATETIME-DEBUG] Data resultante em ISO: ${date.toISOString()}`);
+      logger.info(`[DATETIME-DEBUG] Data resultante local: ${date.toLocaleDateString('pt-BR')} ${date.toLocaleTimeString('pt-BR')}`);
+      
+      return date;
+    }
+
+    // Definir limites de data consistentes para o período selecionado
+    let periodStart, periodEnd;
+
+    if (period === 'daily') {
+      // Dia atual em timezone de São Paulo
+      periodStart = createSaoPauloDate(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+      periodEnd = createSaoPauloDate(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+      
+      logger.info(`[DASHBOARD] Filtro diário - Início: ${periodStart.toISOString()}, Fim: ${periodEnd.toISOString()}`);
+    } else if (period === 'weekly') {
+      // Semana atual (domingo a sábado) em timezone de São Paulo
+      const dayOfWeek = now.getDay();
+      const firstDay = new Date(now);
+      firstDay.setDate(now.getDate() - dayOfWeek);
+      
+      periodStart = createSaoPauloDate(firstDay.getFullYear(), firstDay.getMonth(), firstDay.getDate(), 0, 0, 0, 0);
+      
+      const lastDay = new Date(firstDay);
+      lastDay.setDate(firstDay.getDate() + 6);
+      
+      periodEnd = createSaoPauloDate(lastDay.getFullYear(), lastDay.getMonth(), lastDay.getDate(), 23, 59, 59, 999);
+      
+      logger.info(`[DASHBOARD] Filtro semanal - Início: ${periodStart.toISOString()}, Fim: ${periodEnd.toISOString()}`);
+    } else if (period === 'monthly') {
+      // Mês atual em timezone de São Paulo
+      const firstOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+      const lastOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+      
+      periodStart = createSaoPauloDate(firstOfMonth.getFullYear(), firstOfMonth.getMonth(), firstOfMonth.getDate(), 0, 0, 0, 0);
+      periodEnd = createSaoPauloDate(lastOfMonth.getFullYear(), lastOfMonth.getMonth(), lastOfMonth.getDate(), 23, 59, 59, 999);
+      
+      logger.info(`[DASHBOARD] Filtro mensal - Início: ${periodStart.toISOString()}, Fim: ${periodEnd.toISOString()}`);
+    } else if (period === 'range') {
       logger.info(`[DASHBOARD] startDate: ${req.query.startDate}, endDate: ${req.query.endDate}`);
       if (!req.query.startDate || !req.query.endDate) {
         logger.warn('[DASHBOARD] Intervalo de datas incompleto.');
@@ -27,62 +60,61 @@ async function getDashboardStats(req, userId, period = 'daily') {
           message: 'Intervalo de datas incompleto.'
         };
       }
-      const startDateObj = new Date(req.query.startDate);
-      const endDateObj = new Date(req.query.endDate);
-      if (isNaN(startDateObj) || isNaN(endDateObj)) {
+      
+      // Convertemos as datas ISO string (YYYY-MM-DD) para objetos Date
+      // Considerando que as datas são passadas como meio-dia UTC para evitar problemas com timezone
+      const startDateParts = req.query.startDate.split('-').map(Number);
+      const endDateParts = req.query.endDate.split('-').map(Number);
+      
+      if (startDateParts.length !== 3 || endDateParts.length !== 3) {
         logger.warn('[DASHBOARD] Datas inválidas.');
         return {
           error: true,
           message: 'Datas inválidas.'
         };
       }
-      // Limitar intervalo para 90 dias
+      
+      // Log para depuração de data
+      logger.info(`[DASHBOARD-DEBUG] Recebendo datas: startDate=${req.query.startDate}, endDate=${req.query.endDate}`);
+      
+      // Criamos as datas no fuso de São Paulo (início do dia para início, fim do dia para fim)
+      periodStart = createSaoPauloDate(startDateParts[0], startDateParts[1] - 1, startDateParts[2], 0, 0, 0, 0);
+      periodEnd = createSaoPauloDate(endDateParts[0], endDateParts[1] - 1, endDateParts[2], 23, 59, 59, 999);
+      
+      // Log detalhado para depuração
+      logger.info(`[DASHBOARD-DEBUG] Após conversão: periodStart=${periodStart.toISOString()}, periodEnd=${periodEnd.toISOString()}`);
+      logger.info(`[DASHBOARD-DEBUG] Data em formato local: periodStart=${periodStart.toLocaleDateString('pt-BR')} 00:00:00, periodEnd=${periodEnd.toLocaleDateString('pt-BR')} 23:59:59`);
+      
+      // Checamos se as datas são válidas
+      if (isNaN(periodStart.getTime()) || isNaN(periodEnd.getTime())) {
+        logger.warn('[DASHBOARD] Datas inválidas.');
+        return {
+          error: true,
+          message: 'Datas inválidas.'
+        };
+      }
+      
+      // Limitamos o intervalo para 90 dias
       const maxDays = 90;
-      if ((endDateObj - startDateObj) / (1000 * 60 * 60 * 24) > maxDays) {
+      if ((periodEnd - periodStart) / (1000 * 60 * 60 * 24) > maxDays) {
         logger.warn('[DASHBOARD] Intervalo muito grande.');
         return {
           error: true,
           message: 'Intervalo muito grande. Máximo permitido: 90 dias.'
         };
       }
-      const start = new Date(Date.UTC(startDateObj.getUTCFullYear(), startDateObj.getUTCMonth(), startDateObj.getUTCDate(), 0 - saoPauloOffset, 0, 0, 0));
-      const end = new Date(Date.UTC(endDateObj.getUTCFullYear(), endDateObj.getUTCMonth(), endDateObj.getUTCDate(), 23 - saoPauloOffset, 59, 59, 999));
-      proposalsQuery = proposalsQuery.gte('updated_at', start.toISOString()).lte('updated_at', end.toISOString());
-    } else if (period === 'daily') {
-      // Corrigido: use a data local para Brasil em vez de UTC 
-      // O problema estava aqui: precisamos obter o dia atual no fuso horário local do Brasil
-      // e criar limites de data que capturem todo o dia na hora local, independentemente de
-      // como o banco de dados possa armazenar as datas no UTC
       
-      // Obtenha a data atual sem ajuste de hora
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
-      // Início do dia (00:00:00.000)
-      const startOfDay = new Date(today);
-      startOfDay.setHours(0, 0, 0, 0);
-      
-      // Fim do dia (23:59:59.999)
-      const endOfDay = new Date(today);
-      endOfDay.setHours(23, 59, 59, 999);
-      
-      // Log para debug das datas
-      logger.info(`[DASHBOARD] Filtro diário - Data local: ${today.toLocaleDateString()}`);
-      logger.info(`[DASHBOARD] Filtro diário - Início: ${startOfDay.toISOString()}, Fim: ${endOfDay.toISOString()}`);
-      
-      proposalsQuery = proposalsQuery.gte('updated_at', startOfDay.toISOString()).lte('updated_at', endOfDay.toISOString());
-    } else if (period === 'weekly') {
-      const startOfWeek = new Date(now);
-      startOfWeek.setDate(now.getDate() - now.getDay());
-      const start = new Date(Date.UTC(startOfWeek.getUTCFullYear(), startOfWeek.getUTCMonth(), startOfWeek.getUTCDate(), 0 - saoPauloOffset, 0, 0, 0));
-      const endOfWeek = new Date(startOfWeek);
-      endOfWeek.setDate(startOfWeek.getDate() + 6);
-      const end = new Date(Date.UTC(endOfWeek.getUTCFullYear(), endOfWeek.getUTCMonth(), endOfWeek.getUTCDate(), 23 - saoPauloOffset, 59, 59, 999));
-      proposalsQuery = proposalsQuery.gte('updated_at', start.toISOString()).lte('updated_at', end.toISOString());
-    } else if (period === 'monthly') {
-      const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1, 0 - saoPauloOffset, 0, 0, 0));
-      const end = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() + 1, 0, 23 - saoPauloOffset, 59, 59, 999));
-      proposalsQuery = proposalsQuery.gte('updated_at', start.toISOString()).lte('updated_at', end.toISOString());
+      logger.info(`[DASHBOARD] Filtro personalizado - Início: ${periodStart.toISOString()}, Fim: ${periodEnd.toISOString()}`);
     }
+
+    // 2. Buscar dados de propostas com filtro de período
+    let proposalsQuery = supabaseAdmin.from('proposals').select('*').eq('client_id', userId);
+    
+    if (periodStart && periodEnd) {
+      // Usar o mesmo filtro de período para todas as consultas
+      proposalsQuery = proposalsQuery.gte('updated_at', periodStart.toISOString()).lte('updated_at', periodEnd.toISOString());
+    }
+    
     const { data: proposalsData, error: proposalsError } = await proposalsQuery;
     if (proposalsError) logger.error(`Erro ao buscar propostas: ${proposalsError.message}`);
 
@@ -106,46 +138,29 @@ async function getDashboardStats(req, userId, period = 'daily') {
       .eq('client_id', userId);
     if (balanceError) logger.error(`Erro ao buscar saldos: ${balanceError.message}`);
 
-    // Definir limites de data conforme o período selecionado
-    let balanceStart, balanceEnd;
-    if (period === 'daily') {
-      // Usar a mesma lógica do filtro diário das propostas
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      balanceStart = new Date(today);
-      balanceStart.setHours(0, 0, 0, 0);
-      
-      balanceEnd = new Date(today);
-      balanceEnd.setHours(23, 59, 59, 999);
-      
-      logger.info(`[DASHBOARD] Filtro balance diário - Início: ${balanceStart.toISOString()}, Fim: ${balanceEnd.toISOString()}`);
-    } else if (period === 'weekly') {
-      balanceStart = new Date(now); balanceStart.setDate(now.getDate() - now.getDay()); balanceStart.setHours(0,0,0,0);
-      balanceEnd = new Date(balanceStart); balanceEnd.setDate(balanceStart.getDate() + 6); balanceEnd.setHours(23,59,59,999);
-    } else if (period === 'monthly') {
-      balanceStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      balanceEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
-    } else if (period === 'range' && req.query.startDate && req.query.endDate) {
-      balanceStart = new Date(req.query.startDate + 'T00:00:00.000Z');
-      balanceEnd = new Date(req.query.endDate + 'T23:59:59.999Z');
-    }
+    // Usar as mesmas datas de período para o balance
+    const balanceStart = periodStart; 
+    const balanceEnd = periodEnd;
 
     // Filtrar balanceData pelo período
     const filteredBalanceData = (balanceData || []).filter(b => {
-      const d = new Date(b.updated_at);
-      if (period === 'daily') {
-        // Usar comparação direta com os limites da data
-        return d >= balanceStart && d <= balanceEnd;
+      // Sempre convertemos para objeto Date para compararmos
+      const balanceDate = new Date(b.updated_at);
+      
+      // Log para depuração (apenas para algumas entradas para não sobrecarregar o log)
+      if (balanceData && balanceData.length > 0 && balanceData.indexOf(b) < 3) {
+        logger.info(`[FILTER-DEBUG] Comparando data: ${balanceDate.toISOString()} com período: ${periodStart.toISOString()} a ${periodEnd.toISOString()}`);
+        logger.info(`[FILTER-DEBUG] Resultado da comparação: start=${balanceDate >= periodStart}, end=${balanceDate <= periodEnd}`);
       }
-      if (period === 'range' && balanceStart && balanceEnd) {
-        return d >= balanceStart && d <= balanceEnd;
-      }
-      return d >= balanceStart && d <= balanceEnd;
+      
+      return periodStart && periodEnd ? balanceDate >= periodStart && balanceDate <= periodEnd : false;
     });
 
     // Debug para verificar os resultados da filtragem
     logger.info(`[DASHBOARD] Registros de balance - Total: ${balanceData?.length || 0}, Filtrados para período ${period}: ${filteredBalanceData?.length || 0}`);
     if (filteredBalanceData && filteredBalanceData.length > 0) {
       logger.info(`[DASHBOARD] Exemplo de balance filtrado: ${JSON.stringify(filteredBalanceData[0])}`);
+      logger.info(`[FILTER-DEBUG] Data do primeiro balance filtrado: ${new Date(filteredBalanceData[0].updated_at).toISOString()}`);
     }
 
     // Mapear o balance mais recente para cada lead, considerando apenas o período filtrado
@@ -192,7 +207,25 @@ async function getDashboardStats(req, userId, period = 'daily') {
       : 0;
     const totalLeads = leadsData ? leadsData.length : 0;
 
-    logger.info(`[DASHBOARD] Cards: totalProposals=${totalProposals}, totalPaidProposals=${totalPaidProposals}, totalProposalsValue=${totalProposalsValue}, totalPaidProposalsValue=${totalPaidProposalsValue}, totalPendingProposals=${totalPendingProposals}, totalFormalizationProposals=${totalFormalizationProposals}`);
+    // Calcular leads novos no período (com base em created_at)
+    const newLeadsCount = (leadsData || []).filter(lead => {
+      const leadDate = new Date(lead.created_at || lead.updated_at);
+      return periodStart && periodEnd ? leadDate >= periodStart && leadDate <= periodEnd : false;
+    }).length;
+
+    // Calcular porcentagem de leads que consultaram saldo
+    const consultationPercentage = newLeadsCount > 0
+      ? Math.round((leadsWithBalance.length / newLeadsCount) * 100)
+      : 0;
+
+    // Calcular porcentagem de consultas válidas (sem erros)
+    const validConsultationsCount = (filteredBalanceData || []).filter(b => !b.error_reason).length;
+    // Usar número de leads como denominador em vez do número total de consultas
+    const validConsultationsPercentage = newLeadsCount > 0
+      ? Math.round((validConsultationsCount / newLeadsCount) * 100)
+      : 0;
+
+    logger.info(`[DASHBOARD] Cards: totalProposals=${totalProposals}, totalPaidProposals=${totalPaidProposals}, totalProposalsValue=${totalProposalsValue}, totalPaidProposalsValue=${totalPaidProposalsValue}, totalPendingProposals=${totalPendingProposals}, totalFormalizationProposals=${totalFormalizationProposals}, newLeadsCount=${newLeadsCount}, consultationPercentage=${consultationPercentage}, validConsultationsPercentage=${validConsultationsPercentage}`);
 
     // Taxa de conversão (propostas pagas / propostas criadas)
     const conversionRate = totalProposals > 0
@@ -205,18 +238,12 @@ async function getDashboardStats(req, userId, period = 'daily') {
     let groupValues = [];
     if (period === 'daily') {
       // Por hora
-      // Obter a data de hoje sem componente de hora
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      
       for (let h = 0; h < 24; h++) {
         groupLabels.push(`${h}:00`);
         
-        // Criar intervalos de hora
-        const hourStart = new Date(today);
-        hourStart.setHours(h, 0, 0, 0);
-        
-        const hourEnd = new Date(today);
-        hourEnd.setHours(h, 59, 59, 999);
+        // Criar intervalos de hora usando a mesma função auxiliar para consistência
+        const hourStart = createSaoPauloDate(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), periodStart.getUTCDate(), h, 0, 0, 0);
+        const hourEnd = createSaoPauloDate(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), periodStart.getUTCDate(), h, 59, 59, 999);
         
         // Filtrar propostas nesta hora
         const filtered = proposalsData.filter(p => {
@@ -231,108 +258,181 @@ async function getDashboardStats(req, userId, period = 'daily') {
       }
     } else if (period === 'weekly') {
       // Por dia (datas do intervalo da semana), label dd/mm
-      const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay()); startOfWeek.setHours(0,0,0,0);
+      // Calculamos cada dia da semana a partir da data inicial
       for (let i = 0; i < 7; i++) {
-        const current = new Date(startOfWeek);
-        current.setDate(startOfWeek.getDate() + i);
-        const label = current.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        const currentDate = new Date(periodStart);
+        currentDate.setUTCDate(periodStart.getUTCDate() + i);
+        
+        const dayStart = createSaoPauloDate(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate(), 0, 0, 0, 0);
+        const dayEnd = createSaoPauloDate(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate(), 23, 59, 59, 999);
+        
+        const label = dayStart.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
         groupLabels.push(label);
+        
         const filtered = proposalsData.filter(p => {
-          const d = new Date(p.updated_at);
-          return d.getFullYear() === current.getFullYear() &&
-                 d.getMonth() === current.getMonth() &&
-                 d.getDate() === current.getDate();
+          const proposalDate = new Date(p.updated_at);
+          return proposalDate >= dayStart && proposalDate <= dayEnd;
         });
+        
         groupCounts.push(filtered.length);
         groupValues.push(filtered.reduce((s, p) => s + parseFloat(p.value || 0), 0));
       }
     } else if (period === 'monthly') {
       // Por dia do mês, label dd/mm
-      const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-      const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-      const daysInMonth = endOfMonth.getDate();
+      const lastDayOfMonth = new Date(periodEnd);
+      const daysInMonth = lastDayOfMonth.getUTCDate();
+      
       for (let i = 1; i <= daysInMonth; i++) {
-        const current = new Date(now.getFullYear(), now.getMonth(), i);
-        const label = current.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+        const dayStart = createSaoPauloDate(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), i, 0, 0, 0, 0);
+        const dayEnd = createSaoPauloDate(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), i, 23, 59, 59, 999);
+        
+        const label = dayStart.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
         groupLabels.push(label);
+        
         const filtered = proposalsData.filter(p => {
-          const d = new Date(p.updated_at);
-          return d.getFullYear() === current.getFullYear() &&
-                 d.getMonth() === current.getMonth() &&
-                 d.getDate() === current.getDate();
+          const proposalDate = new Date(p.updated_at);
+          return proposalDate >= dayStart && proposalDate <= dayEnd;
         });
+        
         groupCounts.push(filtered.length);
         groupValues.push(filtered.reduce((s, p) => s + parseFloat(p.value || 0), 0));
       }
-    } else if (period === 'range' && req.query.startDate && req.query.endDate) {
-      const start = new Date(req.query.startDate);
-      const end = new Date(req.query.endDate);
-      end.setUTCHours(23, 59, 59, 999);
-      const diffDays = Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
+    } else if (period === 'range' && periodStart && periodEnd) {
+      // Calculamos a diferença de dias entre as datas
+      const diffTime = periodEnd.getTime() - periodStart.getTime();
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+      
       if (diffDays === 1) {
-        // Agrupar por hora
+        // Para um único dia, agrupamos por hora
         for (let h = 0; h < 24; h++) {
           groupLabels.push(`${h}:00`);
+          
+          const hourStart = createSaoPauloDate(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), periodStart.getUTCDate(), h, 0, 0, 0);
+          const hourEnd = createSaoPauloDate(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), periodStart.getUTCDate(), h, 59, 59, 999);
+          
           const filtered = proposalsData.filter(p => {
-            const d = new Date(p.updated_at);
-            return d.getUTCFullYear() === start.getUTCFullYear() &&
-                   d.getUTCMonth() === start.getUTCMonth() &&
-                   d.getUTCDate() === start.getUTCDate() &&
-                   d.getUTCHours() === h;
+            const proposalDate = new Date(p.updated_at);
+            return proposalDate >= hourStart && proposalDate <= hourEnd;
           });
+          
           groupCounts.push(filtered.length);
           groupValues.push(filtered.reduce((s, p) => s + parseFloat(p.value || 0), 0));
         }
       } else if (diffDays > 1 && diffDays <= 31) {
-        // Agrupar por dia, label dd/mm
+        // Para períodos até um mês, agrupamos por dia
         for (let i = 0; i < diffDays; i++) {
-          const current = new Date(start);
-          current.setUTCDate(start.getUTCDate() + i);
-          const label = current.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+          const currentDate = new Date(periodStart);
+          currentDate.setUTCDate(periodStart.getUTCDate() + i);
+          
+          const dayStart = createSaoPauloDate(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate(), 0, 0, 0, 0);
+          const dayEnd = createSaoPauloDate(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate(), 23, 59, 59, 999);
+          
+          const label = dayStart.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
           groupLabels.push(label);
+          
           const filtered = proposalsData.filter(p => {
-            const d = new Date(p.updated_at);
-            return d.getUTCFullYear() === current.getUTCFullYear() &&
-                   d.getUTCMonth() === current.getUTCMonth() &&
-                   d.getUTCDate() === current.getUTCDate();
+            const proposalDate = new Date(p.updated_at);
+            return proposalDate >= dayStart && proposalDate <= dayEnd;
           });
+          
           groupCounts.push(filtered.length);
           groupValues.push(filtered.reduce((s, p) => s + parseFloat(p.value || 0), 0));
         }
       } else {
-        // Agrupar por semana
-        function getWeekNumber(d) {
-          d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-          const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
-          const weekNo = Math.ceil((((d - yearStart) / 86400000) + yearStart.getUTCDay()+1)/7);
-          return `${d.getUTCFullYear()}-S${weekNo}`;
+        // Para períodos longos, agrupamos por semana
+        // Função consistente para calcular o número da semana
+        function getWeekNumber(date) {
+          const target = new Date(date.getTime());
+          const dayNum = (date.getUTCDay() + 6) % 7; // Ajusta para que a semana comece na segunda-feira
+          target.setUTCDate(target.getUTCDate() - dayNum + 3); // Ajusta para a quinta-feira da semana
+          const firstThursday = target.getUTCTime();
+          target.setUTCMonth(0, 1); // Janeiro 1
+          if (target.getUTCDay() !== 4) { // Quinta-feira
+            target.setUTCMonth(0, 1 + ((4 - target.getUTCDay()) + 7) % 7);
+          }
+          return 1 + Math.ceil((firstThursday - target.getTime()) / 604800000); // 604800000 = número de ms em uma semana
         }
-        // Descobrir todas as semanas no range
-        let weekLabels = [];
-        for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-          const week = getWeekNumber(d);
-          if (!weekLabels.includes(week)) weekLabels.push(week);
+        
+        // Mapeamos as datas para suas respectivas semanas
+        const weeks = new Map();
+        
+        // Percorremos o período dia a dia
+        const current = new Date(periodStart);
+        while (current <= periodEnd) {
+          const year = current.getUTCFullYear();
+          const week = getWeekNumber(current);
+          const weekKey = `${year}-S${week}`;
+          
+          if (!weeks.has(weekKey)) {
+            weeks.set(weekKey, {
+              startDate: new Date(current),
+              endDate: new Date(current),
+              proposals: []
+            });
+          } else {
+            const weekData = weeks.get(weekKey);
+            weekData.endDate = new Date(current);
+          }
+          
+          // Avançamos para o próximo dia
+          current.setUTCDate(current.getUTCDate() + 1);
         }
-        weekLabels.forEach(week => {
+        
+        // Agora filtramos as propostas para cada semana
+        for (const [weekKey, weekData] of weeks.entries()) {
+          const weekStart = createSaoPauloDate(
+            weekData.startDate.getUTCFullYear(),
+            weekData.startDate.getUTCMonth(),
+            weekData.startDate.getUTCDate(),
+            0, 0, 0, 0
+          );
+          
+          const weekEnd = createSaoPauloDate(
+            weekData.endDate.getUTCFullYear(),
+            weekData.endDate.getUTCMonth(),
+            weekData.endDate.getUTCDate(),
+            23, 59, 59, 999
+          );
+          
           const filtered = proposalsData.filter(p => {
-            const d = new Date(p.updated_at);
-            return getWeekNumber(d) === week;
+            const proposalDate = new Date(p.updated_at);
+            return proposalDate >= weekStart && proposalDate <= weekEnd;
           });
-          groupLabels.push(week);
+          
+          groupLabels.push(weekKey);
           groupCounts.push(filtered.length);
           groupValues.push(filtered.reduce((s, p) => s + parseFloat(p.value || 0), 0));
-        });
+        }
       }
     } else {
+      // Caso padrão: últimos 6 meses
       for (let i = 5; i >= 0; i--) {
-        const date = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const month = date.getMonth();
-        const year = date.getFullYear();
-        groupLabels.push(date.toLocaleString('pt-BR', { month: 'short' }));
+        const monthDate = new Date(now);
+        monthDate.setMonth(monthDate.getMonth() - i);
+        
+        const monthStart = createSaoPauloDate(
+          monthDate.getFullYear(),
+          monthDate.getMonth(),
+          1,
+          0, 0, 0, 0
+        );
+        
+        const lastDay = new Date(monthDate.getFullYear(), monthDate.getMonth() + 1, 0);
+        const monthEnd = createSaoPauloDate(
+          lastDay.getFullYear(),
+          lastDay.getMonth(),
+          lastDay.getDate(),
+          23, 59, 59, 999
+        );
+        
+        const label = monthStart.toLocaleString('pt-BR', { month: 'short' });
+        groupLabels.push(label);
+        
         const filtered = proposalsData.filter(p => {
-          const d = new Date(p.updated_at);
-          return d.getMonth() === month && d.getFullYear() === year;
+          const proposalDate = new Date(p.updated_at);
+          return proposalDate >= monthStart && proposalDate <= monthEnd;
         });
+        
         groupCounts.push(filtered.length);
         groupValues.push(filtered.reduce((s, p) => s + parseFloat(p.value || 0), 0));
       }
@@ -400,14 +500,14 @@ async function getDashboardStats(req, userId, period = 'daily') {
           simulationsChartLabels.push(`${h}:00`);
           const saldoPorLead = {};
           const simulacaoPorLead = {};
+          
+          // Criar intervalos de hora consistentes usando createSaoPauloDate
+          const hourStart = createSaoPauloDate(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), periodStart.getUTCDate(), h, 0, 0, 0);
+          const hourEnd = createSaoPauloDate(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), periodStart.getUTCDate(), h, 59, 59, 999);
+          
           filteredBalanceData.forEach(b => {
-            const d = new Date(b.updated_at);
-            if (
-              d.getHours() === h &&
-              d.getDate() === now.getDate() &&
-              d.getMonth() === now.getMonth() &&
-              d.getFullYear() === now.getFullYear()
-            ) {
+            const balanceDate = new Date(b.updated_at);
+            if (balanceDate >= hourStart && balanceDate <= hourEnd) {
               if (b.balance != null && b.balance !== '') {
                 if (!saldoPorLead[b.lead_id] || new Date(b.updated_at) > new Date(saldoPorLead[b.lead_id].updated_at)) {
                   saldoPorLead[b.lead_id] = b;
@@ -425,22 +525,22 @@ async function getDashboardStats(req, userId, period = 'daily') {
         }
       } else if (period === 'weekly') {
         // Por dia (datas do intervalo da semana), label dd/mm
-        const startOfWeek = new Date(now); startOfWeek.setDate(now.getDate() - now.getDay()); startOfWeek.setHours(0,0,0,0);
         for (let i = 0; i < 7; i++) {
-          const current = new Date(startOfWeek);
-          current.setDate(startOfWeek.getDate() + i);
-          const label = current.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+          const currentDate = new Date(periodStart);
+          currentDate.setUTCDate(periodStart.getUTCDate() + i);
+          
+          const dayStart = createSaoPauloDate(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate(), 0, 0, 0, 0);
+          const dayEnd = createSaoPauloDate(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate(), 23, 59, 59, 999);
+          
+          const label = dayStart.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
           leadsChartLabels.push(label);
           simulationsChartLabels.push(label);
           const saldoPorLead = {};
           const simulacaoPorLead = {};
+          
           filteredBalanceData.forEach(b => {
-            const d = new Date(b.updated_at);
-            if (
-              d.getFullYear() === current.getFullYear() &&
-              d.getMonth() === current.getMonth() &&
-              d.getDate() === current.getDate()
-            ) {
+            const balanceDate = new Date(b.updated_at);
+            if (balanceDate >= dayStart && balanceDate <= dayEnd) {
               if (b.balance != null && b.balance !== '') {
                 if (!saldoPorLead[b.lead_id] || new Date(b.updated_at) > new Date(saldoPorLead[b.lead_id].updated_at)) {
                   saldoPorLead[b.lead_id] = b;
@@ -458,23 +558,22 @@ async function getDashboardStats(req, userId, period = 'daily') {
         }
       } else if (period === 'monthly') {
         // Por dia do mês, label dd/mm
-        const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-        const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        const daysInMonth = endOfMonth.getDate();
+        const lastDayOfMonth = new Date(periodEnd);
+        const daysInMonth = lastDayOfMonth.getUTCDate();
+        
         for (let i = 1; i <= daysInMonth; i++) {
-          const current = new Date(now.getFullYear(), now.getMonth(), i);
-          const label = current.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+          const dayStart = createSaoPauloDate(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), i, 0, 0, 0, 0);
+          const dayEnd = createSaoPauloDate(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), i, 23, 59, 59, 999);
+          
+          const label = dayStart.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
           leadsChartLabels.push(label);
           simulationsChartLabels.push(label);
           const saldoPorLead = {};
           const simulacaoPorLead = {};
+          
           filteredBalanceData.forEach(b => {
-            const d = new Date(b.updated_at);
-            if (
-              d.getFullYear() === current.getFullYear() &&
-              d.getMonth() === current.getMonth() &&
-              d.getDate() === current.getDate()
-            ) {
+            const balanceDate = new Date(b.updated_at);
+            if (balanceDate >= dayStart && balanceDate <= dayEnd) {
               if (b.balance != null && b.balance !== '') {
                 if (!saldoPorLead[b.lead_id] || new Date(b.updated_at) > new Date(saldoPorLead[b.lead_id].updated_at)) {
                   saldoPorLead[b.lead_id] = b;
@@ -490,21 +589,26 @@ async function getDashboardStats(req, userId, period = 'daily') {
           leadsChartCounts.push(Object.keys(saldoPorLead).length);
           simulationsChartCounts.push(Object.values(simulacaoPorLead).reduce((sum, b) => sum + Number(b.simulation), 0));
         }
-      } else if (period === 'range' && req.query.startDate && req.query.endDate) {
-        const start = new Date(req.query.startDate);
-        const end = new Date(req.query.endDate);
-        end.setUTCHours(23, 59, 59, 999);
-        const diffDays = Math.floor((end - start) / (1000 * 60 * 60 * 24)) + 1;
+      } else if (period === 'range' && periodStart && periodEnd) {
+        // Período personalizado
+        const diffTime = periodEnd.getTime() - periodStart.getTime();
+        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1;
+        
         if (diffDays === 1) {
-          // Agrupar por hora
+          // Para um único dia, agrupamos por hora
           for (let h = 0; h < 24; h++) {
             leadsChartLabels.push(`${h}:00`);
             simulationsChartLabels.push(`${h}:00`);
+            
+            const hourStart = createSaoPauloDate(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), periodStart.getUTCDate(), h, 0, 0, 0);
+            const hourEnd = createSaoPauloDate(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), periodStart.getUTCDate(), h, 59, 59, 999);
+            
             const saldoPorLead = {};
             const simulacaoPorLead = {};
+            
             filteredBalanceData.forEach(b => {
-              const d = new Date(b.updated_at);
-              if (d.getUTCHours() === h && d.getUTCFullYear() === start.getUTCFullYear() && d.getUTCMonth() === start.getUTCMonth() && d.getUTCDate() === start.getUTCDate()) {
+              const balanceDate = new Date(b.updated_at);
+              if (balanceDate >= hourStart && balanceDate <= hourEnd) {
                 if (b.balance != null && b.balance !== '') {
                   if (!saldoPorLead[b.lead_id] || new Date(b.updated_at) > new Date(saldoPorLead[b.lead_id].updated_at)) {
                     saldoPorLead[b.lead_id] = b;
@@ -521,18 +625,24 @@ async function getDashboardStats(req, userId, period = 'daily') {
             simulationsChartCounts.push(Object.values(simulacaoPorLead).reduce((sum, b) => sum + Number(b.simulation), 0));
           }
         } else if (diffDays > 1 && diffDays <= 31) {
-          // Agrupar por dia, label dd/mm
+          // Para períodos até um mês, agrupamos por dia
           for (let i = 0; i < diffDays; i++) {
-            const current = new Date(start);
-            current.setUTCDate(start.getUTCDate() + i);
-            const label = current.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
+            const currentDate = new Date(periodStart);
+            currentDate.setUTCDate(periodStart.getUTCDate() + i);
+            
+            const dayStart = createSaoPauloDate(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate(), 0, 0, 0, 0);
+            const dayEnd = createSaoPauloDate(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), currentDate.getUTCDate(), 23, 59, 59, 999);
+            
+            const label = dayStart.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' });
             leadsChartLabels.push(label);
             simulationsChartLabels.push(label);
+            
             const saldoPorLead = {};
             const simulacaoPorLead = {};
+            
             filteredBalanceData.forEach(b => {
-              const d = new Date(b.updated_at);
-              if (d.getUTCFullYear() === current.getUTCFullYear() && d.getUTCMonth() === current.getUTCMonth() && d.getUTCDate() === current.getUTCDate()) {
+              const balanceDate = new Date(b.updated_at);
+              if (balanceDate >= dayStart && balanceDate <= dayEnd) {
                 if (b.balance != null && b.balance !== '') {
                   if (!saldoPorLead[b.lead_id] || new Date(b.updated_at) > new Date(saldoPorLead[b.lead_id].updated_at)) {
                     saldoPorLead[b.lead_id] = b;
@@ -549,25 +659,70 @@ async function getDashboardStats(req, userId, period = 'daily') {
             simulationsChartCounts.push(Object.values(simulacaoPorLead).reduce((sum, b) => sum + Number(b.simulation), 0));
           }
         } else {
-          // Agrupar por semana
-          function getWeekNumber(d) {
-            d = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()));
-            const yearStart = new Date(Date.UTC(d.getUTCFullYear(),0,1));
-            const weekNo = Math.ceil((((d - yearStart) / 86400000) + yearStart.getUTCDay()+1)/7);
-            return `${d.getUTCFullYear()}-S${weekNo}`;
+          // Para períodos longos, agrupamos por semana
+          // Função para calcular o número da semana de forma consistente
+          function getWeekNumber(date) {
+            const target = new Date(date.getTime());
+            const dayNum = (date.getUTCDay() + 6) % 7; // Ajusta para que a semana comece na segunda-feira
+            target.setUTCDate(target.getUTCDate() - dayNum + 3); // Ajusta para a quinta-feira da semana
+            const firstThursday = target.getTime();
+            target.setUTCMonth(0, 1); // Janeiro 1
+            if (target.getUTCDay() !== 4) { // Quinta-feira
+              target.setUTCMonth(0, 1 + ((4 - target.getUTCDay()) + 7) % 7);
+            }
+            return 1 + Math.ceil((firstThursday - target.getTime()) / 604800000); // 604800000 = número de ms em uma semana
           }
-          // Descobrir todas as semanas no range
-          let weekLabels = [];
-          for (let d = new Date(start); d <= end; d.setUTCDate(d.getUTCDate() + 1)) {
-            const week = getWeekNumber(d);
-            if (!weekLabels.includes(week)) weekLabels.push(week);
+          
+          // Mapeamos as datas para suas respectivas semanas
+          const weeks = new Map();
+          
+          // Percorremos o período dia a dia
+          const current = new Date(periodStart);
+          while (current <= periodEnd) {
+            const year = current.getUTCFullYear();
+            const week = getWeekNumber(current);
+            const weekKey = `${year}-S${week}`;
+            
+            if (!weeks.has(weekKey)) {
+              weeks.set(weekKey, {
+                startDate: new Date(current),
+                endDate: new Date(current),
+                proposals: []
+              });
+            } else {
+              const weekData = weeks.get(weekKey);
+              weekData.endDate = new Date(current);
+            }
+            
+            // Avançamos para o próximo dia
+            current.setUTCDate(current.getUTCDate() + 1);
           }
-          weekLabels.forEach(week => {
+          
+          // Agora filtramos os dados para cada semana
+          for (const [weekKey, weekData] of weeks.entries()) {
+            const weekStart = createSaoPauloDate(
+              weekData.startDate.getUTCFullYear(),
+              weekData.startDate.getUTCMonth(),
+              weekData.startDate.getUTCDate(),
+              0, 0, 0, 0
+            );
+            
+            const weekEnd = createSaoPauloDate(
+              weekData.endDate.getUTCFullYear(),
+              weekData.endDate.getUTCMonth(),
+              weekData.endDate.getUTCDate(),
+              23, 59, 59, 999
+            );
+            
+            leadsChartLabels.push(weekKey);
+            simulationsChartLabels.push(weekKey);
+            
             const saldoPorLead = {};
             const simulacaoPorLead = {};
+            
             filteredBalanceData.forEach(b => {
-              const d = new Date(b.updated_at);
-              if (getWeekNumber(d) === week) {
+              const balanceDate = new Date(b.updated_at);
+              if (balanceDate >= weekStart && balanceDate <= weekEnd) {
                 if (b.balance != null && b.balance !== '') {
                   if (!saldoPorLead[b.lead_id] || new Date(b.updated_at) > new Date(saldoPorLead[b.lead_id].updated_at)) {
                     saldoPorLead[b.lead_id] = b;
@@ -580,14 +735,11 @@ async function getDashboardStats(req, userId, period = 'daily') {
                 }
               }
             });
-            leadsChartLabels.push(week);
-            simulationsChartLabels.push(week);
+            
             leadsChartCounts.push(Object.keys(saldoPorLead).length);
             simulationsChartCounts.push(Object.values(simulacaoPorLead).reduce((sum, b) => sum + Number(b.simulation), 0));
-          });
+          }
         }
-      } else {
-        // ... (caso antigo, pode ser removido ou mantido para compatibilidade) ...
       }
 
       // Montar lista de leads para tabela (apenas leads com registro em balance)
@@ -600,8 +752,14 @@ async function getDashboardStats(req, userId, period = 'daily') {
           saldo: bal && bal.balance != null && bal.balance !== '' ? `R$ ${Number(bal.balance).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '',
           simulado: bal && bal.simulation != null && bal.simulation !== '' ? `R$ ${Number(bal.simulation).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '',
           updated_at: bal && bal.updated_at ? new Date(bal.updated_at).toLocaleString('pt-BR') : '',
+          raw_date: bal && bal.updated_at ? new Date(bal.updated_at) : new Date(0), // Adicionando data não formatada para ordenação
           erro: bal && bal.error_reason ? bal.error_reason : ''
         };
+      }).sort((a, b) => b.raw_date - a.raw_date) // Ordenando do mais recente para o mais antigo
+        .map(lead => {
+          // Remover o campo raw_date antes de enviar para o frontend
+          const { raw_date, ...leadWithoutRawDate } = lead;
+          return leadWithoutRawDate;
       });
     }
 
@@ -621,6 +779,9 @@ async function getDashboardStats(req, userId, period = 'daily') {
       totalFormalizationProposals,
       totalFormalizationProposalsValue: `R$ ${totalFormalizationProposalsValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
       totalLeads,
+      newLeadsCount,
+      consultationPercentage,
+      validConsultationsPercentage,
       conversionRate: `${conversionRate}%`,
       recentProposals,
       proposalsChartData,

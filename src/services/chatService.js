@@ -111,6 +111,13 @@ async function getHistory(conversationId, instanceId) {
 }
 
 /**
+ * Busca a última mensagem de uma conversa específica
+ */
+async function getLastMessage(conversationId, instanceId) {
+  return await messageRepository.getLastMessage(conversationId, instanceId);
+}
+
+/**
  * Lista conversas únicas para um usuário e instância opcional
  */
 async function getConversationsForUser(userId, instanceId) {
@@ -129,6 +136,7 @@ module.exports = {
   handleWebhookEvent,
   handleOutgoing,
   getHistory,
+  getLastMessage,
   getConversationsForUser,
   onMessage,
   offMessage

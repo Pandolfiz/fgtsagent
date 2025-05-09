@@ -9,6 +9,9 @@ router.post('/webhook', chatController.handleWebhook);
 // Histórico e stream de mensagens por conversa
 router.get('/stream/:conversationId', requireAuth, chatController.streamMessages);
 
+// Obter a última mensagem de uma conversa
+router.get('/messages/:conversationId/last', requireAuth, chatController.getLastMessage);
+
 // Enviar nova mensagem via Evolution API
 router.post('/send', requireAuth, chatController.sendMessage);
 

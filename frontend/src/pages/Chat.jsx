@@ -6,6 +6,7 @@ import { useNavigate } from 'react-router-dom'
 
 export default function Chat() {
   const [contacts, setContacts] = useState([])
+  const [displayContacts, setDisplayContacts] = useState([]) // Estado para exibição ordenada
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
   const [currentContact, setCurrentContact] = useState(null)
@@ -21,6 +22,10 @@ export default function Chat() {
   const [forceUpdate, setForceUpdate] = useState(0)
   const messagesEndRef = useRef(null)
   const navigate = useNavigate()
+
+  // Estado para controlar quando deve rolar a tela
+  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false);
+  const [prevMessagesLength, setPrevMessagesLength] = useState(0);
 
   // Detectar mudanças de tamanho da tela
   useEffect(() => {
@@ -209,22 +214,72 @@ export default function Chat() {
         const contactsList = data.contacts || [];
         console.log(`Contatos encontrados: ${contactsList.length}`, contactsList);
         
-        // Log para debug - verificar se agent_state está vindo corretamente da API
+        // Log para debug - verificar se agent_state e last_message_time estão vindo corretamente
         contactsList.forEach(contact => {
-          console.log(`Contato ${contact.name || contact.push_name || 'Desconhecido'}: agent_state = ${contact.agent_state || 'não definido'}`);
+          console.log(`Contato ${contact.name || contact.push_name || 'Desconhecido'}: 
+            - agent_state = ${contact.agent_state || 'não definido'}
+            - last_message_time = ${contact.last_message_time || 'não definido'}`);
         });
         
+        // Buscar a última mensagem para TODOS os contatos, independente de terem last_message_time
+        const contactsWithLastMessagePromises = contactsList.map(async (contact) => {
+          try {
+            console.log(`Buscando última mensagem para contato: ${contact.remote_jid}`);
+            const messagesResponse = await fetch(`/api/chat/messages/${contact.remote_jid}/last`, {
+              credentials: 'include'
+            });
+            
+            if (messagesResponse.ok) {
+              const messageData = await messagesResponse.json();
+              if (messageData.success && messageData.message) {
+                console.log(`Última mensagem para ${contact.name || contact.push_name || 'Desconhecido'}: ${JSON.stringify(messageData.message)}`);
+                return {
+                  ...contact,
+                  last_message_time: messageData.message.timestamp || messageData.message.created_at,
+                  last_message: messageData.message.content
+                };
+              } else {
+                console.log(`Sem mensagens para ${contact.name || contact.push_name || 'Desconhecido'}`);
+              }
+            } else {
+              console.error(`Erro na resposta da API para ${contact.remote_jid}: ${messagesResponse.status}`);
+            }
+          } catch (error) {
+            console.error(`Erro ao buscar última mensagem para ${contact.remote_jid}:`, error);
+          }
+          return contact;
+        });
+        
+        // Aguardar todas as promessas
+        const contactsWithLastMessages = await Promise.all(contactsWithLastMessagePromises);
+        
         // Verificar e usar os valores recebidos da API
-        if (contactsList.length > 0) {
-          console.log('Usando contatos com agent_state da API');
-          setContacts(contactsList);
+        if (contactsWithLastMessages.length > 0) {
+          console.log('Usando contatos com last_message_time atualizado:');
+          contactsWithLastMessages.forEach(contact => {
+            console.log(`- ${contact.name || contact.push_name || 'Desconhecido'}: last_message_time = ${contact.last_message_time || 'não definido'}`);
+          });
+          
+          setContacts(contactsWithLastMessages);
+          
+          // Agora também atualizamos o estado de exibição
+          const sortedContacts = [...contactsWithLastMessages].sort((a, b) => {
+            // Se não tiver hora da última mensagem, coloca no final
+            if (!a.last_message_time) return 1;
+            if (!b.last_message_time) return -1;
+            
+            // Ordem decrescente (mais recente primeiro)
+            return new Date(b.last_message_time) - new Date(a.last_message_time);
+          });
+          setDisplayContacts(sortedContacts);
           
           // Se não estiver no modo mobile, seleciona automaticamente o primeiro contato
           if (!isMobileView) {
-            setCurrentContact(contactsList[0]);
+            setCurrentContact(sortedContacts[0]);
           }
         } else {
           console.log('Nenhum contato encontrado para este usuário');
+          setDisplayContacts([]);
         }
       } catch (error) {
         console.error('Erro ao buscar contatos:', error);
@@ -424,10 +479,30 @@ export default function Chat() {
     };
   }, [currentContact, currentUser, navigate]);
 
-  // Rola automaticamente para a última mensagem
+  // Identifica quando novas mensagens são enviadas pelo usuário atual
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+    // Se o número de mensagens aumentou e a última mensagem é do usuário atual
+    if (messages.length > prevMessagesLength && messages.length > 0) {
+      const lastMessage = messages[messages.length - 1];
+      // Verifica se é uma mensagem enviada pelo usuário (ME ou AI)
+      if (lastMessage.role === 'ME' || lastMessage.role === 'AI') {
+        setShouldScrollToBottom(true);
+      }
+    } else {
+      setShouldScrollToBottom(false);
+    }
+    
+    // Atualiza o contador de mensagens anterior
+    setPrevMessagesLength(messages.length);
+  }, [messages, prevMessagesLength]);
+
+  // Rola automaticamente para a última mensagem apenas quando necessário
+  useEffect(() => {
+    if (shouldScrollToBottom && messagesEndRef.current) {
+      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      setShouldScrollToBottom(false);
+    }
+  }, [shouldScrollToBottom]);
 
   // Função para recarregar dados
   const handleRefresh = async () => {
@@ -465,8 +540,16 @@ export default function Chat() {
       if (contactsList.length > 0) {
         setContacts(contactsList);
         
+        // Também atualizar o estado de exibição
+        const sortedContacts = [...contactsList].sort((a, b) => {
+          if (!a.last_message_time) return 1;
+          if (!b.last_message_time) return -1;
+          return new Date(b.last_message_time) - new Date(a.last_message_time);
+        });
+        setDisplayContacts(sortedContacts);
+        
         if (!isMobileView && !currentContact && contactsList.length > 0) {
-          setCurrentContact(contactsList[0]);
+          setCurrentContact(sortedContacts[0]);
         }
       }
       
@@ -519,6 +602,24 @@ export default function Chat() {
       agent_state: newAgentState
     };
     setContacts(newContacts);
+    
+    // Atualizar também o estado de exibição para manter sincronizado
+    setDisplayContacts(prev => {
+      const displayIndex = prev.findIndex(c => {
+        const cId = c.id || c.remote_jid;
+        return cId === contactId;
+      });
+      
+      if (displayIndex === -1) return prev;
+      
+      const newDisplay = [...prev];
+      newDisplay[displayIndex] = {
+        ...prev[displayIndex],
+        agent_state: newAgentState
+      };
+      
+      return newDisplay;
+    });
     
     // Se for o contato atual, atualize-o também
     if (currentContact && (currentContact.id === contactId || currentContact.remote_jid === contactId)) {
@@ -583,6 +684,24 @@ export default function Chat() {
       };
       setContacts(revertedContacts);
       
+      // Reverter também no estado de exibição
+      setDisplayContacts(prev => {
+        const displayIndex = prev.findIndex(c => {
+          const cId = c.id || c.remote_jid;
+          return cId === contactId;
+        });
+        
+        if (displayIndex === -1) return prev;
+        
+        const newDisplay = [...prev];
+        newDisplay[displayIndex] = {
+          ...prev[displayIndex],
+          agent_state: currentState ? 'ai' : 'human'
+        };
+        
+        return newDisplay;
+      });
+      
       // Se for o contato atual, reverta-o também
       if (currentContact && (currentContact.id === contactId || currentContact.remote_jid === contactId)) {
         setCurrentContact({
@@ -613,6 +732,9 @@ export default function Chat() {
       };
       
       console.log('Enviando nova mensagem:', payload);
+      
+      // Já indica que deve rolar para o final após enviar uma nova mensagem
+      setShouldScrollToBottom(true);
       
       const response = await fetch('/api/messages', {
         method: 'POST',
@@ -668,48 +790,17 @@ export default function Chat() {
       // Limpar campo de mensagem
       setNewMessage('');
       
-      // Se o agente estiver ativado, enviar resposta automática
-      if (isAgentEnabled(currentContact)) {
-        console.log("Agente ativado, enviando resposta automática...");
-        setTimeout(async () => {
-          // Gerar resposta automática do agente
-          const aiResponse = {
-            conversationId: currentContact.remote_jid,
-            content: `Resposta automática do assistente: ${new Date().toLocaleTimeString()}`,
-            recipientId: currentContact.phone,
-            role: 'AI'
-          };
-          
-          try {
-            console.log('Enviando resposta automática do AI:', aiResponse);
-            
-            const aiResponseResult = await fetch('/api/messages', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              credentials: 'include',
-              body: JSON.stringify(aiResponse)
-            });
-            
-            if (aiResponseResult.ok) {
-              const aiData = await aiResponseResult.json();
-              if (aiData.success && aiData.message) {
-                const processedAiMsg = {
-                  ...aiData.message,
-                  from_me: true,
-                  role: 'AI'
-                };
-                setMessages(prev => [...prev, processedAiMsg]);
-              }
-            }
-          } catch (error) {
-            console.error('Erro ao enviar resposta automática:', error);
-          }
-        }, Math.random() * 1000 + 1000); // Tempo aleatório entre 1-2 segundos
-      } else {
-        console.log("Agente desativado, nenhuma resposta automática será enviada.");
-      }
+      // Adicionar log detalhado para debug
+      console.log('=========== DEBUG DE MENSAGEM ENVIADA ===========');
+      console.log('Detalhes da resposta:', data);
+      console.log('URL da API chamada: /api/messages');
+      console.log('Mensagem enviada para: ' + currentContact.phone);
+      console.log('Agent state: ' + (currentContact?.agent_state || 'indefinido'));
+      console.log('==================================================');
+      
+      // O código para envio automático de respostas foi removido completamente
+      // Não será enviada nenhuma resposta automática do assistente
+      console.log(`Mensagem enviada com sucesso. Agent state: ${currentContact?.agent_state || 'indefinido'}`);
       
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error);
@@ -793,21 +884,73 @@ export default function Chat() {
   // Formatação de data
   const formatDate = (dateString) => {
     if (!dateString) return '';
-    const date = new Date(dateString);
-    return date.toLocaleTimeString('pt-BR', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
-    });
-  };
-
-  // Função para voltar para a lista de contatos (mobile)
-  const handleBackToContacts = () => {
-    setCurrentContact(null);
+    try {
+      const messageDate = new Date(dateString);
+      
+      // Verificar se a data é válida
+      if (isNaN(messageDate.getTime())) {
+        console.error(`Data inválida: ${dateString}`);
+        return '';
+      }
+      
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+      const yesterday = new Date(today);
+      yesterday.setDate(yesterday.getDate() - 1);
+      
+      // Apenas hora para mensagens de hoje
+      if (messageDate >= today) {
+        return messageDate.toLocaleTimeString('pt-BR', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        });
+      } 
+      // "Ontem" para mensagens de ontem
+      else if (messageDate >= yesterday) {
+        return `Ontem ${messageDate.toLocaleTimeString('pt-BR', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        })}`;
+      } 
+      // "dd/mm" para mensagens de dias anteriores
+      else {
+        const formattedDate = messageDate.toLocaleDateString('pt-BR', {
+          day: '2-digit',
+          month: '2-digit'
+        });
+        const formattedTime = messageDate.toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit'
+        });
+        return `${formattedDate} ${formattedTime}`;
+      }
+    } catch (error) {
+      console.error(`Erro ao formatar data ${dateString}:`, error);
+      return '';
+    }
   };
 
   // Função para selecionar contato
   const handleSelectContact = (contact) => {
     setCurrentContact(contact);
+    
+    // Não atualizar a lista de exibição ao selecionar um contato
+    // Isso evita alterações visuais inesperadas durante a interação
+  };
+
+  // Função para voltar para a lista de contatos (mobile)
+  const handleBackToContacts = () => {
+    setCurrentContact(null);
+    
+    // Ao voltar para a lista, reordenar os contatos para mostrar as atualizações
+    const sortedContacts = [...contacts].sort((a, b) => {
+      if (!a.last_message_time) return 1;
+      if (!b.last_message_time) return -1;
+      return new Date(b.last_message_time) - new Date(a.last_message_time);
+    });
+    
+    setDisplayContacts(sortedContacts);
+    console.log('Reordenando contatos ao voltar para a lista');
   };
 
   // Adicionar função para enviar mensagem de diagnóstico
@@ -1037,7 +1180,7 @@ export default function Chat() {
     
     // Atualizar a hora da última mensagem e o texto para o contato atual
     setContacts(prevContacts => {
-      return prevContacts.map(contact => {
+      const updatedContacts = prevContacts.map(contact => {
         if ((contact.id || contact.remote_jid) === (currentContact.id || currentContact.remote_jid)) {
           return {
             ...contact,
@@ -1047,8 +1190,27 @@ export default function Chat() {
         }
         return contact;
       });
+      
+      return updatedContacts;
     });
   }, [messages, currentContact]);
+  
+  // Efeito para manter o displayContacts atualizado quando contacts mudar
+  // mas não durante a interação com um contato específico
+  useEffect(() => {
+    // Não reordenar imediatamente se um contato estiver selecionado
+    // Isso evita mudanças confusas na UI
+    if (!currentContact) {
+      const sortedContacts = [...contacts].sort((a, b) => {
+        if (!a.last_message_time) return 1;
+        if (!b.last_message_time) return -1;
+        return new Date(b.last_message_time) - new Date(a.last_message_time);
+      });
+      
+      setDisplayContacts(sortedContacts);
+      console.log('Atualizando ordem de exibição dos contatos (sem contato selecionado)');
+    }
+  }, [contacts, currentContact]);
 
   // Renderizar informações de diagnóstico
   const renderDiagnosticInfo = () => {
@@ -1244,20 +1406,11 @@ export default function Chat() {
                         Nenhuma conversa encontrada
                       </div>
                     ) : (
-                      contacts
+                      displayContacts
                         .filter(contact => 
                           contact.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
                           contact.phone?.includes(searchTerm)
                         )
-                        // Ordenação dos contatos pela última mensagem (mais recente primeiro)
-                        .sort((a, b) => {
-                          // Se não tiver hora da última mensagem, coloca no final
-                          if (!a.last_message_time) return 1;
-                          if (!b.last_message_time) return -1;
-                          
-                          // Ordem decrescente (mais recente primeiro)
-                          return new Date(b.last_message_time) - new Date(a.last_message_time);
-                        })
                         .map(contact => (
                           <div
                             key={contact.id || contact.remote_jid}
@@ -1277,7 +1430,7 @@ export default function Chat() {
                             <div className="ml-4 flex-1 min-w-0 overflow-hidden">
                               <div className="flex justify-between">
                                 <h3 className="font-semibold text-cyan-100">{contact.name || contact.push_name || 'Contato'}</h3>
-                                <span className="text-xs text-cyan-300 ml-1 shrink-0">
+                                <span className="text-xs text-cyan-300 ml-1 shrink-0 whitespace-nowrap">
                                   {contact.last_message_time && formatDate(contact.last_message_time)}
                                 </span>
                               </div>
@@ -1422,7 +1575,7 @@ export default function Chat() {
                                     className={`max-w-[75%] shadow-lg ${bgColorClass} p-2 border ${borderClass}`}
                                   >
                                     <p>{msg.content}</p>
-                                    <div className={`text-xs mt-1 text-right ${textColorClass}`}>
+                                    <div className={`text-xs mt-1 text-right whitespace-nowrap ${textColorClass}`}>
                                       {formatDate(msg.created_at)}
                                       {(msg.role === 'ME' || msg.role === 'AI') && (
                                         <span className="ml-1">

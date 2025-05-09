@@ -77,8 +77,43 @@ async function getConversationsForUser(userId, instanceId) {
   return data.map(item => item.conversation_id);
 }
 
+/**
+ * Busca a última mensagem de uma conversa específica
+ */
+async function getLastMessage(conversationId, instanceId) {
+  console.log(`[messageRepository] Buscando última mensagem para conversa: ${conversationId}`);
+  
+  // Construir consulta base
+  let query = supabaseAdmin
+    .from('messages')
+    .select('id, conversation_id, sender_id, recipient_id, content, metadata, timestamp, status, instance_id, role')
+    .eq('conversation_id', conversationId)
+    .order('timestamp', { ascending: false })
+    .limit(1);
+
+  // Adicionar filtro por instância se fornecido
+  if (instanceId) {
+    query = query.eq('instance_id', instanceId);
+  }
+
+  const { data, error } = await query;
+  
+  if (error) {
+    console.error(`[messageRepository] Erro ao buscar última mensagem para ${conversationId}:`, error);
+    throw error;
+  }
+  
+  console.log(`[messageRepository] Resultado para ${conversationId}: ${data.length > 0 ? 'Mensagem encontrada' : 'Nenhuma mensagem'}`);
+  if (data.length > 0) {
+    console.log(`[messageRepository] Timestamp: ${data[0].timestamp}, ID: ${data[0].id}`);
+  }
+  
+  return data.length > 0 ? data[0] : null;
+}
+
 module.exports = {
   saveMessage,
   getHistory,
-  getConversationsForUser
+  getConversationsForUser,
+  getLastMessage
 }; 
