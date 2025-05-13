@@ -153,7 +153,15 @@ async function getDashboardStats(req, userId, period = 'daily') {
         logger.info(`[FILTER-DEBUG] Resultado da comparação: start=${balanceDate >= periodStart}, end=${balanceDate <= periodEnd}`);
       }
       
-      return periodStart && periodEnd ? balanceDate >= periodStart && balanceDate <= periodEnd : false;
+      // Verificar se a data está dentro do período definido
+      const isInPeriod = periodStart && periodEnd ? balanceDate >= periodStart && balanceDate <= periodEnd : false;
+      
+      // Garantir que o registro tem um ID de lead válido
+      if (isInPeriod && !b.lead_id) {
+        logger.warn(`[BALANCE-WARNING] Registro de balance sem lead_id encontrado: ${b.id}`);
+      }
+      
+      return isInPeriod && b.lead_id;
     });
 
     // Debug para verificar os resultados da filtragem
@@ -213,6 +221,49 @@ async function getDashboardStats(req, userId, period = 'daily') {
       return periodStart && periodEnd ? leadDate >= periodStart && leadDate <= periodEnd : false;
     }).length;
 
+    // Extrair IDs de leads novos para excluí-los do cálculo de leads antigos
+    const newLeadsIds = new Set((leadsData || [])
+      .filter(lead => {
+        const leadDate = new Date(lead.created_at || lead.updated_at);
+        return periodStart && periodEnd ? leadDate >= periodStart && leadDate <= periodEnd : false;
+      })
+      .map(lead => lead.id));
+    
+    // Debug de leads novos
+    if (newLeadsIds.size > 0) {
+      logger.info(`[LEAD-DEBUG] IDs de ${newLeadsIds.size} leads novos identificados no período atual`);
+    }
+
+    // Calcular leads antigos que interagiram no período atual
+    // Um lead antigo é aquele que foi criado antes do período atual mas tem registros de consulta no período
+    const returningLeadsCount = (leadsData || [])
+      .filter(lead => {
+        // Pular se for um lead novo (já contado acima)
+        if (newLeadsIds.has(lead.id)) {
+          return false;
+        }
+        
+        // Verificar se o lead foi criado antes do período atual
+        const leadCreationDate = new Date(lead.created_at || lead.updated_at);
+        const isOldLead = periodStart ? leadCreationDate < periodStart : false;
+        
+        // Verificar se o lead tem consulta no período atual
+        const hasInteractionInPeriod = filteredBalanceData.some(
+          balance => balance.lead_id === lead.id
+        );
+        
+        // Log para depuração de leads antigos ativos
+        if (isOldLead && hasInteractionInPeriod) {
+          logger.info(`[RETURNING-LEAD-DEBUG] Lead antigo ativo encontrado: ${lead.name || lead.id} - Data criação: ${leadCreationDate.toISOString()} - Período: ${periodStart.toISOString()} a ${periodEnd.toISOString()}`);
+        }
+        
+        return isOldLead && hasInteractionInPeriod;
+      }).length;
+
+    // Log específico para diagnóstico de leads antigos
+    logger.info(`[RETURNING-LEAD-SUMMARY] Total leads: ${leadsData?.length || 0}, Leads novos: ${newLeadsCount}, Leads antigos ativos: ${returningLeadsCount}`);
+    logger.info(`[RETURNING-LEAD-SUMMARY] Período filtrado: ${periodStart?.toISOString() || 'não definido'} a ${periodEnd?.toISOString() || 'não definido'}`);
+    
     // Calcular porcentagem de leads que consultaram saldo
     const consultationPercentage = newLeadsCount > 0
       ? Math.round((leadsWithBalance.length / newLeadsCount) * 100)
@@ -225,7 +276,7 @@ async function getDashboardStats(req, userId, period = 'daily') {
       ? Math.round((validConsultationsCount / newLeadsCount) * 100)
       : 0;
 
-    logger.info(`[DASHBOARD] Cards: totalProposals=${totalProposals}, totalPaidProposals=${totalPaidProposals}, totalProposalsValue=${totalProposalsValue}, totalPaidProposalsValue=${totalPaidProposalsValue}, totalPendingProposals=${totalPendingProposals}, totalFormalizationProposals=${totalFormalizationProposals}, newLeadsCount=${newLeadsCount}, consultationPercentage=${consultationPercentage}, validConsultationsPercentage=${validConsultationsPercentage}`);
+    logger.info(`[DASHBOARD] Cards: totalProposals=${totalProposals}, totalPaidProposals=${totalPaidProposals}, totalProposalsValue=${totalProposalsValue}, totalPaidProposalsValue=${totalPaidProposalsValue}, totalPendingProposals=${totalPendingProposals}, totalFormalizationProposals=${totalFormalizationProposals}, newLeadsCount=${newLeadsCount}, returningLeadsCount=${returningLeadsCount}, consultationPercentage=${consultationPercentage}, validConsultationsPercentage=${validConsultationsPercentage}`);
 
     // Taxa de conversão (propostas pagas / propostas criadas)
     const conversionRate = totalProposals > 0
@@ -780,6 +831,7 @@ async function getDashboardStats(req, userId, period = 'daily') {
       totalFormalizationProposalsValue: `R$ ${totalFormalizationProposalsValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
       totalLeads,
       newLeadsCount,
+      returningLeadsCount,
       consultationPercentage,
       validConsultationsPercentage,
       conversionRate: `${conversionRate}%`,

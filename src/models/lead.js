@@ -10,6 +10,10 @@ class Lead {
     this.email = data.email;
     this.phone = data.phone;
     this.status = data.status;
+    this.cpf = (data.cpf && String(data.cpf).trim() !== '' ? data.cpf : (data.data && data.data.cpf) || null);
+    if (process.env.NODE_ENV !== 'production') {
+      logger.info(`[DEBUG] Valor do CPF no construtor Lead:`, { cpf: this.cpf, dataCpf: data.data?.cpf, rawCpf: data.cpf });
+    }
     this.data = data.data || {};
     this.created_at = data.created_at || new Date().toISOString();
     this.updated_at = data.updated_at || new Date().toISOString();
@@ -55,6 +59,7 @@ class Lead {
         logger.warn(`Lead.findById: não encontrado ${id}`);
         return null;
       }
+      logger.info('[DEBUG] Lead encontrado no banco:', data);
       return new Lead(data);
     } catch (err) {
       logger.error('Exception em Lead.findById():', err.message || err);
@@ -93,6 +98,21 @@ class Lead {
       logger.error('Exception em Lead.findAll():', err.message || err);
       return [];
     }
+  }
+
+  toJSON() {
+    return {
+      id: this.id,
+      client_id: this.client_id,
+      name: this.name,
+      email: this.email,
+      phone: this.phone,
+      status: this.status,
+      cpf: this.cpf,
+      data: this.data,
+      created_at: this.created_at,
+      updated_at: this.updated_at
+    };
   }
 }
 

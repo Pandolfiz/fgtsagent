@@ -17,7 +17,7 @@
     "@supabase/supabase-js": "^2.49.4",
     "@tailwindcss/cli": "^4.1.5",
     "@tailwindcss/vite": "^4.1.5",
-    "axios": "^1.8.4",
+    "axios": "^1.9.0",
     "bull": "^4.16.5",
     "commander": "^13.1.0",
     "concurrently": "^8.2.2",

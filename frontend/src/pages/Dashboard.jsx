@@ -125,10 +125,21 @@ export default function Dashboard() {
   const [proposalToDelete, setProposalToDelete] = useState(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const cancelButtonRef = useRef(null)
   const navigate = useNavigate()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+
+  // Detectar mudanças no tamanho da tela para ajustar o calendário
+  useEffect(() => {
+    function handleResize() {
+      setIsMobile(window.innerWidth < 768);
+    }
+    
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -264,6 +275,9 @@ export default function Dashboard() {
             console.log(`[DASHBOARD] Dados recebidos:`, data.data);
             setStats(data.data);
             console.log(`[DASHBOARD] Dados atualizados para período: ${period}`);
+            
+            // Log específico para depuração das métricas de leads
+            console.log(`[DASHBOARD-LEADS-DEBUG] Leads Novos: ${data.data.newLeadsCount}, Leads Antigos Ativos: ${data.data.returningLeadsCount}, Total de Leads: ${data.data.totalLeads}`);
           }
         } catch (error) {
           console.error('Erro ao buscar dados do dashboard:', error);
@@ -390,6 +404,7 @@ export default function Dashboard() {
 
   const cards = [
     { title: 'Leads Novos', value: stats.newLeadsCount, icon: <FaUserPlus className="text-green-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-green-400' },
+    { title: 'Leads Antigos Ativos', value: stats.returningLeadsCount, icon: <FaUserPlus className="text-purple-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-purple-400' },
     { title: 'Porcentagem de Consultas', value: `${stats.consultationPercentage || '0'}%`, icon: <FaPercentage className="text-blue-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-blue-400' },
     { title: 'Consultas Válidas', value: `${stats.validConsultationsPercentage || '0'}%`, icon: <FaPercentage className="text-teal-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-teal-400' },
     { title: 'Saldo Total Consultado', value: stats.totalBalance, icon: <FaDollarSign className="text-emerald-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-emerald-400' },
@@ -475,10 +490,12 @@ export default function Dashboard() {
           <h1 className="text-3xl font-bold mb-4 lg:mb-0 bg-clip-text text-transparent bg-gradient-to-r from-emerald-300 via-cyan-200 to-blue-300">
             Dashboard FGTS
           </h1>
-          <div className="flex w-full justify-end items-center gap-2 max-w-2xl ml-auto">
-            <div className="flex flex-nowrap items-center gap-2">
+          {/* Filtros de período - reorganizados para responsividade */}
+          <div className="w-full lg:w-auto lg:flex lg:flex-row lg:items-center lg:gap-2 lg:ml-auto">
+            {/* Desktop: todos os filtros em uma linha */}
+            <div className="hidden lg:flex lg:flex-row lg:items-center lg:gap-2">
               <Listbox value={period} onChange={setPeriod}>
-                <div className="relative w-full min-w-[200px]">
+                <div className="relative min-w-[180px]">
                   <Listbox.Button className="w-full px-3 py-2 rounded-lg bg-white/5 backdrop-blur border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner flex items-center justify-between">
                     {period === 'custom' && dateRange[0].startDate && dateRange[0].endDate ? 
                       (dateRange[0].startDate.getTime() === dateRange[0].endDate.getTime() ? 
@@ -504,6 +521,7 @@ export default function Dashboard() {
                   </Listbox.Options>
                 </div>
               </Listbox>
+              
               <div className="flex items-center">
                 <button
                   type="button"
@@ -511,7 +529,6 @@ export default function Dashboard() {
                   title="Selecionar período personalizado"
                   onClick={() => {
                     setIsCalendarOpen(open => !open);
-                    // Se abrir o calendário, ajustar para modo personalizado
                     if (!isCalendarOpen) {
                       setPeriod('custom');
                     }
@@ -520,114 +537,234 @@ export default function Dashboard() {
                 >
                   <CalendarIcon className="w-5 h-5" />
                 </button>
-                {isCalendarOpen && (
-                  <div id="calendar-dropdown" className="absolute z-50 mt-2 right-0 shadow-lg">
-                    <DateRange
-                      editableDateInputs
-                      onChange={item => {
-                        setDateRange([item.selection]);
-                        setPeriod('custom'); // Garantir que o modo está como personalizado
-                      }}
-                      moveRangeOnFirstSelection={false}
-                      ranges={dateRange}
-                      locale={ptBR}
-                      className="bg-white rounded shadow"
-                    />
+              </div>
+              
+              <Button onClick={() => {
+                const now = new Date();
+                const yesterday = new Date(now);
+                yesterday.setDate(now.getDate() - 1);
+                yesterday.setHours(0, 0, 0, 0);
+                
+                const yesterdayEnd = new Date(yesterday);
+                yesterdayEnd.setHours(23, 59, 59, 999);
+                
+                const newDateRange = [{ 
+                  startDate: yesterday, 
+                  endDate: yesterday,
+                  key: 'selection' 
+                }];
+                
+                setPeriod('custom');
+                setDateRange(newDateRange);
+                setIsCalendarOpen(false);
+              }} className="text-sm px-3 py-1 whitespace-nowrap">Ontem</Button>
+              
+              <Button onClick={() => {
+                const end = new Date()
+                const start = subDays(end, 7)
+                
+                const newDateRange = [{ 
+                  startDate: start, 
+                  endDate: end, 
+                  key: 'selection' 
+                }]
+                
+                setPeriod('custom')
+                setDateRange(newDateRange)
+                setIsCalendarOpen(false)
+              }} className="text-sm px-3 py-1 whitespace-nowrap">7 dias</Button>
+              
+              <Button onClick={() => {
+                const end = new Date()
+                const start = subDays(end, 30)
+                
+                const newDateRange = [{ 
+                  startDate: start, 
+                  endDate: end, 
+                  key: 'selection' 
+                }]
+                
+                setPeriod('custom')
+                setDateRange(newDateRange)
+                setIsCalendarOpen(false)
+              }} className="text-sm px-3 py-1 whitespace-nowrap">30 dias</Button>
+              
+              <Button onClick={() => {
+                const last = subMonths(new Date(), 1)
+                const start = startOfMonth(last)
+                const end = endOfMonth(last)
+                
+                const newDateRange = [{ 
+                  startDate: start, 
+                  endDate: end, 
+                  key: 'selection' 
+                }]
+                
+                setPeriod('custom')
+                setDateRange(newDateRange)
+                setIsCalendarOpen(false)
+              }} className="text-sm px-3 py-1 whitespace-nowrap">Último mês</Button>
+            </div>
+            
+            {/* Mobile: filtros empilhados */}
+            <div className="flex flex-col lg:hidden w-full">
+              {/* Primeira linha: seletor dropdown e calendário */}
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <Listbox value={period} onChange={setPeriod}>
+                  <div className="relative w-full min-w-[180px] max-w-[200px]">
+                    <Listbox.Button className="w-full px-3 py-2 rounded-lg bg-white/5 backdrop-blur border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner flex items-center justify-between">
+                      {period === 'custom' && dateRange[0].startDate && dateRange[0].endDate ? 
+                        (dateRange[0].startDate.getTime() === dateRange[0].endDate.getTime() ? 
+                          `Dia ${format(dateRange[0].startDate, 'dd/MM/yyyy')}` : 
+                          `${format(dateRange[0].startDate, 'dd/MM')} a ${format(dateRange[0].endDate, 'dd/MM/yyyy')}`) 
+                        : periodOptions.find(opt => opt.value === period)?.label || 'Personalizado'}
+                      <ChevronUpDownIcon className="w-5 h-5 text-cyan-300 ml-2 flex-shrink-0" />
+                    </Listbox.Button>
+                    <Listbox.Options className="absolute z-50 mt-1 w-full rounded-lg bg-cyan-950/95 border border-cyan-700 shadow-lg ring-1 ring-cyan-800/30 focus:outline-none">
+                      {periodOptions.map(option => (
+                        <Listbox.Option
+                          key={option.value}
+                          value={option.value}
+                          className={({ active, selected }) =>
+                            `cursor-pointer select-none px-4 py-2 text-base rounded-lg transition-colors duration-100 
+                            ${selected ? 'bg-cyan-700/60 text-white font-semibold' : ''}
+                            ${active && !selected ? 'bg-cyan-800/80 text-cyan-100' : ''}`
+                          }
+                        >
+                          {option.label}
+                        </Listbox.Option>
+                      ))}
+                    </Listbox.Options>
+                  </div>
+                </Listbox>
+                <div className="flex items-center">
+                  <button
+                    type="button"
+                    className="p-2 rounded-lg bg-white/10 border border-cyan-500 text-cyan-100 hover:bg-cyan-800/30 transition-colors flex-shrink-0"
+                    title="Selecionar período personalizado"
+                    onClick={() => {
+                      setIsCalendarOpen(open => !open);
+                      if (!isCalendarOpen) {
+                        setPeriod('custom');
+                      }
+                    }}
+                    id="date-range-input"
+                  >
+                    <CalendarIcon className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+              
+              {/* Segunda linha: botões de período */}
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={() => {
+                  const now = new Date();
+                  const yesterday = new Date(now);
+                  yesterday.setDate(now.getDate() - 1);
+                  yesterday.setHours(0, 0, 0, 0);
+                  
+                  const yesterdayEnd = new Date(yesterday);
+                  yesterdayEnd.setHours(23, 59, 59, 999);
+                  
+                  const newDateRange = [{ 
+                    startDate: yesterday, 
+                    endDate: yesterday,
+                    key: 'selection' 
+                  }];
+                  
+                  setPeriod('custom');
+                  setDateRange(newDateRange);
+                  setIsCalendarOpen(false);
+                }} className="text-sm px-3 py-1 whitespace-nowrap">Ontem</Button>
+                
+                <Button onClick={() => {
+                  const end = new Date()
+                  const start = subDays(end, 7)
+                  
+                  const newDateRange = [{ 
+                    startDate: start, 
+                    endDate: end, 
+                    key: 'selection' 
+                  }]
+                  
+                  setPeriod('custom')
+                  setDateRange(newDateRange)
+                  setIsCalendarOpen(false)
+                }} className="text-sm px-3 py-1 whitespace-nowrap">7 dias</Button>
+                
+                <Button onClick={() => {
+                  const end = new Date()
+                  const start = subDays(end, 30)
+                  
+                  const newDateRange = [{ 
+                    startDate: start, 
+                    endDate: end, 
+                    key: 'selection' 
+                  }]
+                  
+                  setPeriod('custom')
+                  setDateRange(newDateRange)
+                  setIsCalendarOpen(false)
+                }} className="text-sm px-3 py-1 whitespace-nowrap">30 dias</Button>
+                
+                <Button onClick={() => {
+                  const last = subMonths(new Date(), 1)
+                  const start = startOfMonth(last)
+                  const end = endOfMonth(last)
+                  
+                  const newDateRange = [{ 
+                    startDate: start, 
+                    endDate: end, 
+                    key: 'selection' 
+                  }]
+                  
+                  setPeriod('custom')
+                  setDateRange(newDateRange)
+                  setIsCalendarOpen(false)
+                }} className="text-sm px-3 py-1 whitespace-nowrap">Último mês</Button>
+              </div>
+            </div>
+            
+            {/* Calendário compartilhado por ambos os modos (web e mobile) */}
+            {isCalendarOpen && (
+              <div id="calendar-dropdown" className="fixed sm:absolute z-50 sm:mt-2 top-1/2 left-1/2 sm:left-auto sm:right-0 lg:right-auto -translate-x-1/2 -translate-y-1/2 sm:translate-x-0 sm:translate-y-0 sm:top-auto shadow-lg max-w-full overflow-auto">
+                <div className={`${isMobile ? 'max-w-[300px]' : 'max-w-full'} bg-gray-900/90 p-3 rounded-lg border border-cyan-700`}>
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="text-white font-medium">Selecionar Período</h3>
+                    <button 
+                      onClick={() => setIsCalendarOpen(false)} 
+                      className="text-cyan-300 hover:text-white"
+                      aria-label="Fechar calendário"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                      </svg>
+                    </button>
+                  </div>
+                  <DateRange
+                    editableDateInputs
+                    onChange={item => {
+                      setDateRange([item.selection]);
+                      setPeriod('custom');
+                    }}
+                    moveRangeOnFirstSelection={false}
+                    ranges={dateRange}
+                    locale={ptBR}
+                    className="bg-white rounded shadow"
+                    months={isMobile ? 1 : 2}
+                    direction={isMobile ? "vertical" : "horizontal"}
+                    rangeColors={["#06b6d4"]} // Cor Cyan para combinar com o tema
+                    color="#06b6d4"
+                  />
+                  <div className="flex justify-end mt-3">
                     <Button onClick={() => {
                       setIsCalendarOpen(false);
                       setPeriod('custom');
-                      
-                      // O useEffect cuidará da chamada à API quando os estados forem atualizados
-                      console.log('[DASHBOARD] Botão "Aplicar" do calendário clicado - atualizando estado');
-                    }} className="ml-2">Aplicar</Button>
+                    }} className="ml-2 w-full sm:w-auto">Aplicar</Button>
                   </div>
-                )}
+                </div>
               </div>
-            </div>
-            <Button onClick={() => {
-              const now = new Date();
-              // Criar data de ontem explicitamente com hora, minuto, segundo zerados
-              const yesterday = new Date(now);
-              yesterday.setDate(now.getDate() - 1);
-              yesterday.setHours(0, 0, 0, 0);
-              
-              // Criar também data fim (fim do dia de ontem)
-              const yesterdayEnd = new Date(yesterday);
-              yesterdayEnd.setHours(23, 59, 59, 999);
-              
-              // Log detalhado para depuração
-              console.log(`[ONTEM] Data de ontem início: ${yesterday.toISOString()}`);
-              console.log(`[ONTEM] Data de ontem fim: ${yesterdayEnd.toISOString()}`);
-              console.log(`[ONTEM] Data início formatada: ${yesterday.toISOString().slice(0, 10)}`);
-              
-              // Configurar as datas e atualizar o estado
-              const newDateRange = [{ 
-                startDate: yesterday, 
-                endDate: yesterday, // Mantemos a mesma data para que seja apenas um dia
-                key: 'selection' 
-              }];
-              
-              // Apenas atualizamos o estado - o useEffect cuidará da chamada à API
-              console.log('[DASHBOARD] Botão "Ontem" clicado - atualizando estado');
-              setPeriod('custom');
-              setDateRange(newDateRange);
-              setIsCalendarOpen(false);
-            }} className="text-sm px-3 py-1 whitespace-nowrap flex-shrink-0">Ontem</Button>
-            
-            <Button onClick={() => {
-              const end = new Date()
-              const start = subDays(end, 7)
-              
-              // Configurar as datas e atualizar o estado
-              const newDateRange = [{ 
-                startDate: start, 
-                endDate: end, 
-                key: 'selection' 
-              }]
-              
-              // Apenas atualizamos o estado - o useEffect cuidará da chamada à API
-              console.log('[DASHBOARD] Botão "7 dias" clicado - atualizando estado');
-              setPeriod('custom')
-              setDateRange(newDateRange)
-              setIsCalendarOpen(false)
-            }} className="text-sm px-3 py-1 whitespace-nowrap flex-shrink-0">7 dias</Button>
-            
-            <Button onClick={() => {
-              const end = new Date()
-              const start = subDays(end, 30)
-              
-              // Configurar as datas e atualizar o estado
-              const newDateRange = [{ 
-                startDate: start, 
-                endDate: end, 
-                key: 'selection' 
-              }]
-              
-              // Apenas atualizamos o estado - o useEffect cuidará da chamada à API
-              console.log('[DASHBOARD] Botão "30 dias" clicado - atualizando estado');
-              setPeriod('custom')
-              setDateRange(newDateRange)
-              setIsCalendarOpen(false)
-            }} className="text-sm px-3 py-1 whitespace-nowrap flex-shrink-0">30 dias</Button>
-            
-            <Button onClick={() => {
-              const last = subMonths(new Date(), 1)
-              const start = startOfMonth(last)
-              const end = endOfMonth(last)
-              
-              // Configurar as datas e atualizar o estado
-              const newDateRange = [{ 
-                startDate: start, 
-                endDate: end, 
-                key: 'selection' 
-              }]
-              
-              // Apenas atualizamos o estado - o useEffect cuidará da chamada à API
-              console.log('[DASHBOARD] Botão "Último mês" clicado - atualizando estado');
-              setPeriod('custom')
-              setDateRange(newDateRange)
-              setIsCalendarOpen(false)
-            }} className="text-sm px-3 py-1 whitespace-nowrap flex-shrink-0">Último mês</Button>
+            )}
           </div>
         </div>
 
@@ -914,33 +1051,33 @@ export default function Dashboard() {
             </table>
           </div>
         </div>
-      </div>
 
-      <Transition.Root show={deleteModalOpen} as={Fragment}>
-        <Dialog as="div" className="relative z-50" initialFocus={cancelButtonRef} onClose={() => setDeleteModalOpen(false)}>
-          <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
-            <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
-          </Transition.Child>
-          <div className="fixed inset-0 z-50 overflow-y-auto">
-            <div className="flex min-h-full items-center justify-center p-4 text-center">
-              <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
-                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700">
-                  <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white">Confirmar exclusão</Dialog.Title>
-                  <div className="mt-2 text-gray-200">Tem certeza que deseja excluir esta proposta? Esta ação não pode ser desfeita.</div>
-                  {deleteError && <div className="mt-2 text-red-400 text-sm">{deleteError}</div>}
-                  <div className="mt-6 flex justify-end gap-2">
-                    <button ref={cancelButtonRef} type="button" className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" onClick={() => setDeleteModalOpen(false)} disabled={isDeleting}>Cancelar</button>
-                    <button type="button" className="inline-flex justify-center rounded-md border border-red-700 bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 focus:outline-none disabled:opacity-60" onClick={handleDeleteProposal} disabled={isDeleting}>
-                      {isDeleting ? <span className="animate-spin mr-2 w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block align-middle" /> : null}
-                      Excluir
-                    </button>
-                  </div>
-                </Dialog.Panel>
-              </Transition.Child>
+        <Transition.Root show={deleteModalOpen} as={Fragment}>
+          <Dialog as="div" className="relative z-50" initialFocus={cancelButtonRef} onClose={() => setDeleteModalOpen(false)}>
+            <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
+              <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
+            </Transition.Child>
+            <div className="fixed inset-0 z-50 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
+                  <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700">
+                    <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white">Confirmar exclusão</Dialog.Title>
+                    <div className="mt-2 text-gray-200">Tem certeza que deseja excluir esta proposta? Esta ação não pode ser desfeita.</div>
+                    {deleteError && <div className="mt-2 text-red-400 text-sm">{deleteError}</div>}
+                    <div className="mt-6 flex justify-end gap-2">
+                      <button ref={cancelButtonRef} type="button" className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" onClick={() => setDeleteModalOpen(false)} disabled={isDeleting}>Cancelar</button>
+                      <button type="button" className="inline-flex justify-center rounded-md border border-red-700 bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 focus:outline-none disabled:opacity-60" onClick={handleDeleteProposal} disabled={isDeleting}>
+                        {isDeleting ? <span className="animate-spin mr-2 w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block align-middle" /> : null}
+                        Excluir
+                      </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
             </div>
-          </div>
-        </Dialog>
-      </Transition.Root>
+          </Dialog>
+        </Transition.Root>
+      </div>
     </>
   )
 }

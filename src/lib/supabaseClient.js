@@ -1,53 +1,20 @@
+/**
+ * Cliente Supabase para acesso ao banco de dados
+ */
 const { createClient } = require('@supabase/supabase-js');
 const logger = require('../utils/logger');
 
-// Obter as variáveis de ambiente
+// Obter as credenciais do ambiente
 const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_KEY;
+const supabaseKey = process.env.SUPABASE_KEY;
 
-// Verificar se as variáveis de ambiente foram definidas
-if (!supabaseUrl || !supabaseServiceKey) {
-  logger.error('ERRO CRÍTICO: Variáveis de ambiente do Supabase não configuradas!', {
-    hasUrl: !!supabaseUrl,
-    hasKey: !!supabaseServiceKey
-  });
-  // Não lançar erro aqui, permitir que a aplicação continue inicializando
+// Verificar se as credenciais estão definidas
+if (!supabaseUrl || !supabaseKey) {
+  logger.error('Credenciais do Supabase não configuradas. Verifique as variáveis SUPABASE_URL e SUPABASE_KEY.');
+  process.exit(1);
 }
 
-logger.info('Inicializando cliente Supabase no backend', {
-  url: supabaseUrl,
-  hasKey: !!supabaseServiceKey
-});
+// Criar cliente do Supabase
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Criar o cliente Supabase com a chave de serviço (permite acesso total ao banco)
-const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
-});
-
-// Função utilitária para testar a conexão
-const testSupabaseConnection = async () => {
-  try {
-    const startTime = Date.now();
-    const { data, error } = await supabase.from('contacts').select('count').limit(1);
-    const duration = Date.now() - startTime;
-    
-    logger.info(`Teste de conexão Supabase: ${duration}ms`, {
-      success: !error,
-      error: error?.message,
-      data
-    });
-    
-    return { success: !error, data, duration };
-  } catch (err) {
-    logger.error('Erro ao testar conexão com Supabase:', err);
-    return { success: false, error: err.message };
-  }
-};
-
-module.exports = {
-  supabase,
-  testSupabaseConnection
-}; 
+module.exports = { supabase }; 

@@ -1,273 +1,201 @@
 /**
- * Serviço para gerenciar credenciais com opções de autenticação
+ * Serviço para gerenciar credenciais
  */
-const { supabase } = require('../config/supabase');
+const { supabase, supabaseAdmin } = require('../config/supabase');
 const logger = require('../utils/logger');
+const whatsappConfig = require('../config/whatsapp');
 
+/**
+ * Classe para gerenciar credenciais de serviços externos
+ */
 class CredentialsService {
-  constructor() {
-    // A chave anon já está configurada no cliente supabase
-    this.supabaseAdmin = supabase; // Para operações que requerem privilégios de admin
-  }
-
   /**
-   * Salva uma credencial
-   * @param {Object} credentialData - Dados da credencial
-   * @returns {Promise<Object>} - Credencial salva ou erro
+   * Obtém as credenciais do WhatsApp para um usuário específico
+   * @param {string} userId - ID do usuário no sistema
+   * @returns {Promise<Object>} - Credenciais do WhatsApp
    */
-  async saveCredential(credentialData) {
+  async getWhatsappCredentials(userId) {
     try {
-      logger.info('Salvando credencial com método padrão');
+      if (!userId) {
+        logger.error('ID do usuário não fornecido para buscar credenciais do WhatsApp');
+        throw new Error('ID do usuário é obrigatório para obter credenciais do WhatsApp');
+      }
+
+      logger.info(`Buscando credenciais do WhatsApp para o usuário: ${userId}`);
+      logger.info(`Token de acesso do WhatsApp presente no .env: ${whatsappConfig.accessToken ? 'Sim' : 'Não'}`);
       
-      // Verificar dados essenciais
-      if (!credentialData.name || !credentialData.type || !credentialData.organization_id) {
-        throw new Error('Dados incompletos: name, type e organization_id são obrigatórios');
+      // Verificar se o token de acesso está configurado
+      if (!whatsappConfig.accessToken) {
+        logger.error('WHATSAPP_ACCESS_TOKEN não configurado no arquivo .env');
+        throw new Error('Token de acesso do WhatsApp não configurado no .env');
       }
       
-      // Preparar objeto para inserção
-      const credentialObj = {
-        name: credentialData.name,
-        type: credentialData.type,
-        organization_id: credentialData.organization_id,
-        data: credentialData.data || {},
-        created_by: credentialData.created_by || null,
-        created_at: credentialData.created_at || new Date().toISOString(),
-        updated_at: credentialData.updated_at || new Date().toISOString(),
-        status: 'active'
+      // Realizar uma consulta simplificada e direta usando a conexão ADMIN do Supabase
+      logger.info(`Consultando tabela 'whatsapp_credentials' para o cliente: ${userId} (usando credenciais admin)`);
+      
+      const { data, error } = await supabaseAdmin
+        .from('whatsapp_credentials')
+        .select('*')
+        .limit(10);
+      
+      logger.info(`Resposta da consulta admin ao Supabase: ${JSON.stringify({
+        sucesso: !error,
+        registros: data ? data.length : 0,
+        erro: error ? error.message : 'nenhum'
+      })}`);
+      
+      if (error) {
+        logger.error(`Erro na consulta admin ao Supabase: ${error.message}`);
+        throw new Error(`Falha ao consultar tabela whatsapp_credentials: ${error.message}`);
+      }
+      
+      // Verificar explicitamente se temos registros
+      if (!data || data.length === 0) {
+        logger.error('Nenhum registro encontrado na tabela whatsapp_credentials (admin)');
+        throw new Error('Tabela whatsapp_credentials vazia');
+      }
+      
+      // Filtrar para o usuário específico
+      let userCredentials = data.filter(cred => cred.client_id === userId);
+      
+      // Se não encontrou para este usuário, usar o primeiro registro
+      if (!userCredentials || userCredentials.length === 0) {
+        logger.warn(`Nenhuma credencial encontrada para o usuário ${userId}. Usando a primeira disponível.`);
+        userCredentials = [data[0]];
+      }
+      
+      // Registro encontrado
+      const credential = userCredentials[0];
+      logger.info(`Usando credencial: ${JSON.stringify({
+        id: credential.id,
+        client_id: credential.client_id,
+        wpp_number_id: credential.wpp_number_id,
+        wpp_business_account_id: credential.wpp_business_account_id
+      })}`);
+      
+      // Verificar se os campos necessários estão presentes
+      if (!credential.wpp_number_id || !credential.wpp_business_account_id) {
+        logger.error('Credencial encontrada com campos obrigatórios vazios');
+        throw new Error('Credenciais do WhatsApp incompletas. Configure wpp_number_id e wpp_business_account_id.');
+      }
+      
+      // Retornar as credenciais encontradas
+      return {
+        accessToken: whatsappConfig.accessToken,
+        phoneNumberId: credential.wpp_number_id,
+        businessAccountId: credential.wpp_business_account_id,
+        apiVersion: whatsappConfig.apiVersion,
+        baseUrl: whatsappConfig.baseUrl
+      };
+    } catch (error) {
+      logger.error(`Erro ao processar credenciais do WhatsApp: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  /**
+   * Salva ou atualiza os dados do WhatsApp para um usuário
+   * @param {string} userId - ID do usuário
+   * @param {Object} whatsappData - Dados do WhatsApp a serem salvos
+   * @returns {Promise<Object>} - Resultado da operação
+   */
+  async saveWhatsappData(userId, whatsappData) {
+    try {
+      logger.info(`Salvando dados do WhatsApp para o usuário: ${userId}`);
+      
+      // Verificar se já existem dados para este usuário - pega o mais recente
+      const { data: existingData } = await supabaseAdmin
+        .from('whatsapp_credentials')
+        .select('id, updated_at')
+        .eq('client_id', userId)
+        .order('updated_at', { ascending: false })
+        .limit(1);
+      
+      const whatsappCredentialsData = {
+        client_id: userId,
+        wpp_number_id: whatsappData.phoneNumberId,
+        wpp_business_account_id: whatsappData.businessAccountId,
+        updated_at: new Date().toISOString()
       };
       
-      const { data, error } = await supabase
-        .from('credentials')
-        .insert(credentialObj)
-        .select()
-        .single();
+      let result;
+      
+      if (existingData && existingData.length > 0) {
+        // Atualizar dados existentes
+        const { data, error } = await supabaseAdmin
+          .from('whatsapp_credentials')
+          .update(whatsappCredentialsData)
+          .eq('id', existingData[0].id)
+          .select();
         
-      if (error) {
-        logger.error(`Erro ao salvar credencial: ${error.message}`);
+        if (error) throw new Error(`Falha ao atualizar dados do WhatsApp: ${error.message}`);
+        result = data;
         
-        // Tentar método alternativo com service_role
-        logger.info('Tentando salvar com método service_role alternativo');
-        return await this.saveCredentialAsServiceRole(credentialData);
+        // Fazer limpeza de registros duplicados, mantendo apenas o mais recente
+        await this._cleanupDuplicateCredentials(userId, existingData[0].id);
+      } else {
+        // Inserir novos dados
+        whatsappCredentialsData.created_at = new Date().toISOString();
+        
+        const { data, error } = await supabaseAdmin
+          .from('whatsapp_credentials')
+          .insert(whatsappCredentialsData)
+          .select();
+        
+        if (error) throw new Error(`Falha ao inserir dados do WhatsApp: ${error.message}`);
+        result = data;
       }
       
-      logger.info(`Credencial ${data.id} salva com sucesso`);
-      return data;
+      logger.info(`Dados do WhatsApp salvos com sucesso para o usuário: ${userId}`);
+      return { success: true, data: result };
     } catch (error) {
-      logger.error(`Erro ao salvar credencial: ${error.message}`);
-      
-      // Tentar método alternativo
-      try {
-        return await this.saveCredentialAsServiceRole(credentialData);
-      } catch (serviceRoleError) {
-        // Se falhar em ambos os métodos, lançar o erro
-        throw new Error(`Falha ao salvar credencial: ${error.message}`);
-      }
+      logger.error(`Erro ao salvar dados do WhatsApp: ${error.message}`);
+      return { success: false, error: error.message };
     }
   }
-
+  
   /**
-   * Salva uma credencial usando autenticação de serviço
-   * Útil para callbacks OAuth2 onde o usuário não está autenticado via JWT
-   * @param {Object} credentialData - Dados da credencial
-   * @returns {Promise<Object>} - Credencial salva ou erro
+   * Remove registros duplicados, mantendo apenas o registro ativo
+   * @param {string} userId - ID do usuário
+   * @param {string} activeRecordId - ID do registro a ser mantido
+   * @private
    */
-  async saveCredentialAsServiceRole(credentialData) {
+  async _cleanupDuplicateCredentials(userId, activeRecordId) {
     try {
-      logger.info('Salvando credencial usando service_role');
-      
-      // Verificar dados essenciais
-      if (!credentialData.name || !credentialData.type || !credentialData.organization_id) {
-        throw new Error('Dados incompletos: name, type e organization_id são obrigatórios');
+      // Encontrar todos os outros registros para este usuário
+      const { data, error } = await supabaseAdmin
+        .from('whatsapp_credentials')
+        .select('id')
+        .eq('client_id', userId)
+        .neq('id', activeRecordId);
+        
+      if (error) {
+        logger.error(`Erro ao buscar registros duplicados: ${error.message}`);
+        return;
       }
       
-      // Método 1: Usar a função RPC save_credential_anonymous
-      try {
-        const { data: rpcData, error: rpcError } = await supabase.rpc('save_credential_anonymous', {
-          p_name: credentialData.name,
-          p_type: credentialData.type,
-          p_organization_id: credentialData.organization_id,
-          p_data: credentialData.data || {},
-          p_created_by: credentialData.created_by || null
-        });
-
-        if (rpcError) {
-          logger.error(`Erro ao salvar credencial via RPC: ${rpcError.message || JSON.stringify(rpcError)}`, rpcError);
-          throw new Error(`Erro ao salvar credencial via RPC: ${rpcError.message || JSON.stringify(rpcError)}`);
-        }
+      if (data && data.length > 0) {
+        const duplicateIds = data.map(item => item.id);
+        logger.info(`Encontrados ${duplicateIds.length} registros duplicados para limpeza`);
         
-        if (rpcData) {
-          logger.info(`Credencial salva com sucesso via RPC: ${rpcData.id}`);
-          return rpcData;
-        }
-      } catch (rpcError) {
-        logger.warn(`RPC falhou, tentando método alternativo: ${rpcError.message}`);
-      }
-      
-      // Método 2: Tentativa direta com service_role
-      try {
-        // Preparar objeto para inserção
-        const credentialObj = {
-          name: credentialData.name,
-          type: credentialData.type,
-          organization_id: credentialData.organization_id,
-          data: credentialData.data || {},
-          created_by: credentialData.created_by || null,
-          created_at: credentialData.created_at || new Date().toISOString(),
-          updated_at: credentialData.updated_at || new Date().toISOString(),
-          status: 'active'
-        };
-        
-        const { data, error } = await supabase
-          .from('credentials')
-          .insert(credentialObj)
-          .select()
-          .single();
+        // Excluir os registros duplicados
+        const { error: deleteError } = await supabaseAdmin
+          .from('whatsapp_credentials')
+          .delete()
+          .in('id', duplicateIds);
           
-        if (error) {
-          logger.error(`Erro ao salvar credencial via Supabase client: ${error.message || JSON.stringify(error)}`);
-          throw new Error(`Erro ao salvar credencial: ${error.message || JSON.stringify(error)}`);
+        if (deleteError) {
+          logger.error(`Erro ao excluir registros duplicados: ${deleteError.message}`);
+          return;
         }
         
-        logger.info(`Credencial ${data.id} salva com sucesso`);
-        return data;
-      } catch (error) {
-        // Se todas as tentativas falharem, lançar o erro
-        logger.error(`Todas as tentativas de salvar credencial falharam: ${error.message || JSON.stringify(error)}`);
-        throw error;
+        logger.info(`${duplicateIds.length} registros duplicados removidos com sucesso`);
       }
-    } catch (error) {
-      let errorMessage = 'Erro ao salvar credencial';
-      
-      if (error.message) {
-        errorMessage = `${errorMessage}: ${error.message}`;
-      } else if (typeof error === 'object') {
-        errorMessage = `${errorMessage}: ${JSON.stringify(error)}`;
-      }
-      
-      logger.error(errorMessage);
-      throw new Error(errorMessage);
-    }
-  }
-  
-  /**
-   * Obtém uma credencial pelo ID
-   * @param {string} credentialId - ID da credencial
-   * @param {string} organizationId - ID da organização
-   * @returns {Promise<Object>} - Credencial ou null
-   */
-  async getCredentialById(credentialId, organizationId) {
-    try {
-      // Usar o cliente normal do Supabase que respeita RLS
-      const { data, error } = await supabase
-        .from('credentials')
-        .select('*')
-        .eq('id', credentialId)
-        .eq('organization_id', organizationId)
-        .single();
-        
-      if (error) {
-        logger.error(`Erro ao buscar credencial ${credentialId}: ${error.message}`);
-        return null;
-      }
-      
-      return data;
-    } catch (error) {
-      logger.error(`Erro ao buscar credencial: ${error.message}`);
-      return null;
-    }
-  }
-  
-  /**
-   * Lista credenciais de uma organização
-   * @param {string} organizationId - ID da organização
-   * @param {string} [type] - Filtrar por tipo (opcional)
-   * @returns {Promise<Array>} - Lista de credenciais
-   */
-  async listOrganizationCredentials(organizationId, type = null) {
-    try {
-      let query = supabase
-        .from('credentials')
-        .select('*')
-        .eq('organization_id', organizationId);
-        
-      if (type) {
-        query = query.eq('type', type);
-      }
-      
-      const { data, error } = await query;
-      
-      if (error) {
-        logger.error(`Erro ao listar credenciais: ${error.message}`);
-        return [];
-      }
-      
-      return data || [];
-    } catch (error) {
-      logger.error(`Erro ao listar credenciais: ${error.message}`);
-      return [];
-    }
-  }
-  
-  /**
-   * Atualiza uma credencial pelo ID
-   * @param {string} credentialId - ID da credencial
-   * @param {string} organizationId - ID da organização
-   * @param {Object} updates - Dados a serem atualizados
-   * @returns {Promise<Object>} - Credencial atualizada ou null
-   */
-  async updateCredential(credentialId, organizationId, updates) {
-    try {
-      // Remover campos que não podem ser atualizados
-      const { id, created_at, created_by, ...updateData } = updates;
-      
-      // Adicionar data de atualização
-      updateData.updated_at = new Date().toISOString();
-      
-      const { data, error } = await supabase
-        .from('credentials')
-        .update(updateData)
-        .eq('id', credentialId)
-        .eq('organization_id', organizationId)
-        .select()
-        .single();
-        
-      if (error) {
-        logger.error(`Erro ao atualizar credencial ${credentialId}: ${error.message}`);
-        return null;
-      }
-      
-      return data;
-    } catch (error) {
-      logger.error(`Erro ao atualizar credencial: ${error.message}`);
-      return null;
-    }
-  }
-  
-  /**
-   * Exclui uma credencial pelo ID
-   * @param {string} credentialId - ID da credencial
-   * @param {string} organizationId - ID da organização
-   * @returns {Promise<boolean>} - true se excluída com sucesso
-   */
-  async deleteCredential(credentialId, organizationId) {
-    try {
-      const { error } = await supabase
-        .from('credentials')
-        .delete()
-        .eq('id', credentialId)
-        .eq('organization_id', organizationId);
-        
-      if (error) {
-        logger.error(`Erro ao excluir credencial ${credentialId}: ${error.message}`);
-        return false;
-      }
-      
-      return true;
-    } catch (error) {
-      logger.error(`Erro ao excluir credencial: ${error.message}`);
-      return false;
+    } catch (cleanupError) {
+      logger.error(`Erro durante limpeza de credenciais duplicadas: ${cleanupError.message}`);
     }
   }
 }
 
+// Exporta uma instância do serviço
 module.exports = new CredentialsService(); 

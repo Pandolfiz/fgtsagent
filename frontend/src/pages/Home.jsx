@@ -266,7 +266,7 @@ export default function Home({ isLoggedIn }) {
           O que dizem nossos clientes
         </motion.h2>
         <motion.div
-          className="container mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 px-4"
+          className="container mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 px-4"
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true }}
@@ -279,17 +279,22 @@ export default function Home({ isLoggedIn }) {
             name: 'Ana Paula',
             text: 'O FgtsAgent revolucionou nosso atendimento! Automatização e agilidade que nunca vi antes.',
             company: 'CredFácil',
-            avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=facearea&w=256&h=256&facepad=2'
+            avatar: '/img/testimonials/woman1.jpg'
           }, {
             name: 'Carlos Silva',
             text: 'A integração omnichannel e os relatórios em tempo real facilitaram muito a gestão dos leads.',
             company: 'FinancePro',
-            avatar: 'https://images.pexels.com/photos/614810/pexels-photo-614810.jpeg?auto=compress&w=256&h=256&fit=facearea&facepad=2'
+            avatar: '/img/testimonials/man1.jpg'
           }, {
             name: 'Juliana Souza',
             text: 'A parceria com a V8 Digital trouxe ainda mais inovação e segurança para nosso negócio!',
             company: 'SaqueJá',
-            avatar: 'https://images.unsplash.com/photo-1529626455594-4ff0802cfb7e?auto=format&fit=facearea&w=256&h=256&facepad=2'
+            avatar: '/img/testimonials/woman2.jpg'
+          }, {
+            name: 'Roberto Oliveira',
+            text: 'Conseguimos aumentar em 40% o número de propostas aprovadas desde que começamos a usar o FgtsAgent.',
+            company: 'Credirapid',
+            avatar: '/img/testimonials/man2-new.jpg'
           }].map((d, i) => (
             <Tilt
               key={i}
@@ -304,16 +309,30 @@ export default function Home({ isLoggedIn }) {
               className="rounded-2xl"
             >
               <motion.div
-                className="bg-white/10 rounded-2xl p-8 text-center shadow-xl hover:scale-105 transition backdrop-blur-lg border border-cyan-400/40 drop-shadow-neon card-futuristic flex flex-col items-center"
+                className="bg-white/10 rounded-2xl p-6 sm:p-8 text-center shadow-xl hover:scale-105 transition backdrop-blur-lg border border-cyan-400/40 drop-shadow-neon card-futuristic flex flex-col items-center h-full justify-between"
                 initial={{ opacity: 0, y: 40 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ duration: 0.7, delay: i * 0.1 }}
               >
-                <img src={d.avatar} alt={d.name} className="w-16 h-16 rounded-full mb-4 border-4 border-cyan-400 shadow-lg animate-fade-in" />
-                <p className="text-white/90 italic mb-4 animate-fade-in-delay">"{d.text}"</p>
-                <span className="font-bold text-cyan-300 animate-fade-in">{d.name}</span>
-                <span className="text-cyan-100 text-sm animate-fade-in-delay">{d.company}</span>
+                <div className="flex flex-col items-center">
+                  <img 
+                    src={d.avatar} 
+                    alt={`Foto de ${d.name}`} 
+                    loading="lazy"
+                    className="w-16 h-16 rounded-full mb-4 border-4 border-cyan-400 shadow-lg animate-fade-in object-cover" 
+                    style={{ objectPosition: 'center top' }}
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(d.name)}&background=00bcd4&color=fff&size=256`;
+                    }}
+                  />
+                  <p className="text-white/90 italic mb-4 animate-fade-in-delay">"{d.text}"</p>
+                </div>
+                <div>
+                  <span className="font-bold text-cyan-300 animate-fade-in block">{d.name}</span>
+                  <span className="text-cyan-100 text-sm animate-fade-in-delay">{d.company}</span>
+                </div>
               </motion.div>
             </Tilt>
           ))}
@@ -324,7 +343,16 @@ export default function Home({ isLoggedIn }) {
       <section id="parceiro" className="relative z-10 py-12 text-white text-center flex flex-col items-center">
         <span className="mb-4 text-lg animate-fade-in">Uma solução em parceria com</span>
         <a href="https://www.v8digital.online/" target="_blank" rel="noopener noreferrer" className="inline-block animate-fade-in-delay">
-          <img src="https://www.v8digital.online/logo.svg" alt="Logo V8 Digital" className="h-16 md:h-20 drop-shadow-neon hover:scale-105 transition" style={{ filter: 'drop-shadow(0 0 8px #00bcd4)' }} />
+          <img 
+            src="https://placehold.co/300x100/00bcd4/white?text=V8+DIGITAL" 
+            alt="Logo V8 Digital" 
+            className="h-16 md:h-20 drop-shadow-neon hover:scale-105 transition" 
+            style={{ filter: 'drop-shadow(0 0 8px #00bcd4)' }}
+            onError={(e) => {
+              e.target.onerror = null;
+              e.target.src = "/img/partners/v8digital-logo.svg";
+            }}
+          />
         </a>
       </section>
 

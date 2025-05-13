@@ -17,10 +17,20 @@ class LeadController {
     try {
       const { id } = req.params;
       const lead = await Lead.findById(id);
-      if (!lead || lead.client_id !== req.clientId) {
+      console.log('[DEBUG] Lead retornado do banco:', lead);
+      console.log('[DEBUG] Comparação de client_id:', {
+        leadClientId: lead?.client_id,
+        reqClientId: req.clientId,
+        leadClientIdType: typeof lead?.client_id,
+        reqClientIdType: typeof req.clientId,
+        iguais: String(lead?.client_id).trim() === String(req.clientId).trim(),
+        url: req.originalUrl
+      });
+      if (!lead || String(lead.client_id).trim() !== String(req.clientId).trim()) {
+        console.log('[DEBUG] Lead não encontrado ou client_id não bate');
         return res.status(404).json({ success: false, message: 'Lead não encontrado' });
       }
-      return res.json({ success: true, data: lead });
+      return res.json({ success: true, data: lead.toJSON() });
     } catch (err) {
       logger.error('LeadController.getById error:', err.message || err);
       return res.status(500).json({ success: false, message: err.message });

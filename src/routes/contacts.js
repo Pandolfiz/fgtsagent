@@ -1,6 +1,6 @@
 const express = require('express');
 const router = express.Router();
-const { supabase } = require('../lib/supabaseClient');
+const { supabase } = require('../config/supabase');
 const { requireAuth } = require('../middleware/auth');
 const logger = require('../utils/logger');
 
@@ -9,7 +9,7 @@ const logger = require('../utils/logger');
  * @desc Obter todos os contatos do usuário autenticado
  * @access Private
  */
-router.get('/', async (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
     logger.info(`Buscando contatos para usuário: ${userId}`);
@@ -46,7 +46,8 @@ router.get('/', async (req, res) => {
       user_id: userId,
       remote_jid: contact.remote_jid,
       client_id: contact.client_id,
-      agent_state: contact.agent_state || 'human'
+      agent_state: contact.agent_state || 'human',
+      lead_id: contact.lead_id
     }));
     
     return res.json({
@@ -68,7 +69,7 @@ router.get('/', async (req, res) => {
  * @desc Obter contagem de contatos (usado para diagnóstico)
  * @access Private
  */
-router.get('/count', async (req, res) => {
+router.get('/count', requireAuth, async (req, res) => {
   try {
     const { data, error } = await supabase
       .from('contacts')
@@ -100,7 +101,7 @@ router.get('/count', async (req, res) => {
  * @desc Criar um novo contato
  * @access Private
  */
-router.post('/', async (req, res) => {
+router.post('/', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
     const { name, phone } = req.body;
@@ -151,8 +152,7 @@ router.post('/', async (req, res) => {
       unread_count: 0,
       online: false,
       user_id: userId,
-      client_id: userId,
-      agent_state: 'ai'
+      client_id: userId
     };
     
     logger.info(`Contato criado com sucesso: ${name}`);

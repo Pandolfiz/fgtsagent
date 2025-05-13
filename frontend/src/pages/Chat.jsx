@@ -1,8 +1,81 @@
 import React, { useState, useEffect, useRef } from 'react'
 import Navbar from '../components/Navbar'
-import { FaSearch, FaEllipsisV, FaPaperclip, FaMicrophone, FaSmile, FaPhone, FaVideo, FaPlus, FaArrowLeft, FaSpinner, FaExclamationTriangle } from 'react-icons/fa'
+import { FaSearch, FaEllipsisV, FaPaperclip, FaMicrophone, FaSmile, FaPhone, FaVideo, FaPlus, FaArrowLeft, FaSpinner, FaExclamationTriangle, FaWallet, FaCalculator, FaFileAlt, FaTimesCircle, FaCheckCircle, FaInfoCircle, FaIdCard, FaRegCopy } from 'react-icons/fa'
 import { IoSend } from 'react-icons/io5'
 import { useNavigate } from 'react-router-dom'
+
+// Função auxiliar para gerar IDs de mensagem únicos
+function generateMessageId() {
+  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+}
+
+// Função de debounce para evitar múltiplos cliques
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+// Função robusta para formatação de valores monetários
+function formataMoeda(valor) {
+  // Se o valor for null, undefined ou não numérico, retornar null
+  if (valor === null || valor === undefined) {
+    console.log("formataMoeda: valor nulo ou indefinido");
+    return null;
+  }
+  
+  try {
+    // Garantir que estamos trabalhando com um número
+    let numero;
+    
+    // Verificar se já é um número
+    if (typeof valor === 'number') {
+      console.log(`formataMoeda: valor já é número: ${valor}`);
+      numero = valor;
+    } else {
+      // Tentar converter string para número
+      // Remover qualquer formatação que possa existir
+      const valorLimpo = String(valor).replace(/[^\d.,]/g, '')
+        .replace(/\./g, '#')  // Substituir temporariamente pontos
+        .replace(/,/g, '.')   // Substituir vírgulas por pontos
+        .replace(/#/g, '');   // Remover pontos temporários
+      
+      numero = parseFloat(valorLimpo);
+      console.log(`formataMoeda: convertido string "${valor}" para número: ${numero}`);
+    }
+    
+    // Verificar se a conversão resultou em um número válido
+    if (isNaN(numero)) {
+      console.warn(`formataMoeda: não foi possível converter "${valor}" para número`);
+      return null;
+    }
+    
+    // Formatar o número como moeda brasileira
+    const formatado = new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
+      minimumFractionDigits: 2
+    }).format(numero);
+    
+    console.log(`formataMoeda: valor formatado com sucesso: ${numero} -> ${formatado}`);
+    return formatado;
+  } catch (error) {
+    console.error(`Erro ao formatar valor monetário: ${error.message}`);
+    // Fallback simples
+    try {
+      return `R$ ${parseFloat(valor).toFixed(2).replace('.', ',')}`;
+    } catch (e) {
+      console.error(`Erro no fallback de formatação: ${e.message}`);
+      return null;
+    }
+  }
+}
 
 export default function Chat() {
   const [contacts, setContacts] = useState([])
@@ -10,34 +83,204 @@ export default function Chat() {
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
   const [currentContact, setCurrentContact] = useState(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const [isLoading, setIsLoading] = useState(false) // Inicializar como false
   const [isUpdating, setIsUpdating] = useState(false)
+  const [isSendingMessage, setIsSendingMessage] = useState(false) // Controle de envio
+  const [lastMessageTimestamp, setLastMessageTimestamp] = useState(0) // Timestamp do último envio
   const [currentUser, setCurrentUser] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768)
+  const [screenWidth, setScreenWidth] = useState(window.innerWidth)
   const [error, setError] = useState(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState(null)
   const [autoResponseContacts, setAutoResponseContacts] = useState({})
   const [forceUpdate, setForceUpdate] = useState(0)
   const messagesEndRef = useRef(null)
+  const lastMessageIdRef = useRef(null) // Referência para o último ID de mensagem
   const navigate = useNavigate()
+  
+  // Estilos para dispositivos móveis usando variáveis CSS personalizadas
+  const mobileStyles = {
+    mainContainer: {
+      height: 'calc(100vh - 4rem)',
+      maxHeight: 'calc(100vh - 4rem)',
+      marginBottom: '0px',
+      padding: '0rem',
+      width: '100%'
+    },
+    messagesContainer: {
+      height: 'auto',
+      maxHeight: 'calc(100vh - 12rem)',
+      padding: '0rem'
+    },
+    pageContainer: {
+      padding: '0',
+      margin: '0',
+      height: '100vh',
+      minHeight: '100vh',
+      maxHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      background: 'linear-gradient(to bottom right, rgb(4 47 46), rgb(12 74 110), rgb(23 37 84))',
+      overflow: 'hidden',
+      width: '100vw'
+    },
+    contentContainer: {
+      padding: '0.5rem',
+      paddingBottom: '0.5rem',
+      margin: '0',
+      flex: '1',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
+      width: '100%'
+    },
+    messageInputContainer: {
+      margin: '0',
+      padding: '0rem',
+      borderTop: '1px solid rgba(8, 145, 178, 0.2)'
+    }
+  };
 
   // Estado para controlar quando deve rolar a tela
   const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false);
   const [prevMessagesLength, setPrevMessagesLength] = useState(0);
 
+  // Estados para os dados do contato
+  const [contactData, setContactData] = useState({
+    saldo: null,
+    simulado: null,
+    erroConsulta: null,
+    proposta: null,
+    erroProposta: null,
+    statusProposta: null,
+    descricaoStatus: null,
+    valorProposta: null,
+    linkFormalizacao: null,
+    chavePix: null
+  });
+
+  // [ADICIONAR estados locais para feedback de cópia]
+  const [copiedPix, setCopiedPix] = useState(false);
+  const [copiedId, setCopiedId] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  // Log inicial para diagnóstico
+  useEffect(() => {
+    console.log('Componente Chat inicializado');
+    console.log('Estado inicial de contactData:', contactData);
+  }, []);
+
   // Detectar mudanças de tamanho da tela
   useEffect(() => {
     const handleResize = () => {
-      setIsMobileView(window.innerWidth < 768)
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      setScreenWidth(width);
+      setIsMobileView(width < 768);
+      
+      // Ajustar o viewport height em dispositivos móveis para lidar com barras de navegação
+      if (width < 768) {
+        // Subtrair altura do navbar e espaçamentos
+        const adjustedHeight = height - 20; // 20px de espaçamento
+        document.documentElement.style.setProperty('--vh', `${adjustedHeight * 0.01}px`);
+        
+        // Detectar iOS
+        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
+        if (isIOS) {
+          document.body.classList.add('ios-device');
+        } else {
+          document.body.classList.remove('ios-device');
+        }
+      }
     }
+
+    // Executar imediatamente para definir o valor inicial
+    handleResize();
 
     window.addEventListener('resize', handleResize)
     return () => {
       window.removeEventListener('resize', handleResize)
     }
   }, [])
+
+  // Adicionar estilos CSS para o iOS
+  useEffect(() => {
+    // Remover margens e paddings do corpo da página
+    document.body.style.margin = '0';
+    document.body.style.padding = '0';
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.margin = '0';
+    document.documentElement.style.padding = '0';
+    document.documentElement.style.overflow = 'hidden';
+    
+    // Criar um estilo para dispositivos iOS
+    const style = document.createElement('style');
+    style.innerHTML = `
+      .ios-device .message-input-container {
+        padding-bottom: env(safe-area-inset-bottom, 20px);
+      }
+      
+      html, body {
+        margin: 0 !important;
+        padding: 0 !important;
+        overflow: hidden !important;
+        height: 100% !important;
+      }
+      
+      .message-input-container {
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+      }
+      
+      .container.mx-auto {
+        margin-bottom: 0 !important;
+        padding-bottom: 0 !important;
+      }
+    `;
+    document.head.appendChild(style);
+    
+    return () => {
+      document.head.removeChild(style);
+      document.body.style.margin = '';
+      document.body.style.padding = '';
+      document.body.style.overflow = '';
+      document.documentElement.style.margin = '';
+      document.documentElement.style.padding = '';
+      document.documentElement.style.overflow = '';
+    };
+  }, []);
+
+  // Adicionar estilos globais para customizar as barras de scroll
+  useEffect(() => {
+    const style = document.createElement('style');
+    style.innerHTML = `
+      /* Scrollbar geral */
+      ::-webkit-scrollbar {
+        width: 8px;
+        background: transparent;
+      }
+      ::-webkit-scrollbar-thumb {
+        background: linear-gradient(135deg, #0891b2 40%, #0ea5e9 100%);
+        border-radius: 8px;
+        border: 2px solid transparent;
+        background-clip: padding-box;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: linear-gradient(135deg, #06b6d4 40%, #38bdf8 100%);
+      }
+      /* Firefox */
+      * {
+        scrollbar-width: thin;
+        scrollbar-color: #0891b2 #0000;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
 
   // Função para testar a conexão com a API
   useEffect(() => {
@@ -342,12 +585,12 @@ export default function Chat() {
     }
   };
 
-  // Limpar mensagens e marcar como carregando ao trocar de contato
+  // Limpar mensagens ao trocar de contato
   useEffect(() => {
     if (currentContact) {
-      // Ao trocar de contato, limpar as mensagens e marcar como carregando
+      // Ao trocar de contato, limpar as mensagens sem marcar como carregando
+      // O carregamento será controlado pela função fetchMessages
       setMessages([]);
-      setIsLoading(true);
     }
   }, [currentContact]);
 
@@ -718,23 +961,57 @@ export default function Chat() {
     }
   };
 
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
+  // Função processadora de envio de mensagens - separada para poder aplicar debounce
+  const processSendMessage = async (messageContent, messageId) => {
+    if (!messageContent.trim() || !currentContact || !currentUser) return;
     
-    if (!newMessage.trim() || !currentContact || !currentUser) return;
+    // Verificar se é a mesma mensagem sendo enviada novamente em um curto período
+    if (lastMessageIdRef.current === messageId) {
+      console.log('Ignorando envio duplicado com mesmo ID:', messageId);
+      return;
+    }
+    
+    // Verificar se passou tempo suficiente desde o último envio (500ms mínimo)
+    const now = Date.now();
+    if (now - lastMessageTimestamp < 500) {
+      console.log('Ignorando clique rápido:', now - lastMessageTimestamp, 'ms desde o último envio');
+      return;
+    }
     
     try {
+      setIsSendingMessage(true);
+      // Atualizar timestamp e ID da última mensagem
+      setLastMessageTimestamp(now);
+      lastMessageIdRef.current = messageId;
+      
+      // Adicionar a mensagem temporariamente ao estado local para feedback imediato
+      const tempMsg = {
+        id: messageId,
+        content: messageContent,
+        sender_id: currentUser.id,
+        receiver_id: currentContact.phone || currentContact.remote_jid,
+        created_at: new Date().toISOString(),
+        is_read: false,
+        from_me: true,
+        role: 'ME',
+        temp: true // Marcar como temporária
+      };
+      
+      // Adicionar a mensagem temporária imediatamente ao estado
+      setMessages(prev => [...prev, tempMsg]);
+      
+      // Indica que deve rolar para o final após enviar
+      setShouldScrollToBottom(true);
+      
       const payload = {
         conversationId: currentContact.remote_jid,
-        content: newMessage,
+        content: messageContent,
         recipientId: currentContact.phone,
-        role: 'ME'
+        role: 'ME',
+        messageId: messageId // Enviar ID único para backend
       };
       
       console.log('Enviando nova mensagem:', payload);
-      
-      // Já indica que deve rolar para o final após enviar uma nova mensagem
-      setShouldScrollToBottom(true);
       
       const response = await fetch('/api/messages', {
         method: 'POST',
@@ -745,11 +1022,14 @@ export default function Chat() {
         body: JSON.stringify(payload)
       });
       
-      // Adicionar diagnóstico de resposta
       console.log('Status da resposta:', response.status);
       
       if (!response.ok) {
         const errorData = await response.json();
+        
+        // Remover a mensagem temporária em caso de erro
+        setMessages(prev => prev.filter(msg => msg.id !== messageId));
+        
         throw new Error(errorData.message || `Erro ${response.status} ao enviar mensagem`);
       }
       
@@ -757,55 +1037,72 @@ export default function Chat() {
       console.log('Resposta completa do envio de mensagem:', data);
       
       if (!data.success) {
+        // Remover a mensagem temporária em caso de erro
+        setMessages(prev => prev.filter(msg => msg.id !== messageId));
+        
         throw new Error(data.message || 'Erro ao enviar mensagem');
       }
       
       // Extrair a mensagem da resposta da API
       const newMsg = data.message;
-      if (!newMsg) {
-        console.warn('API retornou sucesso mas sem objeto de mensagem');
-        // Criar uma mensagem temporária com ID local até que a mensagem real seja obtida pelo polling
-        const tempMsg = {
-          id: `temp-${Date.now()}`,
-          content: newMessage,
-          sender_id: currentUser.id,
-          receiver_id: currentContact.phone || currentContact.remote_jid,
-          created_at: new Date().toISOString(),
-          is_read: false,
-          from_me: true, // Garantir que seja mostrada como enviada pelo usuário
-          role: 'ME'  // Garantir que tenha o papel correto para exibição
-        };
-        setMessages(prev => [...prev, tempMsg]);
-      } else {
-        // Adicionar a flag from_me para garantir que seja renderizada corretamente
+      if (newMsg) {
+        // Remover a mensagem temporária e substituir pela mensagem real
+        setMessages(prev => {
+          const withoutTemp = prev.filter(msg => msg.id !== messageId);
+          
+          // Adicionar a mensagem confirmada pela API
         const processedMsg = {
           ...newMsg,
           from_me: true,
-          role: newMsg.role || 'ME'  // Preservar role se existir, senão definir como 'ME'
-        };
-        // Adicionar a mensagem retornada pela API
-        setMessages(prev => [...prev, processedMsg]);
+            role: newMsg.role || 'ME'
+          };
+          
+          return [...withoutTemp, processedMsg];
+        });
       }
       
-      // Limpar campo de mensagem
-      setNewMessage('');
-      
-      // Adicionar log detalhado para debug
-      console.log('=========== DEBUG DE MENSAGEM ENVIADA ===========');
-      console.log('Detalhes da resposta:', data);
-      console.log('URL da API chamada: /api/messages');
-      console.log('Mensagem enviada para: ' + currentContact.phone);
-      console.log('Agent state: ' + (currentContact?.agent_state || 'indefinido'));
-      console.log('==================================================');
-      
-      // O código para envio automático de respostas foi removido completamente
-      // Não será enviada nenhuma resposta automática do assistente
       console.log(`Mensagem enviada com sucesso. Agent state: ${currentContact?.agent_state || 'indefinido'}`);
       
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error);
       setError('Erro ao enviar mensagem. Por favor, tente novamente.');
+    } finally {
+      // Garantir ao menos 500ms de "cooldown" entre envios
+      setTimeout(() => {
+        setIsSendingMessage(false);
+      }, 500);
     }
+  };
+  
+  // Aplicando debounce na função de processamento
+  const debouncedSendMessage = useRef(
+    debounce(processSendMessage, 300) // 300ms de debounce
+  ).current;
+  
+  const handleSendMessage = (e) => {
+    e.preventDefault();
+    console.log("handleSendMessage chamado");
+    
+    // Verificação simples e clara
+    if (!newMessage.trim()) {
+      console.log("Mensagem vazia, não enviando");
+      return;
+    }
+    
+    if (isSendingMessage) {
+      console.log("Já existe uma mensagem sendo enviada");
+      return;
+    }
+    
+    // Gerar ID único para esta tentativa de envio
+    const messageId = generateMessageId();
+    const messageContent = newMessage;
+    
+    // Limpar o campo de mensagem imediatamente
+    setNewMessage('');
+    
+    // Chamar a função diretamente, sem debounce
+    processSendMessage(messageContent, messageId);
   };
 
   const handleCreateContact = async () => {
@@ -1212,105 +1509,746 @@ export default function Chat() {
     }
   }, [contacts, currentContact]);
 
-  // Renderizar informações de diagnóstico
-  const renderDiagnosticInfo = () => {
-    return (
-      <div className="mt-4 bg-white/10 backdrop-blur-sm rounded-lg p-4 border border-cyan-900/50 shadow-lg">
-        <h3 className="text-lg font-semibold mb-2 text-cyan-100">Informações de Diagnóstico:</h3>
-        <p className="text-cyan-300">Conexão com API: {connectionStatus?.connected ? 'OK' : 'Falha'}</p>
-        <p className="text-cyan-300">Última verificação: {connectionStatus?.timestamp ? new Date(connectionStatus.timestamp).toLocaleTimeString() : 'N/A'}</p>
+  // Buscar dados do contato quando um contato é selecionado
+  useEffect(() => {
+    if (!currentContact || !currentUser?.id) return;
+    
+    async function fetchContactData() {
+      try {
+        console.log(`Buscando dados detalhados para contato: ${currentContact.remote_jid}`, {
+          contact: currentContact,
+          hasLeadId: Boolean(currentContact.lead_id)
+        });
         
-        {/* Resumo dos tipos de mensagens recebidas */}
-        <div className="mt-2">
-          <h4 className="text-md font-semibold text-cyan-100">Distribuição de mensagens:</h4>
-          <p className="text-cyan-300">
-            ME (usuário): {messages.filter(m => m.role === 'ME').length} mensagens
-          </p>
-          <p className="text-cyan-300">
-            AI (assistente): {messages.filter(m => m.role === 'AI').length} mensagens
-          </p>
-          <p className="text-cyan-300">
-            USER (cliente): {messages.filter(m => m.role === 'USER').length} mensagens
-          </p>
-          <p className="text-cyan-300">
-            Sem role definido: {messages.filter(m => !m.role).length} mensagens
-          </p>
+        // Não limpar dados anteriores durante o carregamento
+        // Em vez disso, definimos apenas uma flag de carregamento
+        // que vai ser usada para mostrar o spinner
+        setIsLoading(true);
+        
+        // Função para buscar dados diretamente se a API normal falhar
+        const fetchDirectData = async () => {
+          console.log('Tentando obter dados diretos do banco...');
+          try {
+            const directResponse = await fetch(`/api/dev/direct-data?contactId=${currentContact.remote_jid}`, {
+              credentials: 'include'
+            });
+            
+            if (!directResponse.ok) {
+              throw new Error(`Erro ao acessar dados diretos: ${directResponse.status}`);
+            }
+            
+            const directData = await directResponse.json();
+            console.log('Dados obtidos diretamente:', directData);
+            
+            // Verificar todos os dados relacionados à proposta
+            console.log('Dados brutos da proposta recebidos:');
+            console.log('- proposal_id:', directData.proposal_id);
+            console.log('- proposal_status:', directData.proposal_status);
+            console.log('- proposal_amount:', directData.proposal_amount);
+            console.log('- formalization_link:', directData.formalization_link);
+            console.log('- pix_key:', directData.pix_key);
+            // Verificar também campos alternativos
+            console.log('- valor_proposta:', directData.valor_proposta);
+            console.log('- link_formalizacao:', directData.link_formalizacao);
+            console.log('- chave_pix:', directData.chave_pix);
+            
+            if (directData.success) {
+              // Converter explicitamente para número
+              let saldo = null;
+              let simulado = null;
+              let valorProposta = null;
+              
+              if (directData.balance !== null && directData.balance !== undefined) {
+                saldo = Number(directData.balance);
+                console.log(`Saldo direto recebido: ${directData.balance} -> convertido para ${saldo}`);
+              }
+              
+              if (directData.simulation !== null && directData.simulation !== undefined) {
+                simulado = Number(directData.simulation);
+                console.log(`Simulado direto recebido: ${directData.simulation} -> convertido para ${simulado}`);
+              }
+              
+              // Processar valor da proposta - verificando todos os possíveis campos
+              const valorPropostaRaw = directData.proposal_amount || directData.valor_proposta;
+              if (valorPropostaRaw !== null && valorPropostaRaw !== undefined) {
+                valorProposta = Number(valorPropostaRaw);
+                console.log(`Valor da proposta recebido: ${valorPropostaRaw} -> convertido para ${valorProposta}`);
+              }
+              
+              // Verificar vários campos possíveis para link e pix
+              const linkFormalizacao = directData.formalization_link || directData.link_formalizacao;
+              const chavePix = directData.pix_key || directData.chave_pix;
+              
+              return {
+                success: true,
+                saldo,
+                simulado,
+                proposta: directData.proposal_id,
+                erroProposta: null,
+                statusProposta: directData.proposal_status,
+                descricaoStatus: directData.proposal_status && `Status da proposta: ${directData.proposal_status}`,
+                valorProposta: valorProposta,
+                linkFormalizacao: linkFormalizacao || null,
+                chavePix: chavePix || null
+              };
+            }
+            return null;
+          } catch (error) {
+            console.error('Erro ao buscar dados diretos:', error);
+            return null;
+          }
+        };
+        
+        // Função específica para buscar detalhes da proposta do Supabase
+        const fetchProposalData = async (proposalId) => {
+          if (!proposalId) return null;
+          
+          try {
+            console.log(`Buscando dados da proposta ${proposalId} no Supabase...`);
+            const response = await fetch(`/api/proposals/${proposalId}`, {
+              credentials: 'include'
+            });
+            
+            if (!response.ok) {
+              throw new Error(`Erro ao buscar dados da proposta: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            console.log('Dados da proposta obtidos do Supabase:', data);
+            
+            if (data.success && data.proposal) {
+              return {
+                valorProposta: data.proposal.amount || data.proposal.valor || null,
+                linkFormalizacao: data.proposal.formalization_link || data.proposal.link_formalizacao || null,
+                chavePix: data.proposal.pix_key || data.proposal.chave_pix || null,
+                statusDetalhado: data.proposal.status_detail || data.proposal.status_detalhado || null
+              };
+            }
+            return null;
+          } catch (error) {
+            console.error('Erro ao buscar dados da proposta do Supabase:', error);
+            return null;
+          }
+        };
+        
+        // Usar o endpoint da API para obter dados reais do cliente
+        const response = await fetch(`/api/contacts/${currentContact.remote_jid}/data`, {
+          credentials: 'include'
+        });
+        
+        console.log(`Resposta da API para dados do contato ${currentContact.remote_jid}:`, {
+          status: response.status,
+          ok: response.ok
+        });
+        
+        if (response.ok) {
+          const data = await response.json();
+          console.log('Dados completos da resposta da API:', data);
+          
+          // Verificar todos os dados da proposta
+          console.log('Dados da proposta na API normal:');
+          console.log('- proposta:', data.proposta);
+          console.log('- status_proposta:', data.status_proposta);
+          console.log('- valor_proposta:', data.valor_proposta);
+          console.log('- link_formalizacao:', data.link_formalizacao);
+          console.log('- chave_pix:', data.chave_pix);
+          
+          if (data.success) {
+            console.log('Dados do contato obtidos com sucesso:', data);
+            
+            // Melhorar a conversão e validação dos dados numéricos
+            let saldo = null;
+            let simulado = null;
+            let valorProposta = null;
+            
+            // Verificar se saldo existe e convertê-lo para número se for string
+            if (data.saldo !== null && data.saldo !== undefined) {
+              if (typeof data.saldo === 'string') {
+                // Tentar converter para número se for string
+                try {
+                  saldo = parseFloat(data.saldo);
+                  console.log(`Convertido saldo de string para número: ${saldo}`);
+                } catch (e) {
+                  console.error(`Erro ao converter saldo: ${e.message}`);
+                  saldo = null;
+                }
+              } else {
+                // Se já for número, usar diretamente
+                saldo = data.saldo;
+              }
+              
+              // Verificar validade após conversão
+              if (isNaN(saldo)) {
+                console.warn(`Saldo convertido não é um número válido: ${saldo}`);
+                saldo = null;
+              }
+            }
+            
+            // Mesmo tratamento para valor simulado
+            if (data.simulado !== null && data.simulado !== undefined) {
+              if (typeof data.simulado === 'string') {
+                try {
+                  simulado = parseFloat(data.simulado);
+                  console.log(`Convertido simulado de string para número: ${simulado}`);
+                } catch (e) {
+                  console.error(`Erro ao converter simulado: ${e.message}`);
+                  simulado = null;
+                }
+              } else {
+                simulado = data.simulado;
+              }
+              
+              if (isNaN(simulado)) {
+                console.warn(`Simulado convertido não é um número válido: ${simulado}`);
+                simulado = null;
+              }
+            }
+            
+            // Processar valor da proposta da mesma forma
+            if (data.valor_proposta !== null && data.valor_proposta !== undefined) {
+              if (typeof data.valor_proposta === 'string') {
+                try {
+                  valorProposta = parseFloat(data.valor_proposta);
+                  console.log(`Convertido valor da proposta de string para número: ${valorProposta}`);
+                } catch (e) {
+                  console.error(`Erro ao converter valor da proposta: ${e.message}`);
+                  valorProposta = null;
+                }
+              } else {
+                valorProposta = data.valor_proposta;
+              }
+              
+              if (isNaN(valorProposta)) {
+                console.warn(`Valor da proposta convertido não é um número válido: ${valorProposta}`);
+                valorProposta = null;
+              }
+            }
+            
+            // Extrair os dados do contato da resposta e verificar cada campo
+            // Mapear nomes das propriedades da API para o formato esperado pelo componente com validação apropriada
+            let novosDados = {
+              saldo: saldo, // Valor já convertido e validado
+              simulado: simulado, // Valor já convertido e validado
+              erroConsulta: data.erro_consulta,
+              proposta: data.proposta,
+              erroProposta: data.erro_proposta,
+              statusProposta: data.status_proposta,
+              descricaoStatus: data.descricao_status,
+              valorProposta: valorProposta,
+              linkFormalizacao: data.link_formalizacao || null,
+              chavePix: data.chave_pix || null
+            };
+            
+            // Verificar se temos um ID de proposta para buscar dados adicionais no Supabase
+            if (data.proposta) {
+              try {
+                const proposalData = await fetchProposalData(data.proposta);
+                if (proposalData) {
+                  console.log('Dados adicionais da proposta obtidos do Supabase:', proposalData);
+                  
+                  // Combinar os dados da API com os dados do Supabase
+                  novosDados = {
+                    ...novosDados,
+                    // Preferir valores do Supabase, mas manter valores da API como fallback
+                    valorProposta: proposalData.valorProposta !== null ? proposalData.valorProposta : novosDados.valorProposta,
+                    linkFormalizacao: proposalData.linkFormalizacao || novosDados.linkFormalizacao,
+                    chavePix: proposalData.chavePix || novosDados.chavePix,
+                    // Adicionar detalhes extras do status se disponíveis
+                    descricaoStatus: proposalData.statusDetalhado || novosDados.descricaoStatus
+                  };
+                  
+                  console.log('Dados combinados (API + Supabase):', novosDados);
+                }
+              } catch (error) {
+                console.error('Erro ao buscar/combinar dados adicionais da proposta:', error);
+              }
+            }
+            
+            // Buscar CPF do lead se houver lead_id
+            if (currentContact.lead_id) {
+              try {
+                const resp = await fetch(`/api/admin/leads/${currentContact.lead_id}/cpf`, { credentials: 'include' });
+                if (resp.ok) {
+                  const data = await resp.json();
+                  if (data.success && data.cpf) {
+                    novosDados.cpf = data.cpf;
+                  }
+                }
+              } catch (err) {
+                console.error('Erro ao buscar CPF do lead (admin):', err);
+              }
+            }
+            
+            // Log dos dados antes da atualização
+            console.log('Atualizando estado com novos dados processados:', {
+              daAPI: {
+                saldo: data.saldo,
+                simulado: data.simulado,
+                erro_consulta: data.erro_consulta,
+                proposta: data.proposta,
+                erro_proposta: data.erro_proposta,
+                status_proposta: data.status_proposta,
+                descricao_status: data.descricao_status,
+                valor_proposta: data.valor_proposta,
+                link_formalizacao: data.link_formalizacao,
+                chave_pix: data.chave_pix
+              },
+              processados: {
+                saldo,
+                simulado,
+                valorProposta: novosDados.valorProposta,
+                linkFormalizacao: novosDados.linkFormalizacao,
+                chavePix: novosDados.chavePix,
+                cpf: novosDados.cpf
+              },
+              paraComponente: novosDados
+            });
+            
+            setContactData(novosDados);
+          } else {
+            console.log('API indica falha:', data);
+            
+            // Se a API retornar erro, tentar obter dados diretos
+            console.log('Tentando obter dados diretos devido a erro da API...');
+            const dadosDiretos = await fetchDirectData();
+            
+            if (dadosDiretos) {
+              console.log('Usando dados diretos:', dadosDiretos);
+              setContactData(dadosDiretos);
+            } else {
+              setContactData({
+                saldo: null,
+                simulado: null,
+                erroConsulta: data.message || 'Erro desconhecido ao buscar dados',
+                proposta: null,
+                erroProposta: null,
+                statusProposta: null,
+                descricaoStatus: null,
+                valorProposta: null,
+                linkFormalizacao: null,
+                chavePix: null
+              });
+            }
+          }
+        } else {
+          console.error(`Erro HTTP ${response.status} ao buscar dados do contato`);
+          
+          // Tentar obter dados diretos em caso de erro HTTP
+          console.log('Tentando obter dados diretos devido a erro HTTP...');
+          const dadosDiretos = await fetchDirectData();
+          
+          if (dadosDiretos) {
+            console.log('Usando dados diretos após erro HTTP:', dadosDiretos);
+            setContactData(dadosDiretos);
+          } else {
+            setContactData({
+              saldo: null,
+              simulado: null,
+              erroConsulta: `Erro ${response.status} ao buscar dados`,
+              proposta: null,
+              erroProposta: null,
+              statusProposta: null,
+              descricaoStatus: null,
+              valorProposta: null,
+              linkFormalizacao: null,
+              chavePix: null
+            });
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao buscar dados do contato:', error);
+        setContactData({
+          saldo: null,
+          simulado: null,
+          erroConsulta: `Erro: ${error.message}`,
+          proposta: null,
+          erroProposta: null,
+          statusProposta: null,
+          descricaoStatus: null,
+          valorProposta: null,
+          linkFormalizacao: null,
+          chavePix: null
+        });
+      } finally {
+        // Independente do resultado, desativar o carregamento
+        setIsLoading(false);
+      }
+    }
+    
+    fetchContactData();
+  }, [currentContact, currentUser?.id]);
+
+  // Verificação do estado dos dados do contato (debug)
+  useEffect(() => {
+    console.log('Estado de contactData atualizado:', contactData);
+    console.log('Verificação de campo a campo:');
+    console.log('- saldo:', contactData.saldo, typeof contactData.saldo, Boolean(contactData.saldo));
+    console.log('- simulado:', contactData.simulado, typeof contactData.simulado, Boolean(contactData.simulado));
+    console.log('- erroConsulta:', contactData.erroConsulta, typeof contactData.erroConsulta, Boolean(contactData.erroConsulta));
+    console.log('- proposta:', contactData.proposta, typeof contactData.proposta, Boolean(contactData.proposta));
+    console.log('- statusProposta:', contactData.statusProposta, typeof contactData.statusProposta, Boolean(contactData.statusProposta));
+  }, [contactData]);
+
+  // Renderizar painel de dados do contato
+  const renderContactDataPanel = () => {
+    if (!currentContact) return null;
+    
+    console.log('Renderizando painel de dados do contato com:', contactData);
+    
+    // Valores formatados com nossa função robusta
+    const saldoFormatado = formataMoeda(contactData.saldo);
+    const simuladoFormatado = formataMoeda(contactData.simulado);
+    const valorPropostaFormatado = formataMoeda(contactData.valorProposta);
+    
+    // Debug dos valores formatados
+    console.log('Valores após formatação de moeda:');
+    console.log(`- saldo original: ${contactData.saldo} (${typeof contactData.saldo})`);
+    console.log(`- saldo formatado: ${saldoFormatado}`);
+    console.log(`- simulado original: ${contactData.simulado} (${typeof contactData.simulado})`);
+    console.log(`- simulado formatado: ${simuladoFormatado}`);
+    console.log(`- valor proposta original: ${contactData.valorProposta} (${typeof contactData.valorProposta})`);
+    console.log(`- valor proposta formatado: ${valorPropostaFormatado}`);
+    console.log(`- link formalização: ${contactData.linkFormalizacao}`);
+    console.log(`- chave pix: ${contactData.chavePix}`);
+    
+    // Mapeamento de status para versões mais legíveis
+    const getStatusLabel = (status) => {
+      const statusMap = {
+        'aprovada': 'Aprovada',
+        'em_analise': 'Em Análise',
+        'rejeitada': 'Rejeitada',
+        'pendente': 'Pendente',
+        'paid': 'Paga',
+        'processing': 'Processando',
+        'canceled': 'Cancelada',
+        'failed': 'Falhou'
+      };
+      return statusMap[status] || status || 'Pendente';
+    };
+    
+    // Mapeamento de status para classes de estilo
+    const getStatusClass = (status) => {
+      const classMap = {
+        'aprovada': 'bg-emerald-600/50 text-emerald-200',
+        'em_analise': 'bg-amber-600/50 text-amber-200',
+        'rejeitada': 'bg-red-600/50 text-red-200',
+        'pendente': 'bg-blue-600/50 text-blue-200',
+        'paid': 'bg-emerald-600/50 text-emerald-200',
+        'processing': 'bg-amber-600/50 text-amber-200',
+        'canceled': 'bg-red-600/50 text-red-200',
+        'failed': 'bg-red-600/50 text-red-200'
+      };
+      return classMap[status] || 'bg-blue-600/50 text-blue-200';
+    };
+    
+    // Verificar se estamos em carregamento inicial
+    const isLoading = contactData.saldo === null && contactData.simulado === null && !contactData.erroConsulta;
+    
+    // Função para forçar o carregamento direto dos dados do banco
+    const forceDirectDataLoad = async () => {
+      if (!currentContact?.remote_jid) return;
+      
+      try {
+        console.log('Carregando dados diretamente do banco...');
+        setContactData({
+          ...contactData,
+          erroConsulta: 'Carregando dados diretamente...'
+        });
+        
+        // Carregar dados diretamente usando fetch simples
+        const response = await fetch(`/api/dev/direct-data?contactId=${currentContact.remote_jid}`, {
+          credentials: 'include'
+        });
+        
+        if (!response.ok) {
+          setContactData({
+            ...contactData,
+            erroConsulta: `Erro ao acessar dados diretos: ${response.status}`
+          });
+          return;
+        }
+        
+        const directData = await response.json();
+        console.log('Dados obtidos diretamente:', directData);
+        
+        if (directData.success) {
+          // Converter explicitamente para número
+          let saldo = null;
+          let simulado = null;
+          let valorProposta = null;
+          
+          if (directData.balance !== null && directData.balance !== undefined) {
+            saldo = Number(directData.balance);
+          }
+          
+          if (directData.simulation !== null && directData.simulation !== undefined) {
+            simulado = Number(directData.simulation);
+          }
+          
+          // Processar valor da proposta - verificando todos os possíveis campos
+          const valorPropostaRaw = directData.proposal_amount || directData.valor_proposta;
+          if (valorPropostaRaw !== null && valorPropostaRaw !== undefined) {
+            valorProposta = Number(valorPropostaRaw);
+          }
+          
+          // Verificar vários campos possíveis para link e pix
+          const linkFormalizacao = directData.formalization_link || directData.link_formalizacao;
+          const chavePix = directData.pix_key || directData.chave_pix;
+          
+          setContactData({
+            saldo,
+            simulado,
+            erroConsulta: null,
+            proposta: directData.proposal_id,
+            erroProposta: null,
+            statusProposta: directData.proposal_status,
+            descricaoStatus: directData.proposal_status && `Status da proposta: ${directData.proposal_status}`,
+            valorProposta: valorProposta,
+            linkFormalizacao: linkFormalizacao || null,
+            chavePix: chavePix || null
+          });
+        } else {
+          setContactData({
+            ...contactData,
+            erroConsulta: directData.message || 'Erro desconhecido ao carregar dados diretos'
+          });
+        }
+      } catch (error) {
+        console.error('Erro ao carregar dados diretos:', error);
+        setContactData({
+          ...contactData,
+          erroConsulta: `Erro: ${error.message}`
+        });
+      }
+    };
+    
+    return (
+      <div className="min-w-0 flex-1 h-full flex flex-col border-l border-cyan-800/50 flex-shrink-0 overflow-y-auto bg-white/5 backdrop-blur-sm">
+        <div className="p-3 border-b border-cyan-800/50 flex justify-between items-center">
+          <h3 className="text-lg font-semibold text-cyan-100">Dados do Cliente</h3>
+        </div>
+        {/* Caixa de CPF */}
+        <div className="p-3 pt-4 pb-0">
+          <div className="bg-white/10 rounded-lg p-3 border border-cyan-800/50 flex items-center mb-2">
+            <FaIdCard className="text-cyan-300 mr-2" />
+            <div>
+              <h4 className="text-sm font-semibold text-cyan-100">CPF</h4>
+              <p className="text-base font-mono text-cyan-200 break-all">
+                {contactData.cpf || currentContact.cpf || currentContact.lead_cpf || 'Não informado'}
+              </p>
+            </div>
+          </div>
         </div>
         
-        {/* Adicionar botões de teste para enviar mensagens com diferentes roles */}
-        {currentContact && (
-          <div className="mt-3">
-            <h4 className="text-md font-semibold text-cyan-100">Testes de mensagem:</h4>
-            <div className="flex space-x-2 mt-2">
-              <button 
-                className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded-md text-sm"
-                onClick={() => sendTestMessage('ME')}
-              >
-                Testar Mensagem 'ME'
-              </button>
-              <button 
-                className="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded-md text-sm"
-                onClick={() => sendTestMessage('AI')}
-              >
-                Testar Mensagem 'AI'
-              </button>
-              <button 
-                className="bg-cyan-600 hover:bg-cyan-700 text-white px-3 py-1 rounded-md text-sm"
-                onClick={() => sendTestMessage('USER')}
-              >
-                Testar Mensagem 'USER'
-              </button>
+        <div className="p-3 space-y-4">
+          {/* Seção de Saldo */}
+          <div className="bg-white/10 rounded-lg p-3 border border-cyan-800/50">
+            <div className="flex items-center mb-2">
+              <FaWallet className="text-cyan-300 mr-2" />
+              <h4 className="text-sm font-semibold text-cyan-100">Saldo FGTS</h4>
             </div>
-            <div className="mt-2">
+            
+            {isLoading && contactData.saldo === null && contactData.erroConsulta === null ? (
+              <div className="flex justify-center items-center py-2">
+                <FaSpinner className="animate-spin text-cyan-400" />
+              </div>
+            ) : saldoFormatado ? (
+              <p className="text-lg font-bold text-white">
+                {saldoFormatado}
+              </p>
+            ) : null}
+          </div>
+          
+          {/* Seção de Simulação */}
+          <div className="bg-white/10 rounded-lg p-3 border border-cyan-800/50">
+            <div className="flex items-center mb-2">
+              <FaCalculator className="text-cyan-300 mr-2" />
+              <h4 className="text-sm font-semibold text-cyan-100">Simulação</h4>
+            </div>
+            
+            {isLoading && contactData.simulado === null && contactData.erroConsulta === null ? (
+              <div className="flex justify-center items-center py-2">
+                <FaSpinner className="animate-spin text-cyan-400" />
+              </div>
+            ) : simuladoFormatado ? (
+              <p className="text-lg font-bold text-white">
+                {simuladoFormatado}
+              </p>
+            ) : null}
+        </div>
+        
+          {/* Seção de Proposta */}
+          <div className="bg-white/10 rounded-lg p-3 border border-cyan-800/50">
+            <div className="flex items-center mb-2">
+              <FaFileAlt className="text-cyan-300 mr-2" />
+              <h4 className="text-sm font-semibold text-cyan-100 flex items-center gap-2">
+                Proposta
+                {contactData.statusProposta && (
+                  <span className={`px-3 py-1 rounded-full text-xs font-medium ml-2 ${getStatusClass(contactData.statusProposta)}`}>
+                    {getStatusLabel(contactData.statusProposta)}
+                  </span>
+                )}
+              </h4>
+            </div>
+            {isLoading && contactData.proposta === null && contactData.erroConsulta === null ? (
+              <div className="flex justify-center items-center py-2">
+                <FaSpinner className="animate-spin text-cyan-400" />
+              </div>
+            ) : contactData.proposta ? (
+              <>
+                {/* Linha com ID e botão de copiar */}
+                <div className="mb-2 flex items-center">
+                  <div className="flex items-center gap-2 bg-gray-800/50 px-3 py-1 rounded border border-gray-700/50 w-full">
+                    <span className="text-xs text-gray-300">Id</span>
+                    <span className="text-xs font-mono text-white break-all">
+                      {contactData.proposta}
+                    </span>
               <button 
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-white px-3 py-1 rounded-md text-sm"
-                onClick={sendTestMessageWithDetails}
-              >
-                Teste Completo (Todos os Types)
+                      onClick={() => {
+                        navigator.clipboard.writeText(contactData.proposta);
+                        setCopiedId(true);
+                        setTimeout(() => setCopiedId(false), 1500);
+                      }}
+                      className="ml-1 text-cyan-200 hover:text-cyan-100 p-1"
+                      title="Copiar Id da proposta"
+                    >
+                      <FaRegCopy />
               </button>
+                    {copiedId && <span className="text-xs text-emerald-300 ml-1">Copiado!</span>}
+                  </div>
+                </div>
+                {/* Linha horizontal: Caixa PIX e Valor */}
+                <div className="cards-proposta-responsive">
+                  {/* Card PIX */}
+                  {contactData.chavePix && (
+                    <div className="bg-emerald-900/30 p-2 rounded-md border border-emerald-700/50 flex flex-col justify-between">
+                      <div className="flex items-center mb-1">
+                        <FaWallet className="text-emerald-400 mr-2 mt-0.5 flex-shrink-0" />
+                        <span className="text-xs font-semibold text-emerald-200 mr-2">Chave PIX</span>
               <button 
-                className="ml-2 bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-700 hover:to-emerald-700 text-white px-3 py-1 rounded-md text-sm"
-                onClick={testRoleVsSenderId}
-              >
-                Teste Role vs Sender_ID
+                          onClick={() => {
+                            navigator.clipboard.writeText(contactData.chavePix);
+                            setCopiedPix(true);
+                            setTimeout(() => setCopiedPix(false), 1500);
+                          }}
+                          className="ml-1 text-emerald-200 hover:text-emerald-100 p-1"
+                          title="Copiar chave PIX"
+                        >
+                          <FaRegCopy />
               </button>
+                        {copiedPix && <span className="text-xs text-emerald-300 ml-1">Copiado!</span>}
+                      </div>
+                      <span className="text-xs text-emerald-300 break-all font-mono">
+                        {contactData.chavePix}
+                      </span>
+                    </div>
+                  )}
+                  {/* Card Valor */}
+                  {valorPropostaFormatado && (
+                    <div className="bg-blue-900/30 p-2 rounded-md border border-blue-700/50 flex flex-col justify-between" >
+                      <span className="text-xs font-semibold text-blue-200 mb-1">Valor</span>
+                      <span className="text-lg font-bold text-blue-300">{valorPropostaFormatado}</span>
+                    </div>
+                  )}
+                </div>
+                {/* Link de Formalização com botão de copiar */}
+                {contactData.linkFormalizacao && (
+                  <div className="mb-2 bg-blue-900/30 p-2 rounded-md border border-blue-700/50 flex items-center">
+                    <FaFileAlt className="text-blue-400 mr-2 mt-0.5 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-semibold text-blue-200 mb-1">Link de Formalização</p>
+                      <a
+                        href={contactData.linkFormalizacao}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-xs text-blue-300 underline hover:text-blue-200 break-all"
+                      >
+                        {contactData.linkFormalizacao}
+                      </a>
+            </div>
+              <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(contactData.linkFormalizacao);
+                        setCopiedLink(true);
+                        setTimeout(() => setCopiedLink(false), 1500);
+                      }}
+                      className="ml-2 text-blue-200 hover:text-blue-100 p-1"
+                      title="Copiar link de formalização"
+                    >
+                      <FaRegCopy />
+              </button>
+                    {copiedLink && <span className="text-xs text-emerald-300 ml-1">Copiado!</span>}
+                  </div>
+                )}
+                {/* Descrição do Status */}
+                {contactData.descricaoStatus && !/^Status da proposta:/i.test(contactData.descricaoStatus) && (
+                  <div className="mt-2 bg-cyan-900/30 p-2 rounded-md border border-cyan-700/50">
+                    <div className="flex items-start">
+                      <FaInfoCircle className="text-cyan-400 mr-2 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-cyan-200">{contactData.descricaoStatus}</p>
             </div>
           </div>
         )}
-        
-        {error && (
-          <p className="text-red-400">
-            Erro ao recarregar dados: {error}
-          </p>
-        )}
-        <div className="flex space-x-2 mt-4">
-          <button
-            className="bg-gradient-to-r from-cyan-800 to-blue-700 hover:from-cyan-700 hover:to-blue-600 text-white px-4 py-2 rounded-lg shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={debugDatabase}
-            disabled={isRefreshing}
-          >
-            {isRefreshing ? (
-              <>
-                <FaSpinner className="animate-spin inline mr-2" />
-                Diagnosticando...
+                {/* Erro da Proposta */}
+                {contactData.erroProposta && (
+                  <div className="mt-2 bg-red-900/30 p-2 rounded-md border border-red-600/50">
+                    <div className="flex items-start">
+                      <FaTimesCircle className="text-red-400 mr-2 mt-0.5 flex-shrink-0" />
+                      <p className="text-xs text-red-200">{contactData.erroProposta}</p>
+                    </div>
+                  </div>
+                )}
               </>
-            ) : (
-              'Diagnosticar'
-            )}
+            ) : null}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Função para renderizar o cabeçalho do chat com responsividade melhorada
+  const renderChatHeader = () => {
+    if (!currentContact) return null;
+    
+    return (
+      <div className="p-2 border-b border-cyan-800/50 bg-white/5 flex items-center">
+        {isMobileView && (
+          <button
+            className="mr-2 text-cyan-300 hover:text-cyan-100 p-2"
+            onClick={handleBackToContacts}
+            aria-label="Voltar para lista de contatos"
+          >
+            <FaArrowLeft className="text-lg" />
           </button>
-          <button
-            className="bg-gradient-to-r from-emerald-800 to-cyan-700 hover:from-emerald-700 hover:to-cyan-600 text-white px-4 py-2 rounded-lg shadow-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-          >
-            {isRefreshing ? (
-              <>
-                <FaSpinner className="animate-spin inline mr-2" />
-                Atualizando...
-              </>
-            ) : (
-              'Tentar novamente'
+        )}
+        
+        <div className="flex items-center flex-1 min-w-0">
+          <div className="relative flex-shrink-0">
+            <div className="w-10 h-10 bg-gradient-to-br from-cyan-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold shadow-md">
+              {(currentContact.name || currentContact.push_name || 'C').substring(0, 2).toUpperCase()}
+            </div>
+            {currentContact.online && (
+              <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-emerald-950"></div>
             )}
+          </div>
+          
+          <div className="ml-2 overflow-hidden">
+            <h3 className="font-semibold text-cyan-100 truncate">{currentContact.name || currentContact.push_name || 'Contato'}</h3>
+            <p className="text-xs text-cyan-300 truncate">
+              {currentContact.phone || (currentContact.remote_jid || '').split('@')[0] || ''}
+            </p>
+          </div>
+        </div>
+        
+        <div className="flex space-x-3 ml-2">
+          <button className="text-cyan-300 hover:text-cyan-100 p-2" aria-label="Ligar">
+            <FaPhone className={screenWidth < 360 ? "text-sm" : "text-lg"} />
+          </button>
+          <button className="text-cyan-300 hover:text-cyan-100 p-2" aria-label="Chamada de vídeo">
+            <FaVideo className={screenWidth < 360 ? "text-sm" : "text-lg"} />
+          </button>
+          <button className="text-cyan-300 hover:text-cyan-100 p-2" aria-label="Mais opções">
+            <FaEllipsisV className={screenWidth < 360 ? "text-sm" : "text-lg"} />
           </button>
         </div>
       </div>
@@ -1320,22 +2258,18 @@ export default function Chat() {
   // Renderizar tela de erro
   if (error && !contacts.length) {
     return (
-      <div className="h-screen bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 text-white flex flex-col overflow-hidden">
+      <div className="min-h-screen flex flex-col" style={mobileStyles.pageContainer}>
         <Navbar />
-        <div className="flex-1 container mx-auto px-4 py-6 max-w-7xl">
-          <div className="bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 flex-1 flex items-center justify-center p-4">
-            <div className="max-w-4xl w-full bg-white/10 backdrop-blur-sm rounded-lg shadow-lg p-6 border border-cyan-900/50">
-              <div className="flex flex-col items-center justify-center py-4">
-                <FaExclamationTriangle className="text-yellow-500 text-5xl mb-4" />
-                <h2 className="text-xl font-semibold mb-2 text-white">
-                  Erro ao carregar dados
-                </h2>
-                <p className="text-cyan-300 mb-6 text-center">
-                  {error}
-                </p>
-                {renderDiagnosticInfo()}
-              </div>
-            </div>
+        <div className="container mx-auto flex-1 flex flex-col" style={mobileStyles.contentContainer}>
+          <div className="max-w-4xl mx-auto bg-red-900/30 border border-red-700 rounded-lg p-4 text-center">
+            <FaExclamationTriangle className="text-4xl text-red-500 mx-auto mb-2" />
+            <p className="text-lg font-semibold text-red-200">{error}</p>
+            <button 
+              className="mt-4 px-4 py-2 bg-red-700 hover:bg-red-600 rounded-lg text-white"
+              onClick={handleRefresh}
+            >
+              Tentar novamente
+            </button>
           </div>
         </div>
       </div>
@@ -1343,47 +2277,31 @@ export default function Chat() {
   }
 
   return (
-    <div className="h-screen bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 text-white flex flex-col overflow-hidden">
+    <div className="min-h-screen h-screen max-h-screen flex flex-col overflow-hidden w-full" style={mobileStyles.pageContainer}>
       <Navbar />
-      <div className="flex-1 container mx-auto px-4 py-6 max-w-7xl flex flex-col overflow-hidden">
+      <div className="container-fluid mx-auto flex-1 flex flex-col overflow-hidden w-full" style={mobileStyles.contentContainer}>
         {error ? (
-          <div className="bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 flex-1 flex items-center justify-center p-4">
-            <div className="max-w-4xl w-full bg-white/10 backdrop-blur-sm rounded-lg shadow-lg p-6 border border-cyan-900/50">
-              <div className="flex flex-col items-center justify-center py-4">
-                <FaExclamationTriangle className="text-yellow-500 text-5xl mb-4" />
-                <h2 className="text-xl font-semibold mb-2 text-white">
-                  Erro ao carregar dados
-                </h2>
-                <p className="text-cyan-300 mb-6 text-center">
-                  {error}
-                </p>
-                {renderDiagnosticInfo()}
-              </div>
-            </div>
-          </div>
-        ) : isLoading && !currentUser ? (
-          <div className="flex flex-col h-screen overflow-hidden">
-            <Navbar fullWidth />
-            <div className="bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 flex-1 flex items-center justify-center p-4">
-              <div className="max-w-4xl w-full bg-white/10 backdrop-blur-sm rounded-lg shadow-lg p-6 border border-cyan-900/50">
-                <div className="flex flex-col items-center justify-center py-4">
-                  <FaSpinner className="animate-spin text-4xl text-cyan-400 mx-auto mb-4" />
-                  <p className="text-lg text-cyan-300">Carregando conversas...</p>
-                </div>
-              </div>
-            </div>
+          <div className="max-w-4xl mx-auto bg-red-900/30 border border-red-700 rounded-lg p-4 text-center">
+            <FaExclamationTriangle className="text-4xl text-red-500 mx-auto mb-2" />
+            <p className="text-lg font-semibold text-red-200">{error}</p>
+            <button 
+              className="mt-4 px-4 py-2 bg-red-700 hover:bg-red-600 rounded-lg text-white"
+              onClick={handleRefresh}
+            >
+              Tentar novamente
+            </button>
           </div>
         ) : (
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg overflow-hidden border border-cyan-900/50 flex-1 flex flex-col">
-            <div className="flex h-full">
+          <div className="w-full h-full flex flex-col overflow-hidden" style={{margin: 0, padding: 0}}>
+            <div className="flex flex-col md:flex-row border border-cyan-800/50 rounded-lg shadow-2xl bg-white/5 backdrop-blur-sm overflow-hidden flex-1 w-full" style={mobileStyles.mainContainer}>
               {/* Lista de contatos - oculta no modo mobile quando um contato está selecionado */}
               {(!isMobileView || !currentContact) && (
-                <div className="w-full md:w-1/3 border-r border-cyan-900/50 flex flex-col h-full">
-                  <div className="p-2 border-b border-cyan-900/50">
+                <div className="flex-shrink-0 flex-grow-0 min-w-0 w-full md:basis-1/4 md:max-w-[25%] border-r border-cyan-800/50 flex flex-col h-full p-0">
+                  <div className="p-2 border-b border-cyan-800/50">
                     <div className="flex justify-between items-center mb-2">
                       <h2 className="text-lg font-semibold text-cyan-100">Conversas</h2>
                       <button 
-                        className="bg-gradient-to-r from-cyan-800 to-blue-700 text-white rounded-full p-2 hover:from-cyan-700 hover:to-blue-600 transition shadow-lg"
+                        className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-full p-2 hover:from-cyan-500 hover:to-blue-500 transition shadow-lg"
                         onClick={handleCreateContact}
                       >
                         <FaPlus />
@@ -1393,7 +2311,7 @@ export default function Chat() {
                       <input
                         type="text"
                         placeholder="Pesquisar conversa"
-                        className="w-full py-2 pl-10 pr-4 bg-white/10 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 border border-cyan-900/50 placeholder-cyan-300/70"
+                        className="w-full py-2 pl-10 pr-4 bg-white/10 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 border border-cyan-800/50 placeholder-cyan-300/70"
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                       />
@@ -1414,17 +2332,17 @@ export default function Chat() {
                         .map(contact => (
                           <div
                             key={contact.id || contact.remote_jid}
-                            className={`flex items-center p-2 cursor-pointer border-b border-cyan-900/30 hover:bg-white/5 transition-colors ${
+                            className={`flex items-center p-2 cursor-pointer border-b border-cyan-800/30 hover:bg-white/5 transition-colors ${
                               currentContact?.id === contact.id || currentContact?.remote_jid === contact.remote_jid ? 'bg-white/10' : ''
                             }`}
                             onClick={() => handleSelectContact(contact)}
                           >
                             <div className="relative">
-                              <div className="w-10 h-10 bg-gradient-to-br from-cyan-600 to-blue-700 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md">
+                              <div className="w-10 h-10 bg-gradient-to-br from-cyan-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md">
                                 {(contact.name || contact.push_name || 'C').substring(0, 2).toUpperCase()}
                               </div>
                               {contact.online && (
-                                <div className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 rounded-full border-2 border-cyan-950"></div>
+                                <div className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 rounded-full border-2 border-emerald-950"></div>
                               )}
                             </div>
                             <div className="ml-4 flex-1 min-w-0 overflow-hidden">
@@ -1445,7 +2363,7 @@ export default function Chat() {
                               onClick={(e) => toggleAutoResponse(contact.id || contact.remote_jid, e)}
                               className={`ml-2 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-md transition-all ${
                                 isAgentEnabled(contact)
-                                  ? 'bg-gradient-to-r from-purple-600 to-indigo-700 text-white' 
+                                  ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' 
                                   : 'bg-gray-600/50 text-gray-300'
                               }`}
                               title={isAgentEnabled(contact) ? "Desativar resposta automática" : "Ativar resposta automática"}
@@ -1467,48 +2385,16 @@ export default function Chat() {
               
               {/* Área de mensagens */}
               {currentContact ? (
-                <div className="w-full md:w-2/3 flex flex-col h-full">
+                <>
+                  <div className={`flex-shrink-0 flex-grow-0 min-w-0 w-full ${!isMobileView ? 'md:basis-2/4 md:max-w-[50%]' : ''} flex flex-col h-full p-0`}>
                   {/* Cabeçalho do chat */}
-                  <div className="p-2 border-b border-cyan-900/50 bg-white/5 flex items-center">
-                    {isMobileView && (
-                      <button 
-                        className="mr-3 text-cyan-300 hover:text-cyan-100"
-                        onClick={handleBackToContacts}
-                      >
-                        <FaArrowLeft />
-                      </button>
-                    )}
-                    <div className="flex items-center flex-1">
-                      <div className="relative">
-                        <div className="w-10 h-10 bg-gradient-to-br from-cyan-600 to-blue-700 rounded-full flex items-center justify-center text-white font-bold shadow-md">
-                          {(currentContact.name || currentContact.push_name || 'C').substring(0, 2).toUpperCase()}
-                        </div>
-                        {currentContact.online && (
-                          <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-cyan-950"></div>
-                        )}
-                      </div>
-                      <div className="ml-3">
-                        <h3 className="font-semibold text-cyan-100">{currentContact.name || currentContact.push_name || 'Contato'}</h3>
-                        <p className="text-xs text-cyan-300">
-                          {currentContact.phone || (currentContact.remote_jid || '').split('@')[0] || ''}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex space-x-4">
-                      <button className="text-cyan-300 hover:text-cyan-100">
-                        <FaPhone />
-                      </button>
-                      <button className="text-cyan-300 hover:text-cyan-100">
-                        <FaVideo />
-                      </button>
-                      <button className="text-cyan-300 hover:text-cyan-100">
-                        <FaEllipsisV />
-                      </button>
-                    </div>
-                  </div>
+                    {renderChatHeader()}
                   
                   {/* Área de mensagens */}
-                  <div className="flex-1 overflow-y-auto p-3 bg-gradient-to-br from-cyan-950/30 to-blue-950/30 relative">
+                    <div 
+                      className="flex-1 overflow-y-auto p-3 bg-gradient-to-br from-emerald-950/20 via-cyan-950/20 to-blue-950/20 relative"
+                      style={mobileStyles.messagesContainer}
+                    >
                     {isLoading ? (
                       <div className="flex justify-center items-center h-full">
                         <FaSpinner className="animate-spin text-3xl text-cyan-400" />
@@ -1547,13 +2433,13 @@ export default function Chat() {
                               // Sobrescrever para ME ou AI
                               if (msg.role === 'ME') {
                                 justifyContent = 'flex-end';
-                                bgColorClass = 'bg-gradient-to-r from-cyan-600 to-blue-700 text-white rounded-tl-lg rounded-tr-lg rounded-bl-lg';
+                                  bgColorClass = 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-tl-lg rounded-tr-lg rounded-bl-lg';
                                 borderClass = 'border-blue-700/50';
                                 textColorClass = 'text-blue-100/80';
                               } 
                               else if (msg.role === 'AI') {
                                 justifyContent = 'flex-end';
-                                bgColorClass = 'bg-gradient-to-r from-purple-600 to-indigo-700 text-white rounded-tl-lg rounded-tr-lg rounded-bl-lg';
+                                  bgColorClass = 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-tl-lg rounded-tr-lg rounded-bl-lg';
                                 borderClass = 'border-indigo-700/50';
                                 textColorClass = 'text-indigo-100/80';
                               }
@@ -1572,12 +2458,16 @@ export default function Chat() {
                                   }}
                                 >
                                   <div
-                                    className={`max-w-[75%] shadow-lg ${bgColorClass} p-2 border ${borderClass}`}
+                                      className={`max-w-[75%] shadow-lg ${bgColorClass} p-2 border ${borderClass} ${msg.temp ? 'opacity-70' : ''}`}
                                   >
                                     <p>{msg.content}</p>
-                                    <div className={`text-xs mt-1 text-right whitespace-nowrap ${textColorClass}`}>
+                                      <div className={`text-xs mt-1 text-right whitespace-nowrap ${textColorClass} flex items-center justify-end`}>
                                       {formatDate(msg.created_at)}
-                                      {(msg.role === 'ME' || msg.role === 'AI') && (
+                                        {msg.temp ? (
+                                          <span className="ml-1">
+                                            <FaSpinner className="animate-spin text-xs ml-1" />
+                                          </span>
+                                        ) : (msg.role === 'ME' || msg.role === 'AI') && (
                                         <span className="ml-1">
                                           {msg.is_read ? '✓✓' : '✓'}
                                         </span>
@@ -1587,59 +2477,75 @@ export default function Chat() {
                                 </div>
                               );
                             })}
+                            <div ref={messagesEndRef} />
                           </div>
                         )}
                       </>
                     )}
-                    <div ref={messagesEndRef} />
                   </div>
                   
                   {/* Formulário de envio de mensagem */}
-                  <div className="border-t border-cyan-900/50 bg-white/5">
+                    <div className="border-t border-cyan-800/50 bg-white/5 w-full message-input-container flex" style={mobileStyles.messageInputContainer}>
                     <form 
-                      className="p-2 flex items-center"
+                        className="flex items-center w-full mx-1 my-1"
                       onSubmit={handleSendMessage}
                     >
+                        {!isMobileView || screenWidth >= 360 ? (
+                          <>
                       <button 
                         type="button"
-                        className="text-cyan-300 hover:text-cyan-100 mr-2"
+                              className="text-cyan-300 hover:text-cyan-100 px-1"
                       >
-                        <FaSmile />
+                              <FaSmile className={`${screenWidth < 400 ? 'text-base' : 'text-lg'}`} />
                       </button>
                       <button 
                         type="button"
-                        className="text-cyan-300 hover:text-cyan-100 mr-2"
+                              className="text-cyan-300 hover:text-cyan-100 px-1"
                       >
-                        <FaPaperclip />
+                              <FaPaperclip className={`${screenWidth < 400 ? 'text-base' : 'text-lg'}`} />
                       </button>
+                          </>
+                        ) : null}
+                        <div className={`flex-1 mx-1 py-2`}>
                       <input
                         type="text"
                         placeholder="Digite uma mensagem"
-                        className="flex-1 py-2 px-3 bg-white/10 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 border border-cyan-900/50 placeholder-cyan-300/70"
+                            className="w-full py-2 px-3 bg-white/10 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 border border-cyan-800/50 placeholder-cyan-300/70"
                         value={newMessage}
                         onChange={(e) => setNewMessage(e.target.value)}
                       />
+                        </div>
                       
                       {newMessage.trim() ? (
                         <button
                           type="submit"
-                          className="ml-2 bg-gradient-to-r from-cyan-600 to-blue-700 text-white rounded-full p-2 hover:from-cyan-500 hover:to-blue-600 transition shadow-md"
+                            className={`${screenWidth < 360 ? 'px-2 py-2' : 'p-2'} bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-full hover:from-cyan-500 hover:to-blue-500 transition shadow-md flex-shrink-0 mx-1`}
                         >
-                          <IoSend />
+                            <IoSend className={`${screenWidth < 400 ? 'text-base' : 'text-lg'}`} />
                         </button>
                       ) : (
                         <button
                           type="button"
-                          className="ml-2 text-cyan-300 hover:text-cyan-100"
+                            className={`${screenWidth < 360 ? 'px-2 py-2' : 'p-2'} text-cyan-300 hover:text-cyan-100 flex-shrink-0 mx-1`}
                         >
-                          <FaMicrophone />
+                            <FaMicrophone className={`${screenWidth < 400 ? 'text-base' : 'text-lg'}`} />
                         </button>
                       )}
                     </form>
                   </div>
                 </div>
+                  
+                  {/* Painel de dados do contato - apenas visível em desktop */}
+                  {!isMobileView && (
+                    <div className="flex-shrink-0 flex-grow-0 min-w-0 md:basis-1/4 md:max-w-[25%] h-full flex flex-col overflow-hidden">
+                      <div className="flex-1 min-h-0 h-full overflow-y-auto">
+                        {renderContactDataPanel()}
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
-                <div className="hidden md:flex md:w-2/3 items-center justify-center">
+                <div className="hidden md:flex md:w-2/3 items-center justify-center w-full">
                   <div className="text-center">
                     <p className="text-xl mb-2 text-cyan-100">Selecione uma conversa para começar</p>
                     <p className="text-cyan-300">Ou inicie uma nova conversa clicando no botão +</p>

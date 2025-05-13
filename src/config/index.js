@@ -3,7 +3,8 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
 // Verificar se as variáveis de ambiente foram carregadas
-const requiredEnvVars = ['SUPABASE_URL', 'SUPABASE_SERVICE_KEY', 'SUPABASE_ANON_KEY'];
+// Adaptação para usar os nomes de variáveis que existem no arquivo .env
+const requiredEnvVars = ['SUPABASE_PROJECT_ID', 'SUPABASE_SERVICE_KEY', 'SUPABASE_ANON_KEY'];
 const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
 
 if (missingEnvVars.length > 0) {
@@ -15,9 +16,10 @@ module.exports = {
   appUrl: process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`,
   nodeEnv: process.env.NODE_ENV || 'development',
   
-  // Supabase
+  // Supabase - Adaptado para usar os nomes de variáveis que existem no .env
   supabase: {
-    url: process.env.SUPABASE_URL,
+    // Use SUPABASE_URL se existir, caso contrário use SUPABASE_PROJECT_ID
+    url: process.env.SUPABASE_URL || (process.env.SUPABASE_PROJECT_ID ? `https://${process.env.SUPABASE_PROJECT_ID}.supabase.co` : undefined),
     serviceKey: process.env.SUPABASE_SERVICE_KEY,
     anonKey: process.env.SUPABASE_ANON_KEY,
     jwtSecret: process.env.SUPABASE_JWT_SECRET

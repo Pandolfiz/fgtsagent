@@ -15,6 +15,7 @@ const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
 const contactController = require('../controllers/contactController');
+const agentsController = require('../controllers/agentsController');
 
 // Função para criar um controlador mock
 const createMockController = (name) => {
@@ -131,6 +132,169 @@ router.get('/auth/check-session', async (req, res) => {
 
 // Rota de Dashboard FGTS/propostas
 router.get('/dashboard/stats', requireAuth, require('../controllers/dashboardController').getApiDashboardStats);
+
+// Rota para obter dados do cliente para exibição no chat
+router.get('/contacts/:contactId/data', requireAuth, async (req, res) => {
+  try {
+    const { contactId } = req.params;
+    const userId = req.user.id;
+    
+    logger.info(`Obtendo dados do cliente ${contactId} para exibição no chat (usuário: ${userId})`);
+    
+    // Verificar se o contato existe e buscar o lead_id (usar supabaseAdmin)
+    const { data: contact, error: contactError } = await supabaseAdmin
+      .from('contacts')
+      .select('*, lead_id')
+      .eq('remote_jid', contactId)
+      .single();
+    
+    if (contactError) {
+      logger.error(`Erro ao buscar contato: ${contactError.message}`);
+      return res.status(404).json({
+        success: false,
+        message: 'Contato não encontrado'
+      });
+    }
+    
+    // Verificar se o contato tem um lead_id associado
+    if (!contact.lead_id) {
+      logger.warn(`Contato ${contactId} não possui lead_id associado`);
+      return res.json({
+        success: true,
+        saldo: null,
+        erro_consulta: 'Cliente não possui cadastro completo no sistema',
+        simulado: null,
+        proposta: null,
+        status_proposta: null,
+        erro_proposta: null,
+        descricao_status: null
+      });
+    }
+    
+    const leadId = contact.lead_id;
+    logger.info(`Usando lead_id ${leadId} para buscar dados do cliente`);
+    
+    // Buscar dados de saldo FGTS mais recente usando o lead_id (usar supabaseAdmin)
+    const { data: balanceData, error: balanceError } = await supabaseAdmin
+      .from('balance')
+      .select('*')
+      .eq('lead_id', leadId)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    
+    logger.info(`Dados brutos de balance: ${JSON.stringify(balanceData)}`);
+    
+    let saldo = null;
+    let erro_consulta = null;
+    let simulado = null;
+    
+    if (balanceError) {
+      logger.error(`Erro ao buscar saldo FGTS: ${balanceError.message}`);
+      erro_consulta = 'Erro ao consultar saldo FGTS. Tente novamente mais tarde.';
+    } else if (balanceData && balanceData.length > 0) {
+      const balanceRecord = balanceData[0];
+      logger.info(`Record de balance encontrado: ${JSON.stringify(balanceRecord)}`);
+      logger.info(`Tipos de dados - balance: ${typeof balanceRecord.balance}, simulation: ${typeof balanceRecord.simulation}`);
+      logger.info(`Valores brutos - balance: ${balanceRecord.balance}, simulation: ${balanceRecord.simulation}`);
+      try {
+        if (balanceRecord.balance !== null && balanceRecord.balance !== undefined) {
+          saldo = Number(balanceRecord.balance);
+          if (isNaN(saldo)) {
+            logger.warn(`Conversão de balance resultou em NaN: ${balanceRecord.balance}`);
+            saldo = null;
+          }
+          logger.info(`Saldo após conversão simplificada: ${saldo} (tipo: ${typeof saldo})`);
+        }
+        if (balanceRecord.simulation !== null && balanceRecord.simulation !== undefined) {
+          simulado = Number(balanceRecord.simulation);
+          if (isNaN(simulado)) {
+            logger.warn(`Conversão de simulation resultou em NaN: ${balanceRecord.simulation}`);
+            simulado = null;
+          }
+          logger.info(`Simulado após conversão simplificada: ${simulado} (tipo: ${typeof simulado})`);
+        }
+      } catch (parseError) {
+        logger.error(`Erro ao converter valores numéricos: ${parseError.message}`);
+        erro_consulta = 'Erro no formato dos dados. Por favor, consulte novamente.';
+      }
+      if (balanceRecord.error_reason) {
+        erro_consulta = balanceRecord.error_reason;
+      }
+    } else {
+      logger.warn(`Nenhum registro de balance encontrado para o lead ${leadId}`);
+    }
+    
+    // Buscar propostas mais recentes (usar supabaseAdmin)
+    const { data: proposalData, error: proposalError } = await supabaseAdmin
+      .from('proposals')
+      .select('*')
+      .eq('lead_id', leadId)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    
+    let proposta = null;
+    let status_proposta = null;
+    let erro_proposta = null;
+    let descricao_status = null;
+    
+    if (proposalError) {
+      logger.error(`Erro ao buscar propostas: ${proposalError.message}`);
+    } else if (proposalData && proposalData.length > 0) {
+      const proposalRecord = proposalData[0];
+      proposta = proposalRecord.proposal_id || null;
+      status_proposta = proposalRecord.status || null;
+      if (status_proposta) {
+        switch (status_proposta) {
+          case 'aprovada':
+            descricao_status = 'Proposta aprovada. Aguardando liberação de valores.';
+            break;
+          case 'em_analise':
+            descricao_status = 'Proposta em análise pelo banco. Aguarde a avaliação.';
+            break;
+          case 'rejeitada':
+            descricao_status = 'Proposta rejeitada devido a restrições cadastrais.';
+            erro_proposta = proposalRecord.rejection_reason || 'Proposta rejeitada pelo banco.';
+            break;
+          case 'pendente':
+            descricao_status = 'Aguardando documentação adicional para seguir com a proposta.';
+            break;
+          default:
+            descricao_status = `Status da proposta: ${status_proposta}`;
+        }
+      }
+    } else {
+      logger.info(`Nenhuma proposta encontrada para o lead ${leadId}`);
+    }
+    
+    const resposta = {
+      success: true,
+      saldo: saldo,
+      erro_consulta: erro_consulta,
+      simulado: simulado,
+      proposta: proposta,
+      status_proposta: status_proposta,
+      erro_proposta: erro_proposta,
+      descricao_status: descricao_status
+    };
+    
+    logger.info(`Valores finais para resposta:`);
+    logger.info(`- saldo (original): ${saldo} (${typeof saldo})`);
+    logger.info(`- saldo (formatado): ${saldo} (${typeof saldo})`);
+    logger.info(`- simulado (original): ${simulado} (${typeof simulado})`);
+    logger.info(`- simulado (formatado): ${simulado} (${typeof simulado})`);
+    logger.info(`Enviando resposta formatada para o frontend: ${JSON.stringify(resposta)}`);
+    
+    return res.json(resposta);
+    
+  } catch (error) {
+    logger.error(`Erro ao obter dados do cliente para o chat: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao obter dados do cliente',
+      error: error.message
+    });
+  }
+});
 
 // Rotas de Organizações
 // Vamos criar handlers alternativos caso os métodos originais não estejam disponíveis
@@ -749,6 +913,95 @@ router.post('/agent/upload-kb', requireAuth, upload.array('kbFiles'), async (req
 const knowledgeBaseRoutes = require('./knowledgeBaseRoutes');
 router.use('/knowledge-base', knowledgeBaseRoutes);
 
+// Endpoint de desenvolvimento para acesso direto aos dados do cliente
+router.get('/dev/direct-data', async (req, res) => {
+  try {
+    const { contactId } = req.query;
+    
+    if (!contactId) {
+      return res.status(400).json({
+        success: false,
+        message: 'contactId é obrigatório'
+      });
+    }
+    
+    logger.info(`[DEV] Acesso direto aos dados para contato: ${contactId}`);
+    
+    // Buscar o contato para obter o lead_id
+    const { data: contact, error: contactError } = await supabaseAdmin
+      .from('contacts')
+      .select('remote_jid, lead_id')
+      .eq('remote_jid', contactId)
+      .single();
+    
+    if (contactError || !contact) {
+      logger.error(`[DEV] Erro ao buscar contato: ${contactError?.message || 'Contato não encontrado'}`);
+      return res.status(404).json({
+        success: false,
+        message: 'Contato não encontrado'
+      });
+    }
+    
+    logger.info(`[DEV] Contato encontrado. Lead ID: ${contact.lead_id || 'NULL'}`);
+    
+    if (!contact.lead_id) {
+      return res.json({
+        success: false,
+        message: 'Contato sem lead_id associado'
+      });
+    }
+    
+    // Buscar dados de saldo diretamente
+    const { data: balanceData, error: balanceError } = await supabaseAdmin
+      .from('balance')
+      .select('*')
+      .eq('lead_id', contact.lead_id)
+      .order('updated_at', { ascending: false })
+      .limit(1);
+    
+    // Dados de proposta diretamente
+    const { data: proposalData, error: proposalError } = await supabaseAdmin
+      .from('proposals')
+      .select('*')
+      .eq('lead_id', contact.lead_id)
+      .order('created_at', { ascending: false })
+      .limit(1);
+    
+    // Construir resposta direta, sem conversões complexas
+    const directResponse = {
+      success: true,
+      contact_id: contactId,
+      lead_id: contact.lead_id,
+      balance: balanceData && balanceData.length > 0 ? balanceData[0].balance : null,
+      simulation: balanceData && balanceData.length > 0 ? balanceData[0].simulation : null,
+      proposal_id: proposalData && proposalData.length > 0 ? proposalData[0].proposal_id : null,
+      proposal_status: proposalData && proposalData.length > 0 ? proposalData[0].status : null,
+      balance_record: balanceData && balanceData.length > 0 ? balanceData[0] : null,
+      proposal_record: proposalData && proposalData.length > 0 ? proposalData[0] : null
+    };
+    
+    // Logs para depuração
+    logger.info(`[DEV] Dados diretos sendo retornados:`);
+    logger.info(`- balance: ${directResponse.balance} (${typeof directResponse.balance})`);
+    logger.info(`- simulation: ${directResponse.simulation} (${typeof directResponse.simulation})`);
+    
+    return res.json(directResponse);
+    
+  } catch (error) {
+    logger.error(`[DEV] Erro ao acessar dados diretos: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: `Erro interno: ${error.message}`
+    });
+  }
+});
+
+// Rota para atualizar o modo do agente
+router.post('/agents/mode', requireAuth, agentsController.updateMode);
+
+// Rota para obter o modo atual do agente
+router.get('/agents/mode', requireAuth, agentsController.getCurrentMode);
+
 // Atualizar agent_state de contato
 router.post('/contacts/:remoteJid/state', requireAuth, contactController.updateState);
 
@@ -890,6 +1143,145 @@ router.post('/partner-credentials/:id/test-connection', requireAuth, async (req,
     return res.status(500).json({
       success: false,
       message: err.message
+    });
+  }
+});
+
+// Rota para obter detalhes de uma proposta específica por ID
+router.get('/proposals/:id', requireAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.id;
+
+    logger.info(`Buscando detalhes da proposta ${id} para o usuário ${userId}`);
+
+    // Buscar todos os registros com o proposal_id informado
+    const { data: proposals, error } = await supabaseAdmin
+      .from('proposals')
+      .select('*')
+      .eq('proposal_id', id);
+
+    if (error) {
+      logger.error(`Erro ao buscar proposta ${id}: ${error.message}`);
+      return res.status(404).json({
+        success: false,
+        message: 'Proposta não encontrada'
+      });
+    }
+
+    if (!proposals || proposals.length === 0) {
+      logger.warn(`Nenhuma proposta encontrada para o proposal_id ${id}`);
+      return res.status(404).json({
+        success: false,
+        message: 'Proposta não encontrada'
+      });
+    }
+
+    if (proposals.length > 1) {
+      logger.warn(`Mais de uma proposta encontrada para o proposal_id ${id}. Retornando a primeira. IDs: ${proposals.map(p => p.id || p.proposal_id).join(', ')}`);
+    }
+
+    const proposal = proposals[0];
+
+    // Debug dos campos encontrados na proposta
+    logger.info(`Proposta encontrada - campos disponíveis: ${Object.keys(proposal).join(', ')}`);
+    logger.info(`Detalhes dos valores da proposta:`);
+    logger.info(`- amount: ${proposal.amount} (${typeof proposal.amount})`);
+    logger.info(`- valor: ${proposal.valor} (${typeof proposal.valor})`);
+    logger.info(`- value: ${proposal.value} (${typeof proposal.value})`);
+    
+    if (proposal.data) {
+      logger.info(`- data.amount: ${proposal.data?.amount} (${typeof proposal.data?.amount})`);
+      logger.info(`- data.valor: ${proposal.data?.valor} (${typeof proposal.data?.valor})`);
+      logger.info(`- data.value: ${proposal.data?.value} (${typeof proposal.data?.value})`);
+    }
+
+    // Função auxiliar para converter qualquer formato para número
+    const parseNumberValue = (value) => {
+      if (value === null || value === undefined) return null;
+      if (typeof value === 'number') return value;
+      try {
+        if (typeof value === 'string') {
+          const cleaned = value.replace(/[^0-9.,]/g, '').replace(',', '.');
+          const number = parseFloat(cleaned);
+          return isNaN(number) ? null : number;
+        }
+        const number = Number(value);
+        return isNaN(number) ? null : number;
+      } catch (e) {
+        logger.error(`Erro ao converter valor para número: ${e.message}`);
+        return null;
+      }
+    };
+
+    let valorProposta = null;
+    const possibleFields = [
+      proposal.amount, 
+      proposal.valor, 
+      proposal.value
+    ];
+    if (proposal.data) {
+      possibleFields.push(
+        proposal.data.amount, 
+        proposal.data.valor, 
+        proposal.data.value
+      );
+    }
+    for (const field of possibleFields) {
+      if (field !== null && field !== undefined) {
+        valorProposta = parseNumberValue(field);
+        if (valorProposta !== null) break;
+      }
+    }
+
+    logger.info(`Valor da proposta extraído: ${valorProposta} (${typeof valorProposta})`);
+
+    const formattedProposal = {
+      id: proposal.proposal_id,
+      status: proposal.status,
+      amount: valorProposta,
+      valor: valorProposta,
+      value: valorProposta,
+      formalization_link: proposal.formalization_link
+        || proposal.link_formalizacao
+        || proposal["Link de formalização"]
+        || proposal["link de formalização"]
+        || (proposal.data ? proposal.data.formalization_link : null),
+      link_formalizacao: proposal.link_formalizacao
+        || proposal.formalization_link
+        || proposal["Link de formalização"]
+        || proposal["link de formalização"]
+        || (proposal.data ? proposal.data.link_formalizacao : null),
+      pix_key: proposal.pix_key
+        || proposal.chave_pix
+        || proposal.chavePix
+        || proposal["chavePix"]
+        || proposal["Chave Pix"]
+        || (proposal.data ? proposal.data.pix_key : null),
+      chave_pix: proposal.chave_pix
+        || proposal.pix_key
+        || proposal.chavePix
+        || proposal["chavePix"]
+        || proposal["Chave Pix"]
+        || (proposal.data ? proposal.data.chave_pix : null),
+      status_detail: proposal.status_detail || proposal.status_detalhado || (proposal.data ? proposal.data.status_detail : null),
+      status_detalhado: proposal.status_detalhado || proposal.status_detail || (proposal.data ? proposal.data.status_detalhado : null),
+      created_at: proposal.created_at
+    };
+
+    logger.info(`Detalhes da proposta ${id} recuperados com sucesso: ${JSON.stringify(formattedProposal)}`);
+
+    return res.json({
+      success: true,
+      message: 'Detalhes da proposta recuperados com sucesso',
+      proposal: formattedProposal
+    });
+  } catch (error) {
+    logger.error(`Erro ao obter detalhes da proposta: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao obter detalhes da proposta',
+      error: error.message
     });
   }
 });

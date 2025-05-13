@@ -29,7 +29,7 @@ class EvolutionCredential {
         updated_at: this.updated_at
       };
       const { data, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .upsert(payload, { onConflict: 'id' })
         .select()
         .single();
@@ -47,7 +47,7 @@ class EvolutionCredential {
   static async findById(id) {
     try {
       const { data, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .select('*')
         .eq('id', id)
         .single();
@@ -65,7 +65,7 @@ class EvolutionCredential {
   static async findByClientId(clientId) {
     try {
       const { data, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .select('*')
         .eq('client_id', clientId)
         .single();
@@ -83,7 +83,7 @@ class EvolutionCredential {
   static async findAll() {
     try {
       const { data, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .select('*');
       if (error) {
         logger.error('EvolutionCredential.findAll error:', error.message || error);
@@ -99,7 +99,7 @@ class EvolutionCredential {
   static async findAllByClientId(clientId) {
     try {
       const { data, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .select('*')
         .eq('client_id', clientId);
       if (error) {

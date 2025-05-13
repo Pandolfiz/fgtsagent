@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { apiFetch } from '../utilities/apiFetch'
 import Navbar from '../components/Navbar'
 import type { KnowledgeBaseDoc } from '../components/agent/KnowledgeBaseList'
@@ -15,6 +15,27 @@ export default function AgentsConfigPage() {
   const [uploadLoading, setUploadLoading] = useState(false)
   const [deleteStatus, setDeleteStatus] = useState<'idle' | 'success' | 'error'>('idle')
   const [deleteLoading, setDeleteLoading] = useState(false)
+  const [modeStatus, setModeStatus] = useState<'idle' | 'success' | 'error'>('idle')
+  const [modeLoading, setModeLoading] = useState(false)
+  const [modeMessage, setModeMessage] = useState<string | null>(null)
+  const [initialLoading, setInitialLoading] = useState(true)
+
+  // Função para buscar o modo atual do agente
+  const fetchCurrentMode = async () => {
+    try {
+      const res = await apiFetch('/api/agents/mode')
+      if (!res) return
+      
+      const json = await res.json()
+      if (json.success && json.data?.mode) {
+        setMode(json.data.mode)
+      }
+    } catch (err) {
+      console.error('Erro ao buscar modo atual do agente:', err)
+    } finally {
+      setInitialLoading(false)
+    }
+  }
 
   // Função para buscar documentos da base de conhecimento
   const fetchDocs = async () => {
@@ -37,6 +58,10 @@ export default function AgentsConfigPage() {
   }
 
   const handleModeSave = async (newMode: typeof mode) => {
+    setModeLoading(true)
+    setModeStatus('idle')
+    setModeMessage(null)
+    
     try {
       const res = await apiFetch('/api/agents/mode', {
         method: 'POST',
@@ -44,17 +69,30 @@ export default function AgentsConfigPage() {
         body: JSON.stringify({ mode: newMode })
       })
       if (!res) return
+      
+      const json = await res.json().catch(() => null)
+      
       if (res.ok) {
         setMode(newMode)
-        // opcional: exibir mensagem de sucesso
+        setModeStatus('success')
+        setModeMessage(json?.message || `Modo do agente atualizado para '${newMode}'`)
+        
+        // Reset do status após 5 segundos
+        setTimeout(() => {
+          setModeStatus('idle')
+          setModeMessage(null)
+        }, 5000)
       } else {
-        const json = await res.json().catch(() => null)
+        setModeStatus('error')
+        setModeMessage(json?.message || 'Erro ao salvar modo do agente')
         console.error('Erro ao salvar modo do agente:', json?.message || res.statusText)
-        // opcional: exibir mensagem de erro
       }
-    } catch (err) {
+    } catch (err: any) {
+      setModeStatus('error')
+      setModeMessage(err.message || 'Erro ao salvar modo do agente')
       console.error('Erro ao salvar modo do agente:', err)
-      // opcional: exibir mensagem de erro
+    } finally {
+      setModeLoading(false)
     }
   }
 
@@ -109,8 +147,11 @@ export default function AgentsConfigPage() {
     }
   }
 
-  // Carregar documentos ao montar o componente
-  React.useEffect(() => { fetchDocs() }, [])
+  // Carregar dados ao montar o componente
+  useEffect(() => { 
+    fetchCurrentMode()
+    fetchDocs() 
+  }, [])
 
   return (
     <React.Fragment>
@@ -123,7 +164,20 @@ export default function AgentsConfigPage() {
         </div>
         <div className="space-y-6">
           <div className="relative z-20 overflow-visible bg-white/10 backdrop-blur-sm rounded-lg shadow-lg p-6">
-            <AgentModeForm mode={mode} onSave={handleModeSave} isLoading={false} />
+            <AgentModeForm 
+              mode={mode} 
+              onSave={handleModeSave} 
+              isLoading={modeLoading || initialLoading} 
+            />
+            {modeStatus === 'success' && modeMessage && (
+              <p className="mt-3 text-green-400 text-sm">{modeMessage}</p>
+            )}
+            {modeStatus === 'error' && modeMessage && (
+              <p className="mt-3 text-red-400 text-sm">{modeMessage}</p>
+            )}
+            {modeLoading && (
+              <p className="mt-3 text-cyan-300 text-sm animate-pulse">Atualizando configuração do agente...</p>
+            )}
           </div>
           <div className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg p-6">
             <KnowledgeBaseList docs={docs} loading={loadingDocs} error={errorDocs} onDelete={handleDeleteDoc} />

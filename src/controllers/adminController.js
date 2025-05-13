@@ -70,4 +70,23 @@ exports.fixDatabasePolicies = async (req, res) => {
       message: `Erro ao corrigir políticas: ${error.message}`
     });
   }
+};
+
+// Busca o CPF de um lead pelo lead_id (admin/debug)
+exports.getLeadCpfByLeadId = async (req, res) => {
+  try {
+    const { lead_id } = req.params;
+    const { supabaseAdmin } = require('../config/supabase');
+    const { data, error } = await supabaseAdmin
+      .from('leads')
+      .select('id, client_id, cpf')
+      .eq('id', lead_id)
+      .single();
+    if (error || !data) {
+      return res.status(404).json({ success: false, message: 'Lead não encontrado', error });
+    }
+    return res.json({ success: true, cpf: data.cpf, lead: data });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
 }; 

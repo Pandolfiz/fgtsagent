@@ -28,18 +28,15 @@ async function handleWebhookEvent(body) {
     // Extrair identificação da conversa do payload (JID remoto)
     const remoteJid = msg.key?.remoteJid || msg.message?.conversation || '';
     const conversation_id = remoteJid;
-    // Buscar client_id associado à instância para usar como sender e recipient
-    const { data: cred, error: credError } = await supabaseAdmin
-      .from('evolution_credentials')
-      .select('client_id')
-      .eq('id', msg.instanceId)
-      .single();
-    if (credError) throw credError;
+    // Buscar credencial Evolution associada à instância para usar como sender e recipient
+    const cred = await EvolutionCredential.findById(msg.instanceId);
+    if (!cred) throw new Error('Credencial não encontrada');
     const clientId = cred.client_id;
+    const clientPhone = cred.phone;
     // Definir remetente e destinatário conforme origem da mensagem
     const fromMe = msg.key?.fromMe;
-    const sender_id = fromMe ? clientId : remoteJid;
-    const recipient_id = fromMe ? remoteJid : clientId;
+    const sender_id = fromMe ? clientPhone : remoteJid;
+    const recipient_id = fromMe ? remoteJid : clientPhone;
     const content = msg.body || msg.text || msg.message?.conversation || '';
     const timestamp = msg.timestamp
       ? new Date(msg.timestamp)
@@ -90,7 +87,7 @@ async function handleOutgoing({ to, content, conversationId, senderId, instanceI
   const saved = await messageRepository.saveMessage({
     id: uuidv4(),
     conversation_id: conversationId,
-    sender_id: senderId,
+    sender_id: cred.phone,
     recipient_id: to,
     content,
     metadata: { instanceId },

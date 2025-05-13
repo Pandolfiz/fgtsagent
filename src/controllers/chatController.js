@@ -4,6 +4,7 @@ const { AppError } = require('../utils/errors');
 const config = require('../config');
 const fetch = require('node-fetch');
 const EvolutionCredential = require('../models/evolutionCredential');
+const logger = require('../utils/logger');
 
 // Recebe webhooks do Evolution API (via n8n)
 exports.handleWebhook = async (req, res) => {
@@ -100,11 +101,21 @@ exports.sendMessage = async (req, res) => {
       role = 'ME'; // Valor padrão se não for fornecido
     }
     
-    console.log(`[DEBUG] Enviando mensagem com role=${role}, to=${to}, conversationId=${conversationId}, sender_id=${sender_id || req.user.id}`);
+    // Verificar se o usuário está autenticado
+    if (!req.user || !req.user.id) {
+      logger.error('Usuário não autenticado ou ID não disponível', { user: req.user });
+      throw new AppError('Usuário não autenticado ou ID não disponível', 401);
+    }
+    
+    console.log(`[DEBUG] Enviando mensagem com role=${role}, to=${to}, conversationId=${conversationId}, user_id=${req.user.id}`);
     
     // IMPORTANTE: Usar o ID do usuário da requisição mesmo que tenha um sender_id fornecido
     // Isso garante que a identidade seja correta no backend, mas mantém o role como único critério de renderização
     const senderId = req.user.id;
+    
+    // Registrar o ID do usuário para depuração
+    logger.info(`Enviando mensagem como usuário: ${senderId} (${typeof senderId})`);
+    
     // Buscar Nome do Agente
     const cred = await EvolutionCredential.findById(instanceId);
     if (!cred) {
@@ -112,6 +123,10 @@ exports.sendMessage = async (req, res) => {
     }
     // Enviar somente o nome da instância, sem prefixo de usuário
     const instanceName = cred.instance_name;
+    
+    // Log adicional para verificar dados
+    logger.info(`Enviando para n8n: instância=${instanceName}, usuário=${senderId}`);
+    
     // Enviar para o n8n
     const n8nUrl = (process.env.N8N_API_URL || (config.n8n && config.n8n.apiUrl) || 'http://localhost:5678') + '/webhook/sendMessageEvolution';
     const n8nRes = await fetch(n8nUrl, {
@@ -122,7 +137,8 @@ exports.sendMessage = async (req, res) => {
         message, 
         instanceId, 
         instanceName,
-        role
+        role,
+        userId: senderId // Adicionar userId explicitamente para garantir que seja enviado
       })
     });
     if (!n8nRes.ok) {
@@ -140,7 +156,6 @@ exports.sendMessage = async (req, res) => {
       to,
       content: message,
       conversationId,
-      senderId,
       instanceId,
       role: role || 'ME' // Passar o role para o serviço ou usar 'ME' como padrão
     });
