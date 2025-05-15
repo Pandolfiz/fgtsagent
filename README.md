@@ -1,414 +1,326 @@
-# FGTS Manager
+# 🚀 FGTS Agent - Plataforma Web
 
-Sistema de gerenciamento para consulta, simulação e formalização de contratos de antecipação de saque-aniversário do FGTS.
+Sistema de gerenciamento e consulta de saldo FGTS para usuários.
 
 ## 📋 Sobre o Projeto
 
-FGTS Manager é uma aplicação web completa que permite a empresas parceiras gerenciar todo o processo de antecipação do saque-aniversário do FGTS, desde a consulta de saldo, simulação de valores, geração de propostas, até a formalização e acompanhamento dos contratos.
+FGTS Agent é uma aplicação web que permite aos usuários consultar, monitorar e gerenciar informações relacionadas ao seu Fundo de Garantia do Tempo de Serviço (FGTS). A plataforma oferece uma interface intuitiva e responsiva, desenvolvida com React no frontend e uma API robusta no backend.
 
-### Funcionalidades Principais
-
-- **Consulta de Saldo FGTS**: Integração com APIs para verificação de saldo disponível
-- **Simulações de Antecipação**: Cálculo de valores e taxas para antecipação
-- **Geração de Propostas**: Criação de propostas para clientes
-- **Dashboard Analítico**: Visualização de métricas e desempenho
-- **Gerenciamento de Usuários**: Sistema de autenticação e permissões
-- **API Completa**: Endpoints para integração com outros sistemas
-- **Chat em Tempo Real**: Comunicação instantânea entre usuários com suporte a diferentes agentes (humano/IA)
-- **Assistente IA**: Chat inteligente para atendimento automatizado via interface web e WhatsApp
-- **Upload de Documentos**: Gestão de documentos e arquivos dos clientes
-- **Integração WhatsApp**: Comunicação via API oficial do WhatsApp Cloud
-
-## 🔧 Tecnologias
-
-### Backend
-- **Node.js** e **Express**: API RESTful e servidor web
-- **PostgreSQL/Supabase**: Banco de dados principal e autenticação
-- **Supabase Realtime**: Para funcionalidades em tempo real e notificações
-- **JWT**: Autenticação e autorização de usuários
-- **Socket.io**: Comunicação em tempo real entre cliente e servidor
-- **Winston**: Logging estruturado para monitoramento
-- **Redis**: Cache, rate limiting e gerenciamento de filas
-- **Multer**: Upload e processamento de documentos
-- **WhatsApp Cloud API**: Integração oficial com WhatsApp Business
-- **OpenAI/GPT**: Processamento de linguagem natural para assistente IA
-- **Helmet**: Segurança da aplicação com headers HTTP
-- **Express Rate Limit**: Proteção contra abuso da API
-- **Bull**: Processamento de tarefas em background
+## 🛠️ Tecnologias Utilizadas
 
 ### Frontend
-- **React**: UI Componentizada
-- **Vite**: Build tool de alta performance
-- **TailwindCSS**: Framework CSS utilitário para estilização
-- **React Router**: Navegação cliente-side
-- **Socket.io Client**: Comunicação em tempo real
-- **Axios**: Cliente HTTP para requisições
-- **Toastify**: Sistema de notificações toast
-- **React Query**: Gerenciamento de estado e cache de dados
-- **QRCode**: Geração de QR codes para WhatsApp
+- React.js
+- Vite
+- Tailwind CSS
+- ESLint
 
-## 🚀 Instalação
+### Backend
+- Node.js
+- Express
+- MongoDB
+- Redis (para cache e sessões)
+
+### Infraestrutura
+- Docker e Docker Compose
+- Nginx (proxy reverso e servidor web)
+- Let's Encrypt (SSL/TLS)
+
+## 🏗️ Arquitetura
+
+A aplicação segue uma arquitetura de microserviços, com os seguintes componentes:
+
+- **Frontend**: Aplicação React servida por Nginx
+- **Backend API**: Serviço Node.js REST API
+- **Banco de Dados**: MongoDB para armazenamento persistente
+- **Cache**: Redis para armazenamento em cache e gerenciamento de sessões
+- **Proxy Reverso**: Nginx para roteamento de requisições e SSL/TLS
+
+## 🚦 Estrutura do Projeto
+
+```
+saas_fgts_project/
+├── api/                  # Backend da aplicação
+│   ├── src/              # Código fonte
+│   ├── Dockerfile        # Configuração de build do container
+│   └── package.json      # Dependências do Node.js
+├── frontend/             # Frontend React
+│   ├── src/              # Código fonte React
+│   ├── dist/             # Build compilado
+│   ├── Dockerfile        # Configuração do container
+│   └── package.json      # Dependências do frontend
+├── nginx/                # Configurações do Nginx
+│   ├── conf.d/           # Arquivos de configuração
+│   │   └── app.conf      # Configuração principal
+│   └── frontend/         # Configuração específica para o frontend
+│       └── default.conf  # Configuração para SPA React
+├── data/                 # Volumes persistentes (certificados, etc)
+│   └── certbot/          # Certificados SSL/TLS
+├── scripts/              # Scripts utilitários
+│   └── init-letsencrypt.sh  # Script de inicialização SSL
+└── docker-compose.yml    # Configuração dos serviços Docker
+```
+
+## 🔧 Instalação e Configuração
 
 ### Pré-requisitos
-- Node.js (v18+)
-- npm ou yarn
-- PostgreSQL ou conta Supabase
-- Redis (para cache e gerenciamento de filas)
-- Conta de desenvolvedor Meta (para API do WhatsApp)
-- Chave de API OpenAI (para assistente IA)
+- Docker (20.10+)
+- Docker Compose (v2+)
+- Git
+- Domínio configurado para apontar para seu servidor (fgtsagent.com.br)
 
-### Configuração do Ambiente
-
-1. Clone o repositório:
-```bash
-git clone https://github.com/seu-usuario/fgts-manager.git
-cd fgts-manager
-```
-
-2. Instale as dependências do projeto principal:
-```bash
-npm install
-```
-
-3. Instale as dependências do frontend:
-```bash
-cd frontend
-npm install
-cd ..
-```
-
-4. Configure o arquivo `.env` na raiz do projeto:
-```
-# Servidor
-PORT=3000
-NODE_ENV=development
-
-# Supabase
-SUPABASE_URL=sua_url_supabase
-SUPABASE_SERVICE_KEY=sua_chave_servico
-SUPABASE_ANON_KEY=sua_chave_anon
-SUPABASE_JWT_SECRET=seu_jwt_secret
-
-# Redis (para cache e tasks)
-REDIS_URL=redis://localhost:6379
-REDIS_HOST=localhost
-REDIS_PORT=6379
-
-# Google OAuth (autenticação)
-GOOGLE_CLIENT_ID=seu_client_id
-GOOGLE_CLIENT_SECRET=seu_client_secret
-GOOGLE_CALLBACK_URL=http://localhost:3000/api/auth/google/callback
-
-# WhatsApp API
-WHATSAPP_ACCESS_TOKEN=seu_token_whatsapp
-WHATSAPP_API_VERSION=v22.0
-WHATSAPP_PHONE_NUMBER_ID=seu_phone_number_id
-WHATSAPP_BUSINESS_ACCOUNT_ID=seu_business_account_id
-WHATSAPP_API_URL=https://graph.facebook.com
-
-# OpenAI (para assistente)
-OPENAI_API_KEY=sua_chave_openai
-OPENAI_MODEL=gpt-4-turbo-preview
-
-# Segurança
-JWT_SECRET=seu_jwt_secret
-JWT_EXPIRATION=7d
-SESSION_SECRET=seu_session_secret
-
-# Configurações de App
-APP_URL=http://localhost:3000
-CORS_ORIGIN=http://localhost:5173
-LOG_LEVEL=info
-UPLOAD_DIR=uploads
-```
-
-5. Configure o arquivo `.env` no diretório `frontend`:
-```
-VITE_API_URL=http://localhost:3000/api
-VITE_SUPABASE_URL=sua_url_supabase
-VITE_SUPABASE_ANON_KEY=sua_chave_anon
-VITE_SOCKET_URL=http://localhost:3000
-VITE_WHATSAPP_ENABLED=true
-VITE_CHAT_ASSISTANT_ENABLED=true
-```
-
-### Configuração do Banco de Dados
-
-1. Se estiver usando Supabase, crie as tabelas necessárias:
-
-```sql
--- Exemplo de criação de tabelas principais
-CREATE TABLE users (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  email TEXT UNIQUE NOT NULL,
-  name TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  last_login TIMESTAMP WITH TIME ZONE
-);
-
-CREATE TABLE contacts (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  remote_jid TEXT NOT NULL,
-  push_name TEXT,
-  phone TEXT,
-  agent_status TEXT DEFAULT 'full',
-  agent_state TEXT DEFAULT 'human',
-  client_id UUID REFERENCES users(id),
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-
-CREATE TABLE messages (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  conversation_id TEXT NOT NULL,
-  sender_id UUID,
-  recipient_id TEXT,
-  content TEXT,
-  timestamp TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
-  status TEXT DEFAULT 'pending',
-  metadata JSONB DEFAULT '{}',
-  client_id UUID,
-  contact TEXT,
-  role TEXT DEFAULT 'USER'
-);
-```
-
-## 🏃‍♂️ Executando o Projeto
-
-### Desenvolvimento
-
-1. Inicie o servidor backend:
-```bash
-npm run dev
-```
-
-2. Em outro terminal, inicie o frontend:
-```bash
-cd frontend
-npm run dev
-```
-
-3. Para executar o frontend e backend simultaneamente:
-```bash
-npm run dev:all
-```
-
-4. Acesse o aplicativo em:
-- Frontend: http://localhost:5173
-- Backend API: http://localhost:3000/api
-- Documentação API: http://localhost:3000/api/docs (se disponível)
-
-### Produção
-
-1. Construa o frontend:
-```bash
-npm run build:frontend
-```
-
-2. Inicie o servidor em modo produção:
-```bash
-npm start
-```
-
-3. Ou use o comando de build completo:
-```bash
-npm run build
-```
-
-### Scripts Disponíveis
-
-- `npm run dev`: Inicia o servidor backend em modo desenvolvimento
-- `npm start`: Inicia o servidor em modo produção
-- `npm test`: Executa todos os testes
-- `npm run build:frontend`: Compila o frontend
-- `npm run build`: Compila o frontend e inicia o servidor
-- `npm run dev:all`: Inicia backend e frontend simultaneamente
-
-## 📁 Estrutura do Projeto
-
-```
-/
-├── frontend/               # Frontend React
-│   ├── public/             # Arquivos estáticos
-│   │   ├── assets/         # Imagens e recursos estáticos
-│   │   ├── components/     # Componentes React reutilizáveis
-│   │   ├── contexts/       # Contextos React (auth, theme, etc.)
-│   │   ├── hooks/          # Hooks personalizados
-│   │   ├── pages/          # Componentes de página
-│   │   ├── services/       # Serviços de API e integrações
-│   │   ├── utils/          # Funções utilitárias
-│   │   ├── App.jsx         # Componente principal
-│   │   └── main.jsx        # Ponto de entrada
-│   └── dist/               # Build do frontend
-│
-├── src/                    # Servidor principal (backend)
-│   ├── config/             # Configurações (database, auth, etc.)
-│   ├── controllers/        # Controladores da API
-│   ├── middleware/         # Middlewares Express
-│   ├── models/             # Modelos de dados
-│   ├── routes/             # Rotas da API
-│   ├── services/           # Serviços do backend
-│   ├── utils/              # Utilitários
-│   ├── views/              # Templates EJS (se usados)
-│   ├── repositories/       # Camada de acesso a dados
-│   ├── jobs/               # Tarefas em background
-│   ├── scripts/            # Scripts de automação
-│   ├── migrations/         # Migrações de banco de dados
-│   ├── tests/              # Testes automatizados
-│   │   ├── unit/           # Testes unitários
-│   │   ├── integration/    # Testes de integração
-│   │   └── e2e/            # Testes end-to-end
-│   ├── app.js              # Configuração do Express
-│   └── server.js           # Entrada da aplicação
-│
-├── supabase/               # Configurações Supabase
-│   ├── migrations/         # Migrações de banco de dados
-│   └── functions/          # Edge Functions
-│
-├── uploads/                # Diretório para uploads
-├── logs/                   # Logs da aplicação
-├── public/                 # Arquivos estáticos públicos
-├── scripts/                # Scripts utilitários globais
-│
-└── package.json            # Dependências do projeto
-```
-
-## 📈 API RESTful
-
-A API segue princípios RESTful e está disponível em `/api`. Principais endpoints:
-
-- **Autenticação**
-  - `POST /api/auth/register` - Registro de usuário
-  - `POST /api/auth/login` - Login com credenciais
-  - `GET /api/auth/me` - Dados do usuário atual
-  - `POST /api/auth/logout` - Logout do usuário
-  - `POST /api/auth/google` - Autenticação com Google OAuth2
-  - `POST /api/auth/refresh` - Renovar token JWT
-
-- **FGTS**
-  - `POST /api/fgts/consult` - Consultar saldo FGTS
-  - `POST /api/fgts/simulate` - Simular antecipação
-  - `GET /api/fgts/history` - Histórico de consultas
-
-- **Propostas**
-  - `GET /api/proposals` - Listar propostas
-  - `POST /api/proposals` - Criar proposta
-  - `GET /api/proposals/:id` - Detalhes da proposta
-  - `PATCH /api/proposals/:id` - Atualizar proposta
-  - `DELETE /api/proposals/:id` - Excluir proposta
-
-- **Mensagens e Chat**
-  - `GET /api/messages/:conversationId` - Obter mensagens de uma conversa
-  - `POST /api/messages` - Enviar mensagem (suporta diferentes roles: ME, AI, USER)
-  - `PATCH /api/messages/:messageId/status` - Atualizar status da mensagem
-  - `GET /api/contacts` - Listar contatos
-  - `POST /api/contacts` - Criar novo contato
-  - `GET /api/contacts/count` - Contagem de contatos
-
-- **Webhooks**
-  - `POST /api/webhook/whatsapp` - Webhook para eventos do WhatsApp
-
-- **Dashboard**
-  - `GET /api/dashboard/stats` - Estatísticas gerais
-  - `GET /api/dashboard/metrics` - Métricas detalhadas
-
-- **Uploads**
-  - `POST /api/uploads` - Upload de documentos
-  - `GET /api/uploads/:id` - Download de documentos
-  - `DELETE /api/uploads/:id` - Excluir documento
-
-- **Websockets**
-  - Conexão em `/socket.io` para comunicação em tempo real
-  - Eventos para mensagens, notificações e status online
-
-## 🤖 Assistente IA e Integração WhatsApp
-
-O sistema possui um assistente IA integrado que pode:
-- Responder perguntas sobre FGTS e processos de antecipação
-- Guiar clientes durante o processo de simulação
-- Coletar informações necessárias para propostas
-- Comunicar-se via WhatsApp com clientes
-- Alternar automaticamente para atendimento humano quando necessário
-
-### Modos de Operação
-
-O chat suporta dois modos principais, controlados pelo campo `agent_state` nos contatos:
-- `human`: Todas as mensagens são gerenciadas por humanos
-- `ai`: O assistente IA responde automaticamente às mensagens
-
-### Configuração da Integração WhatsApp
-
-1. Crie uma conta de desenvolvedor Meta
-2. Configure um aplicativo com acesso à WhatsApp Business API
-3. Obtenha o token de acesso e preencha no arquivo `.env`
-4. Configure o webhook para receber mensagens (deve apontar para `/api/webhook/whatsapp`)
-5. Verifique o número de telefone comercial na plataforma Meta
-
-### Serviços de API
-
-O sistema integra-se com diversos serviços, incluindo:
-- API oficial do WhatsApp Cloud para envio e recepção de mensagens
-- OpenAI para processamento de linguagem natural
-- Supabase para autenticação e armazenamento
-
-## 🔄 Integração com Supabase
-
-O projeto utiliza Supabase para:
-- Banco de dados PostgreSQL
-- Autenticação de usuários e gerenciamento de permissões
-- Armazenamento de arquivos (Storage)
-- Comunicação em tempo real (Realtime)
-- Regras de segurança (RLS) para proteção de dados
-
-Para mais detalhes sobre a integração com OAuth2 do Google, consulte o arquivo [GOOGLE_OAUTH2.md](GOOGLE_OAUTH2.md).
-
-## 🧪 Testes
-
-Para executar os testes automatizados:
+### Clone e Configuração Inicial
 
 ```bash
-# Testes unitários
-npm run test:unit
+# Clonar o repositório
+git clone https://github.com/seuusuario/saas_fgts_project.git
+cd saas_fgts_project
 
-# Testes de integração
-npm run test:integration
+# Configurar variáveis de ambiente (exemplo)
+cp .env.example .env
+nano .env  # Editar conforme necessário
 
-# Testes end-to-end
-npm run test:e2e
+# Inicializar certificados SSL
+chmod +x scripts/init-letsencrypt.sh
+./scripts/init-letsencrypt.sh
 
-# Todos os testes
-npm test
+# Iniciar a aplicação
+docker-compose up -d
 ```
 
-O sistema de testes utiliza:
-- Jest como framework principal
-- Supertest para testes de API
-- Mocks para serviços externos
+### Configuração do Domínio
+
+1. Certifique-se de que seu domínio (`fgtsagent.com.br`) aponta para o IP do seu servidor
+2. Verifique se as portas 80 e 443 estão abertas no firewall
+3. Os certificados SSL são obtidos automaticamente via Let's Encrypt
+
+### Configuração do Nginx
+
+O arquivo principal de configuração está em `nginx/conf.d/app.conf`. Para aplicativos React SPA (Single Page Application), uma configuração especial é necessária para lidar com o roteamento do lado do cliente:
+
+```nginx
+# Exemplo de configuração para React SPA
+location / {
+    root /usr/share/nginx/html;
+    try_files $uri $uri/ /index.html;
+    
+    # Cabeçalhos de segurança
+    add_header X-Frame-Options "SAMEORIGIN";
+    add_header X-XSS-Protection "1; mode=block";
+}
+```
+
+## 🚀 Desenvolvimento
+
+### Executando em Ambiente de Desenvolvimento
+
+```bash
+# Iniciar todos os serviços
+docker-compose up -d
+
+# Acompanhar logs
+docker-compose logs -f
+
+# Verificar status dos containers
+docker-compose ps
+```
+
+### Acesso à Aplicação
+
+- Frontend: https://fgtsagent.com.br
+- API: https://fgtsagent.com.br/api
+
+## 🔄 Processo de Atualização
+
+### Atualização Manual
+
+```bash
+# Pare os serviços atuais
+docker-compose down
+
+# Puxe as últimas alterações
+git pull origin main
+
+# Reconstrua as imagens
+docker-compose build --no-cache api frontend
+
+# Inicie novamente
+docker-compose up -d
+```
+
+### Atualização Automatizada
+
+Para automatizar o processo de atualização, criamos um script:
+
+1. Crie o arquivo `atualizar.sh` na raiz do projeto:
+
+```bash
+#!/bin/bash
+
+echo "🤖 Iniciando atualização do FGTS Agent..."
+
+# Registrar data e hora da atualização
+echo "=========================" >> atualizacao.log
+echo "Atualização iniciada em: $(date)" >> atualizacao.log
+
+# Puxar alterações do repositório
+git pull origin main
+
+# Parar serviços
+docker-compose down
+
+# Reconstruir imagens
+docker-compose build --no-cache api frontend
+
+# Iniciar serviços
+docker-compose up -d
+
+# Verificar status
+docker-compose ps >> atualizacao.log
+
+# Verificar se há erros nos logs
+echo "Verificando logs por erros..." >> atualizacao.log
+docker-compose logs --tail=100 nginx >> atualizacao.log
+docker-compose logs --tail=100 api >> atualizacao.log
+
+echo "✅ Atualização concluída em: $(date)" >> atualizacao.log
+echo "=========================" >> atualizacao.log
+echo "Aplicação atualizada com sucesso!"
+```
+
+2. Torne o script executável:
+```bash
+chmod +x atualizar.sh
+```
+
+3. Para configurar atualizações automáticas diárias:
+```bash
+crontab -e
+# Adicione a linha para executar às 4h da manhã:
+0 4 * * * cd /caminho/para/saas_fgts_project && ./atualizar.sh >> atualizacao.log 2>&1
+```
+
+## 📋 Manutenção
+
+### Logs e Monitoramento
+
+```bash
+# Ver logs de um serviço específico
+docker-compose logs api
+docker-compose logs frontend
+docker-compose logs nginx
+
+# Monitorar em tempo real
+docker-compose logs -f
+
+# Verificar status dos contêineres
+docker-compose ps
+```
+
+### Validação das Configurações
+
+```bash
+# Verificar sintaxe da configuração do Nginx
+docker-compose exec nginx nginx -t
+
+# Verificar a versão e o status do Nginx
+docker-compose exec nginx nginx -v
+```
+
+### Backup
+
+É recomendado fazer backup regular dos dados e configurações:
+
+```bash
+# Backup do MongoDB (se aplicável)
+docker exec -it saas_fgts_project_mongo_1 mongodump --out /backup
+
+# Backup dos certificados SSL
+cp -r data/certbot /backup/certbot
+
+# Backup das configurações do Nginx
+cp -r nginx/ /backup/nginx
+```
+
+### Renovação de Certificados SSL
+
+A renovação dos certificados é automática pelo Certbot. No entanto, você pode forçar a renovação:
+
+```bash
+docker-compose run --rm certbot renew
+```
 
 ## 🔒 Segurança
 
-O projeto implementa diversas medidas de segurança:
-- Autenticação JWT com rotação de tokens
-- Sanitização de todas as entradas de usuário
-- Rate limiting para prevenir abuso da API
-- Verificação de CORS para controle de origens
-- Proteção contra ataques XSS e CSRF
-- Permissões baseadas em funções (RBAC)
-- Logs de auditoria para ações sensíveis
+- Todas as comunicações são criptografadas via HTTPS
+- As credenciais sensíveis devem ser armazenadas como variáveis de ambiente
+- O acesso ao servidor deve ser limitado por SSH com chave pública/privada
+- Recomenda-se usar um firewall para limitar o acesso apenas às portas 80 e 443
+
+## ⚠️ Solução de Problemas Comuns
+
+### Erros de Configuração do Nginx
+
+Se você encontrar erros como `unknown directive` ou `syntax error`:
+
+```bash
+# Verifique a sintaxe da configuração
+docker-compose exec nginx nginx -t
+
+# Edite o arquivo de configuração com problema
+nano nginx/conf.d/app.conf
+
+# Reinicie apenas o serviço Nginx após editar
+docker-compose restart nginx
+```
+
+### Erros no YAML do Docker Compose
+
+Se você encontrar erros como `yaml.parser.ParserError`:
+
+1. O YAML é extremamente sensível à indentação. Certifique-se de que todos os espaços e recuos estejam corretos.
+2. Não use tabs, apenas espaços.
+3. Verifique se todas as chaves têm valores correspondentes.
+
+```bash
+# Para validar seu arquivo docker-compose.yml sem executá-lo
+docker-compose config
+```
+
+### Problemas com Certificados SSL
+
+```bash
+# Verifique os logs do Certbot
+docker-compose logs certbot
+
+# Certifique-se de que o domínio aponta para o IP correto
+dig fgtsagent.com.br
+
+# Renovar manualmente os certificados
+docker-compose run --rm certbot certonly --webroot -w /var/www/certbot -d fgtsagent.com.br
+```
+
+### Problemas de Comunicação entre Serviços
+
+Se os serviços não conseguirem se comunicar entre si:
+
+1. Verifique se todos os serviços estão rodando: `docker-compose ps`
+2. Verifique se a rede correta está sendo usada: `docker network ls`
+3. Verifique a resolução DNS interna: `docker-compose exec api ping frontend`
 
 ## 🤝 Contribuição
 
-1. Faça o fork do projeto
+Para contribuir com o projeto:
+
+1. Faça um fork do repositório
 2. Crie uma branch para sua feature (`git checkout -b feature/nova-funcionalidade`)
 3. Commit suas mudanças (`git commit -m 'Adiciona nova funcionalidade'`)
 4. Push para a branch (`git push origin feature/nova-funcionalidade`)
 5. Abra um Pull Request
 
-Consulte o guia de contribuição para mais detalhes sobre coding standards, processo de revisão e setup de desenvolvimento.
-
 ## 📄 Licença
 
-Este projeto está licenciado sob a MIT License - veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+Este projeto está licenciado sob a licença MIT.
 
 ## 📞 Contato
 
-Para questões ou suporte, entre em contato através de [seu-email@exemplo.com]. 
+Para mais informações, entre em contato pelo email: contato@fgtsagent.com.br 
