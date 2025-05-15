@@ -4,7 +4,6 @@ const { supabaseAdmin } = require('../config/supabase');
 const messageRepository = require('../repositories/messageRepository');
 const EvolutionService = require('./evolutionService');
 const config = require('../config');
-const EvolutionCredential = require('../models/evolutionCredential');
 const { AppError } = require('../utils/errors');
 
 const emitter = new EventEmitter();
@@ -16,24 +15,25 @@ async function handleWebhookEvent(body) {
     const data = body.data;
     messagesList = Array.isArray(data.messages) ? data.messages : [data];
   } else if (event === 'messages.set') {
-    // Novo formato: body.data é array de mensagens
     messagesList = Array.isArray(body.data) ? body.data : [body.data];
   } else {
     console.warn(`Evento de webhook ignorado: ${event}`);
     return;
   }
   for (const msg of messagesList) {
-    // Gerar sempre um UUID para o id da mensagem
     const id = uuidv4();
-    // Extrair identificação da conversa do payload (JID remoto)
     const remoteJid = msg.key?.remoteJid || msg.message?.conversation || '';
     const conversation_id = remoteJid;
-    // Buscar credencial Evolution associada à instância para usar como sender e recipient
-    const cred = await EvolutionCredential.findById(msg.instanceId);
+    // Buscar credencial Evolution associada à instância via Supabase
+    const { data: creds, error } = await supabaseAdmin
+      .from('evolution_credentials')
+      .select('*')
+      .eq('id', msg.instanceId);
+    if (error) throw error;
+    const cred = creds && creds[0];
     if (!cred) throw new Error('Credencial não encontrada');
     const clientId = cred.client_id;
     const clientPhone = cred.phone;
-    // Definir remetente e destinatário conforme origem da mensagem
     const fromMe = msg.key?.fromMe;
     const sender_id = fromMe ? clientPhone : remoteJid;
     const recipient_id = fromMe ? remoteJid : clientPhone;
@@ -44,13 +44,8 @@ async function handleWebhookEvent(body) {
       ? new Date(msg.messageTimestamp * 1000)
       : new Date();
     const metadata = msg;
-    
-    // Determinar o role da mensagem respeitando qualquer valor já definido
     const role = msg.role || (fromMe ? 'ME' : 'USER');
-    
-    // Registrar para debug
     console.log(`Processando mensagem do webhook: fromMe=${fromMe}, content=${content.substring(0, 30)}..., role=${role}, sender_id=${sender_id}, recipient_id=${recipient_id}`);
-    
     const saved = await messageRepository.saveMessage({
       id,
       conversation_id,
@@ -61,7 +56,7 @@ async function handleWebhookEvent(body) {
       timestamp,
       status: 'received',
       instanceId: msg.instanceId,
-      role // Definir explicitamente o role
+      role
     });
     emitter.emit('message', saved);
   }
@@ -75,8 +70,13 @@ async function handleOutgoing({ to, content, conversationId, senderId, instanceI
   if (!instanceId) {
     throw new AppError('Instância é obrigatória para enviar mensagem', 400);
   }
-  // Buscar credencial da instância
-  const cred = await EvolutionCredential.findById(instanceId);
+  // Buscar credencial da instância via Supabase
+  const { data: creds, error } = await supabaseAdmin
+    .from('evolution_credentials')
+    .select('*')
+    .eq('id', instanceId);
+  if (error) throw error;
+  const cred = creds && creds[0];
   // Logar credencial para debug
   console.log('[DEBUG] Credencial carregada:', cred);
   // NOVA VALIDAÇÃO: garantir que o Nome do Agente é válido

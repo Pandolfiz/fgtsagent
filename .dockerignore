@@ -1,0 +1,46 @@
+# Arquivos de log
+logs
+*.log
+npm-debug.log*
+
+# Dependências
+node_modules
+frontend/node_modules
+src/node_modules
+
+# Arquivos de build
+dist
+frontend/dist
+*.zip
+*.tar.gz
+
+# Outros
+.git
+.github
+.DS_Store
+.env
+.env.local
+.env.development
+.env.test
+.env.production
+.vscode
+.idea
+
+# Arquivos de teste e cobertura
+coverage
+frontend/coverage
+src/coverage
+__tests__
+*.spec.js
+*.test.js
+
+# Arquivos temporários
+temp
+tmp
+.tmp
+
+# Arquivos específicos do desenvolvimento
+*.md
+!README.md
+docs
+examples 

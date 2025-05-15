@@ -1,12 +1,16 @@
-const KnowledgeBase = require('../models/knowledgeBase');
 const logger = require('../utils/logger');
+const { supabaseAdmin } = require('../config/supabase');
 
 class KnowledgeBaseController {
   // Lista entradas da base de conhecimento do cliente autenticado
   async list(req, res) {
     try {
       const clientId = req.clientId;
-      const entries = await KnowledgeBase.findByClientId(clientId);
+      const { data: entries, error } = await supabaseAdmin
+        .from('knowledge_base')
+        .select('*')
+        .eq('client_id', clientId);
+      if (error) throw error;
       // Corrigir codificação dos títulos (Latin1 para UTF-8)
       entries.forEach(entry => {
         if (entry.title) {
@@ -32,7 +36,12 @@ class KnowledgeBaseController {
   async getById(req, res) {
     try {
       const { id } = req.params;
-      const entry = await KnowledgeBase.findById(id);
+      const { data: entries, error } = await supabaseAdmin
+        .from('knowledge_base')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
+      const entry = entries && entries[0];
       if (!entry || entry.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Entrada não encontrada' });
       }
@@ -53,8 +62,11 @@ class KnowledgeBaseController {
         tags: req.body.tags || [],
         metadata: req.body.metadata || {}
       };
-      const entry = new KnowledgeBase(payload);
-      const saved = await entry.save();
+      const { data: saved, error } = await supabaseAdmin
+        .from('knowledge_base')
+        .insert([payload])
+        .select();
+      if (error) throw error;
       return res.status(201).json({ success: true, data: saved });
     } catch (err) {
       logger.error('KnowledgeBaseController.create error:', err.message || err);
@@ -66,14 +78,25 @@ class KnowledgeBaseController {
   async update(req, res) {
     try {
       const { id } = req.params;
-      const existing = await KnowledgeBase.findById(id);
+      const { data: entries, error } = await supabaseAdmin
+        .from('knowledge_base')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
+      const existing = entries && entries[0];
       if (!existing || existing.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Entrada não encontrada' });
       }
+      const updates = {};
       ['title', 'content', 'tags', 'metadata'].forEach(field => {
-        if (req.body[field] !== undefined) existing[field] = req.body[field];
+        if (req.body[field] !== undefined) updates[field] = req.body[field];
       });
-      const updated = await existing.save();
+      const { data: updated, error: updateError } = await supabaseAdmin
+        .from('knowledge_base')
+        .update(updates)
+        .eq('id', id)
+        .select();
+      if (updateError) throw updateError;
       return res.json({ success: true, data: updated });
     } catch (err) {
       logger.error('KnowledgeBaseController.update error:', err.message || err);
@@ -85,18 +108,22 @@ class KnowledgeBaseController {
   async delete(req, res) {
     try {
       const { id } = req.params;
-      const existing = await KnowledgeBase.findById(id);
+      const { data: entries, error } = await supabaseAdmin
+        .from('knowledge_base')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
+      const existing = entries && entries[0];
       if (!existing || existing.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Entrada não encontrada' });
       }
-      const { supabaseAdmin } = require('../config/supabase');
-      const { error } = await supabaseAdmin
+      const { error: deleteError } = await supabaseAdmin
         .from('knowledge_base')
         .delete()
         .eq('id', id);
-      if (error) {
-        logger.error('KnowledgeBaseController.delete error:', error.message || error);
-        return res.status(500).json({ success: false, message: error.message });
+      if (deleteError) {
+        logger.error('KnowledgeBaseController.delete error:', deleteError.message || deleteError);
+        return res.status(500).json({ success: false, message: deleteError.message });
       }
       return res.json({ success: true, message: 'Entrada excluída com sucesso' });
     } catch (err) {

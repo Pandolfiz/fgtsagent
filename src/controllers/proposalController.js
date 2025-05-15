@@ -1,4 +1,3 @@
-const Proposal = require('../models/proposal');
 const axios = require('axios');
 const logger = require('../utils/logger');
 const http = require('https');
@@ -123,10 +122,16 @@ exports.cancelProposal = async (req, res) => {
     if (!proposal_id) {
       return res.status(400).json({ success: false, message: 'ID da proposta não informado.' });
     }
-    const proposal = await Proposal.findById(proposal_id);
-    if (!proposal) {
+    // Buscar proposta diretamente no Supabase
+    const { data: proposals, error } = await supabaseAdmin
+      .from('proposals')
+      .select('*')
+      .eq('proposal_id', proposal_id);
+    if (error) throw error;
+    if (!proposals || proposals.length === 0) {
       return res.status(404).json({ success: false, message: 'Proposta não encontrada.' });
     }
+    const proposal = proposals[0];
     if (proposal.status === 'cancelled') {
       return res.status(400).json({ success: false, message: 'Proposta já está cancelada.' });
     }
@@ -138,8 +143,12 @@ exports.cancelProposal = async (req, res) => {
     logger.info('[V8 DEBUG] accessToken:', accessToken);
     // 2. Cancelar na V8 usando proposal_id
     await cancelProposalV8(proposal_id, accessToken);
-    // 3. Atualizar localmente
-    await proposal.cancel();
+    // 3. Atualizar localmente no Supabase
+    const { error: updateError } = await supabaseAdmin
+      .from('proposals')
+      .update({ status: 'cancelled' })
+      .eq('proposal_id', proposal_id);
+    if (updateError) throw updateError;
     logger.info(`Proposta ${proposal_id} cancelada com sucesso na V8 e localmente.`);
     return res.json({ success: true, message: 'Proposta cancelada com sucesso na V8 e localmente.' });
   } catch (err) {
@@ -156,12 +165,15 @@ exports.deleteProposal = async (req, res) => {
     }
     const proposal_id = req.params.id;
     if (!proposal_id) return res.status(400).json({ success: false, message: 'ID da proposta não informado.' });
-    const proposal = await Proposal.findById(proposal_id);
-    logger.info('[DEBUG] Proposal encontrado:', proposal);
-    if (!proposal) return res.status(404).json({ success: false, message: 'Proposta não encontrada.' });
-
+    // Buscar proposta diretamente no Supabase
+    const { data: proposals, error } = await supabaseAdmin
+      .from('proposals')
+      .select('*')
+      .eq('proposal_id', proposal_id);
+    if (error) throw error;
+    if (!proposals || proposals.length === 0) return res.status(404).json({ success: false, message: 'Proposta não encontrada.' });
+    // Cancelar na V8 se possível
     let v8CancelSuccess = false;
-    // Tentar cancelar na V8 se possível
     try {
       const token = await getV8AccessToken(req.user.id);
       logger.info('[V8 DEBUG] accessToken:', token);
@@ -170,21 +182,15 @@ exports.deleteProposal = async (req, res) => {
       logger.info(`Proposta ${proposal_id} cancelada no V8.`);
       v8CancelSuccess = true;
     } catch (v8Err) {
-      // Evitar log de objetos completos que podem conter estruturas circulares
       logger.error('[V8 DEBUG] Erro ao cancelar na V8:', { 
         message: v8Err.message,
         name: v8Err.name,
         code: v8Err.code,
         status: v8Err.response?.status
       });
-      
-      // Se for erro de credenciais, continue com cancelamento local
       if (v8Err.message.includes('Credenciais do parceiro não encontradas')) {
         logger.warn(`Credenciais não encontradas para usuário ${req.user.id}, continuando com cancelamento local apenas`);
-        // Não retornar erro, apenas continuar com o cancelamento local
-      } 
-      // Se for outro erro que não permita ignorar, retornar o erro
-      else if (!v8Err.message.includes('Operation does not allow cancelation')) {
+      } else if (!v8Err.message.includes('Operation does not allow cancelation')) {
         return res.status(400).json({ 
           success: false, 
           message: 'Falha ao cancelar na V8.', 
@@ -192,28 +198,22 @@ exports.deleteProposal = async (req, res) => {
         });
       }
     }
-
-    // Atualizar status para 'cancelled' localmente
-    const { error } = await supabaseAdmin
+    // Atualizar status para 'cancelled' localmente no Supabase
+    const { error: updateError } = await supabaseAdmin
       .from('proposals')
       .update({ status: 'cancelled' })
       .eq('proposal_id', proposal_id);
-    
-    if (error) throw error;
-    
-    // Mensagem de sucesso adaptada conforme contexto
+    if (updateError) throw updateError;
     const message = v8CancelSuccess 
       ? 'Proposta cancelada com sucesso na V8 e localmente.' 
       : 'Proposta cancelada localmente com sucesso.';
-    
     return res.json({ success: true, message });
   } catch (err) {
-    // Registrar apenas informações seguras do erro
     logger.error('[DEBUG] Erro final ao excluir proposta:', { 
       message: err.message,
       name: err.name,
       code: err.code,
-      stack: err.stack?.split('\n').slice(0, 3).join('\n') // Incluir apenas as 3 primeiras linhas da stack
+      stack: err.stack?.split('\n').slice(0, 3).join('\n') 
     });
     return res.status(500).json({ success: false, message: 'Erro ao excluir proposta.', error: err.message });
   }

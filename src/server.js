@@ -5,6 +5,18 @@ const logger = require('./utils/logger');
 const { checkDatabaseSetup } = require('./utils/databaseChecker');
 const http = require('http');
 const PORT = config.port || 3000;
+const express = require('express');
+const path = require('path');
+
+// Configuração para servir arquivos estáticos do frontend
+app.use(express.static(path.join(__dirname, '../frontend/dist')));
+
+// IMPORTANTE: Todas as outras rotas que não forem de API servem o app React (para SPA funcionar)
+// Esta rota deve estar APÓS as rotas da API e ANTES de iniciar o servidor
+app.get('*', (req, res) => {
+  console.log('Servindo App React para:', req.path);
+  res.sendFile(path.resolve(__dirname, '../frontend/dist/index.html'));
+});
 
 // Iniciar servidor
 async function startServer() {

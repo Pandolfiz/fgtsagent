@@ -1,0 +1,37 @@
+
+services:
+  api:
+    environment:
+      - NODE_ENV=development
+      - DEBUG=app:*
+    command: npm run dev
+    volumes:
+      - ./src:/app
+      - /app/node_modules
+
+  frontend:
+    environment:
+      - NODE_ENV=development
+    command: npm run dev
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    ports:
+      - "5173:5173"
+
+  nginx:
+    ports:
+      - "8080:80"
+
+  # Serviço para visualização do Redis (opcional)
+  redis-commander:
+    image: rediscommander/redis-commander:latest
+    restart: always
+    environment:
+      - REDIS_HOSTS=local:redis:6379
+    ports:
+      - "8081:8081"
+    depends_on:
+      - redis
+    networks:
+      - app-network 

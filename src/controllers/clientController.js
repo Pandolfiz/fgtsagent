@@ -1,10 +1,14 @@
-const Client = require('../models/client');
 const logger = require('../utils/logger');
+const { supabaseAdmin } = require('../config/supabase');
 
 class ClientController {
   async list(req, res) {
     try {
-      const clients = await Client.findAll();
+      // Buscar clientes diretamente no Supabase
+      const { data: clients, error } = await supabaseAdmin
+        .from('clients')
+        .select('*');
+      if (error) throw error;
       return res.json({ success: true, data: clients });
     } catch (err) {
       logger.error('ClientController.list error:', err.message || err);
@@ -77,7 +81,6 @@ class ClientController {
       if (!isAdmin) {
         return res.status(403).json({ success: false, message: 'Somente admin pode excluir clientes' });
       }
-      const { supabaseAdmin } = require('../config/supabase');
       const { error } = await supabaseAdmin
         .from('clients')
         .delete()

@@ -191,6 +191,15 @@ app.get('*/callback*', (req, res) => {
   res.sendFile(path.join(__dirname, '../frontend/dist/oauth-handler.html'));
 });
 
+// Rota pública para verificação de saúde do sistema (para Docker e monitoramento)
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    version: process.env.npm_package_version || '1.0.0'
+  });
+});
+
 // Todas as outras solicitações são tratadas pelo React Router
 // Esta rota deve vir DEPOIS de todas as rotas API e callback OAuth específicas
 app.get('*', (req, res) => {
