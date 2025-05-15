@@ -3,7 +3,7 @@ const contactService = require('../services/contactService');
 const { AppError } = require('../utils/errors');
 const config = require('../config');
 const fetch = require('node-fetch');
-const EvolutionCredential = require('../models/evolutionCredential');
+const { supabaseAdmin } = require('../config/supabase');
 const logger = require('../utils/logger');
 
 // Recebe webhooks do Evolution API (via n8n)
@@ -84,7 +84,6 @@ exports.streamMessages = async (req, res) => {
 // Enviar mensagem
 exports.sendMessage = async (req, res) => {
   try {
-    // Extrair dados do body e fallback instanceId da query se necessário
     let { to, message, instanceId, conversationId, role, sender_id } = req.body;
     if (!instanceId && req.query.instance) {
       instanceId = req.query.instance;
@@ -92,42 +91,31 @@ exports.sendMessage = async (req, res) => {
     if (!to || !message || !conversationId || !instanceId) {
       throw new AppError('Destinatário, mensagem, ID da conversa e instância são obrigatórios', 400);
     }
-    
-    // Garantir que role seja um dos valores aceitos
     if (role && !['ME', 'AI', 'USER'].includes(role)) {
       console.warn(`Valor de role inválido: ${role}. Usando 'ME' como padrão.`);
-      role = 'ME'; // Valor padrão se não for válido
+      role = 'ME';
     } else if (!role) {
-      role = 'ME'; // Valor padrão se não for fornecido
+      role = 'ME';
     }
-    
-    // Verificar se o usuário está autenticado
     if (!req.user || !req.user.id) {
       logger.error('Usuário não autenticado ou ID não disponível', { user: req.user });
       throw new AppError('Usuário não autenticado ou ID não disponível', 401);
     }
-    
     console.log(`[DEBUG] Enviando mensagem com role=${role}, to=${to}, conversationId=${conversationId}, user_id=${req.user.id}`);
-    
-    // IMPORTANTE: Usar o ID do usuário da requisição mesmo que tenha um sender_id fornecido
-    // Isso garante que a identidade seja correta no backend, mas mantém o role como único critério de renderização
     const senderId = req.user.id;
-    
-    // Registrar o ID do usuário para depuração
     logger.info(`Enviando mensagem como usuário: ${senderId} (${typeof senderId})`);
-    
-    // Buscar Nome do Agente
-    const cred = await EvolutionCredential.findById(instanceId);
+    // Buscar Nome do Agente via Supabase
+    const { data: creds, error } = await supabaseAdmin
+      .from('evolution_credentials')
+      .select('*')
+      .eq('id', instanceId);
+    if (error) throw error;
+    const cred = creds && creds[0];
     if (!cred) {
       throw new AppError('Instância não encontrada', 404);
     }
-    // Enviar somente o nome da instância, sem prefixo de usuário
     const instanceName = cred.instance_name;
-    
-    // Log adicional para verificar dados
     logger.info(`Enviando para n8n: instância=${instanceName}, usuário=${senderId}`);
-    
-    // Enviar para o n8n
     const n8nUrl = (process.env.N8N_API_URL || (config.n8n && config.n8n.apiUrl) || 'http://localhost:5678') + '/webhook/sendMessageEvolution';
     const n8nRes = await fetch(n8nUrl, {
       method: 'POST',
@@ -138,7 +126,7 @@ exports.sendMessage = async (req, res) => {
         instanceId, 
         instanceName,
         role,
-        userId: senderId // Adicionar userId explicitamente para garantir que seja enviado
+        userId: senderId
       })
     });
     if (!n8nRes.ok) {
@@ -157,7 +145,7 @@ exports.sendMessage = async (req, res) => {
       content: message,
       conversationId,
       instanceId,
-      role: role || 'ME' // Passar o role para o serviço ou usar 'ME' como padrão
+      role: role || 'ME'
     });
     return res.status(200).json({
       success: true,

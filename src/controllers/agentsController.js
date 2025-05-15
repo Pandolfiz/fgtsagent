@@ -1,5 +1,5 @@
+const logger = require('../utils/logger');
 const { supabaseAdmin } = require('../config/supabase');
-const EvolutionCredential = require('../models/evolutionCredential');
 const { AppError } = require('../utils/errors');
 
 // Obtém o modo atual do agente para o cliente autenticado

@@ -2,45 +2,35 @@
 const { supabaseAdmin } = require('./database');
 const { AppError } = require('../utils/errors');
 const logger = require('../utils/logger');
-const Client = require('../models/client');
 const axios = require('axios');
 const { google } = require('googleapis');
 
 class AuthService {
   async signUp(email, password, userData) {
     try {
-      // Verificar se o Supabase está configurado
       if (!supabaseAdmin) {
         throw new AppError('Serviço de autenticação não configurado', 500);
       }
-
-      // 1. Registrar usuário no Supabase
       const { data: authData, error: authError } = await supabaseAdmin.auth.admin.createUser({
         email,
         password,
-        email_confirm: true, // Confirmar email automaticamente para testes
+        email_confirm: true,
         user_metadata: {
           first_name: userData.firstName || '',
           full_name: `${userData.firstName || ''} ${userData.lastName || ''}`.trim()
         }
       });
-      
       if (authError) {
         logger.error(`Erro ao registrar usuário no Supabase: ${authError.message}`);
         throw new AppError(authError.message, 400);
       }
-      
-      // 2. Verificar se o perfil do usuário já existe
       const { data: existingProfile, error: profileCheckError } = await supabaseAdmin
         .from('user_profiles')
         .select('id')
         .eq('id', authData.user.id)
         .single();
-        
-      // Se o perfil já existe, apenas atualizamos
       if (existingProfile) {
         logger.info(`Perfil já existe para o usuário ${authData.user.id}, atualizando...`);
-        
         const { error: updateError } = await supabaseAdmin
           .from('user_profiles')
           .update({
@@ -49,13 +39,10 @@ class AuthService {
             updated_at: new Date()
           })
           .eq('id', authData.user.id);
-          
         if (updateError) {
           logger.warn(`Não foi possível atualizar perfil para o usuário ${authData.user.id}: ${updateError.message}`);
-          // Não falharemos aqui, pois o usuário já foi criado
         }
       } else {
-        // 3. Criar perfil do usuário se não existir
         const { error: profileError } = await supabaseAdmin
           .from('user_profiles')
           .insert({
@@ -65,43 +52,39 @@ class AuthService {
             created_at: new Date(),
             updated_at: new Date()
           });
-        
         if (profileError) {
-          // Registrar o erro, mas não falhar completamente
           logger.warn(`Não foi possível criar perfil para o usuário ${authData.user.id}: ${profileError.message}`);
-          // Não fazemos rollback aqui, pois o registro de auth é mais importante
         }
       }
-      
       logger.info(`Novo usuário registrado: ${email}`);
-      
-      // Criar registro na tabela clients
       try {
-        const client = new Client({
-          id: authData.user.id,
-          name: userData.firstName ? `${userData.firstName} ${userData.lastName || ''}`.trim() : email,
-          email: authData.user.email
-        });
-        await client.save();
-        logger.info(`Cliente criado na tabela clients para o usuário ${authData.user.id}`);
+        // Criar registro na tabela clients via Supabase
+        const { error: clientError } = await supabaseAdmin
+          .from('clients')
+          .insert({
+            id: authData.user.id,
+            name: userData.firstName ? `${userData.firstName} ${userData.lastName || ''}`.trim() : email,
+            email: authData.user.email
+          });
+        if (clientError) {
+          logger.warn(`Não foi possível criar cliente para o usuário ${authData.user.id}: ${clientError.message}`);
+        } else {
+          logger.info(`Cliente criado na tabela clients para o usuário ${authData.user.id}`);
+        }
       } catch (clientError) {
         logger.warn(`Não foi possível criar cliente para o usuário ${authData.user.id}: ${clientError.message}`);
-        // Não falhar o cadastro do usuário por erro no clients
       }
-
       return {
         id: authData.user.id,
         email: authData.user.email
       };
     } catch (error) {
       logger.error(`Erro ao registrar usuário: ${error.message}`);
-      
-      // Verificar se é um erro da aplicação ou erro genérico
       if (error instanceof AppError) {
         throw error;
       } else {
         throw new AppError(
-          `Falha ao registrar usuário: ${error.message}`, 
+          `Falha ao registrar usuário: ${error.message}`,
           400
         );
       }

@@ -1,0 +1,116 @@
+services:
+  api:
+    build: 
+      context: ./src
+      dockerfile: Dockerfile
+    restart: always
+    expose:
+      - "3000"
+    env_file:
+      - ./src/.env
+    depends_on:
+      - redis
+    volumes:
+      - ./src/logs:/app/logs
+      - ./src/uploads:/app/uploads
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
+    
+  frontend:
+    build: 
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: always
+    # expose:
+    #   - "80"
+    depends_on:
+      - api
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+
+  nginx:
+    image: nginx:1.25-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      # - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro # Removido, app.conf é suficiente
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      # - ./nginx/html:/usr/share/nginx/html # Removido, não utilizado na config atual
+      - ./data/certbot/conf:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+    depends_on:
+      - api
+      - frontend
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+
+  certbot:
+    image: certbot/certbot:latest
+    restart: always
+    volumes:
+      - ./data/certbot/conf:/etc/letsencrypt
+      - certbot-var:/var/lib/letsencrypt
+      - ./data/certbot/www:/var/www/certbot
+    depends_on:
+      - nginx
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --appendonly yes
+    volumes:
+      - redis-data:/data
+    networks:
+      - app-network
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+
+  # Banco de dados Postgres (comentado por padrão, descomente se necessário)
+  # db:
+  #   image: postgres:15-alpine
+  #   restart: always
+  #   environment:
+  #     POSTGRES_DB: ${POSTGRES_DB:-saas_fgts}
+  #     POSTGRES_USER: ${POSTGRES_USER:-postgres}
+  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+  #   volumes:
+  #     - db-data:/var/lib/postgresql/data
+  #   networks:
+  #     - app-network
+  #   deploy:
+  #     resources:
+  #       limits:
+  #         cpus: '0.50'
+  #         memory: 512M
+
+volumes:
+  redis-data:
+  certbot-var:
+  # db-data:
+
+networks:
+  app-network:
+    driver: bridge

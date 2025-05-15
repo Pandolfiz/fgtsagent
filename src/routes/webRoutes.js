@@ -5,7 +5,6 @@ const logger = require('../config/logger');
 const { supabase, supabaseAdmin } = require('../config/supabase');
 const config = require('../config');
 const { createClient } = require('@supabase/supabase-js');
-const EvolutionCredential = require('../models/evolutionCredential');
 const EvolutionService = require('../services/evolutionService');
 const evolutionCredentialController = require('../controllers/evolutionCredentialController');
 const chatService = require('../services/chatService');
@@ -834,7 +833,7 @@ router.post('/organizations/:id/edit', requireAuth, commonViewData, async (req, 
 router.get('/whatsapp-credentials', requireAuth, commonViewData, async (req, res) => {
   try {
     // Buscar todas as credenciais do usuário
-    const credentials = await EvolutionCredential.findAllByClientId(req.user.id);
+    const credentials = await EvolutionService.findAllByClientId(req.user.id);
     // Recalcular status de cada credencial antes de renderizar
     if (credentials && credentials.length) {
       await Promise.all(credentials.map(async cred => {
@@ -857,7 +856,7 @@ router.get('/whatsapp-credentials', requireAuth, commonViewData, async (req, res
     // Extrair QR Code do flash, se existir
     const qrImage = req.flash('qrImage')[0] || null;
     const pairingCode = req.flash('pairingCode')[0] || null;
-    res.render('evolution-credentials', {
+    res.render('whatsapp-credentials', {
       title: 'Conectar WhatsApp Business',
       credentials,
       messages: req.flash(),
@@ -878,7 +877,7 @@ router.post('/whatsapp-credentials', requireAuth, commonViewData, async (req, re
 
     // Validar telefone
     if (!phone || !/^\d{10,}$/.test(phone.replace(/\D/g, ''))) {
-      return res.render('evolution-credentials', {
+      return res.render('whatsapp-credentials', {
         title: 'Conectar WhatsApp Business',
         credentials: [],
         qrImage: null,
@@ -892,7 +891,6 @@ router.post('/whatsapp-credentials', requireAuth, commonViewData, async (req, re
     const instanceName = `${userName} - ${instance_name || `inst_${phone.replace(/\D/g, '').substring(0, 8)}`}`;
 
     // Criar instância na Evolution API solicitando QR Code
-    const EvolutionService = require('../services/evolutionService');
     const service = new EvolutionService({
       baseUrl: config.evolutionApi.url,
       apiKey: config.evolutionApi.apiKey,
@@ -907,7 +905,7 @@ router.post('/whatsapp-credentials', requireAuth, commonViewData, async (req, re
     const metadata = { evolution: apiRes };
 
     // Salvar credencial no banco local com id da instância
-    const cred = new EvolutionCredential({
+    const cred = new EvolutionService({
       id: instanceId,
       client_id: req.user.id,
       phone,
@@ -939,7 +937,7 @@ router.post('/whatsapp-credentials', requireAuth, commonViewData, async (req, re
 // Handler de conexão via formulário (setupInstance)
 router.post('/whatsapp-credentials/:id/setup', requireAuth, async (req, res) => {
   try {
-    const existing = await EvolutionCredential.findById(req.params.id);
+    const existing = await EvolutionService.findById(req.params.id);
     if (!existing || existing.client_id !== req.user.id) {
       req.flash('error', 'Credencial não encontrada');
       return res.redirect('/whatsapp-credentials');
@@ -993,7 +991,7 @@ router.get('/chat', requireAuth, prepareUserData, commonViewData, async (req, re
     const userId = req.user.id;
     const conversationId = req.query.id || userId; // Usa ID do usuário se não especificado
     // Carregar instâncias do usuário
-    const instances = await EvolutionCredential.findAllByClientId(userId);
+    const instances = await EvolutionService.findAllByClientId(userId);
     // Determinar instância selecionada (parâmetro ou primeira)
     const selectedInstanceId = req.query.instance || (instances.length > 0 ? instances[0].id : null);
     // Buscar conversas filtradas pela instância selecionada
@@ -1038,7 +1036,7 @@ router.get('/agents', requireAuth, commonViewData, async (req, res) => {
   ];
   // Determinar modo atual a partir de contacts
   const clientId = req.user.id;
-  const instances = await EvolutionCredential.findAllByClientId(clientId);
+  const instances = await EvolutionService.findAllByClientId(clientId);
   const instanceIds = instances.map(inst => inst.id);
   let mode = 'full';
   if (instanceIds.length) {

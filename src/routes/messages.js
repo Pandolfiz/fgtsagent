@@ -151,44 +151,35 @@ router.post('/', requireAuth, async (req, res) => {
     // Mensagens com role 'USER' são mensagens recebidas e não precisam ser enviadas
     if (validRole === 'ME' || validRole === 'AI') {
       const recipientPhone = recipientId || contactData.phone;
-      
       try {
         // Verificar se temos um userId válido
         if (!userId) {
           logger.error('ID do usuário não fornecido para enviar mensagem pelo WhatsApp');
           throw new Error('ID do usuário é obrigatório para enviar mensagem');
         }
-        
         logger.info(`Enviando mensagem para ${recipientPhone} pelo usuário ${userId}`);
-        
         // Garantir que o userId esteja no formato correto
         const clientId = contactData.client_id || userId;
-        
         // Log para depuração do clientId
         logger.info(`ClientId para envio de mensagem: ${clientId}, Tipo: ${typeof clientId}`);
         logger.info(`Dados de contato: ${JSON.stringify(contactData)}`);
-        
         // Verificar se o telefone está no formato correto
         const formattedPhone = recipientPhone.startsWith('+') ? 
           recipientPhone.substring(1) : recipientPhone;
-        
         logger.info(`Número formatado: ${formattedPhone}`);
-        
         // Adicionar indicador de digitação para melhorar a experiência do usuário
         await whatsappService.sendTypingIndicator(formattedPhone, clientId);
-        
         // Aguardar um tempo para simular digitação (entre 1 e 3 segundos dependendo do tamanho da mensagem)
         const typingDelay = Math.min(Math.max(content.length * 30, 1000), 3000);
         await new Promise(resolve => setTimeout(resolve, typingDelay));
-        
         // Enviar a mensagem de texto usando as credenciais oficiais do WhatsApp
         logger.info(`Tentando enviar mensagem via WhatsApp oficial para ${formattedPhone}`);
+        logger.info(`Payload para WhatsApp: phone=${formattedPhone}, content=${content}, clientId=${clientId}`);
         const whatsappResponse = await whatsappService.sendTextMessage(formattedPhone, content, clientId);
-        
+        logger.info(`Resposta da API WhatsApp: ${JSON.stringify(whatsappResponse)}`);
         // Atualizar o status da mensagem com base na resposta da API
         const messageStatus = whatsappResponse.success ? 'sent' : 'failed';
         let messageMetadata = {};
-        
         if (whatsappResponse.success) {
           logger.info(`Mensagem enviada com sucesso. ID: ${whatsappResponse.data.messages[0].id}`);
           messageMetadata = {
@@ -197,65 +188,34 @@ router.post('/', requireAuth, async (req, res) => {
           };
         } else {
           const errorMessage = whatsappResponse.error || 'Erro desconhecido';
-          const errorDetails = whatsappResponse.error_details || errorMessage;
-          
-          logger.error(`Falha ao enviar mensagem: ${errorDetails}`);
-          
-          messageMetadata = {
+          logger.error(`Erro ao enviar mensagem para WhatsApp: ${errorMessage}`);
+          messageMetadata = { error: errorMessage, error_details: whatsappResponse.error_details };
+          // Atualize o status da mensagem no banco para 'failed'
+          await supabase
+            .from('messages')
+            .update({ status: 'failed', metadata: messageMetadata })
+            .eq('conversation_id', conversationId)
+            .eq('timestamp', msgTimestamp);
+          return res.status(500).json({
+            success: false,
+            message: 'Erro ao enviar mensagem para o WhatsApp',
             error: errorMessage,
-            error_details: errorDetails,
-            error_time: new Date().toISOString()
-          };
-          
-          // Sugestão para resolver problemas de credenciais
-          if (errorDetails.includes('Credenciais') || 
-              errorDetails.includes('Token') || 
-              errorDetails.includes('phoneNumberId') || 
-              errorDetails.includes('businessAccountId')) {
-            logger.warn('Problema com credenciais do WhatsApp detectado');
-            messageMetadata.credential_error = true;
-            messageMetadata.solution = 'Configure as credenciais do WhatsApp na tabela whatsapp_credentials para este usuário.';
-          }
+            error_details: whatsappResponse.error_details
+          });
         }
-        
-        // Atualizar a mensagem no banco com o status e os metadados
+      } catch (err) {
+        logger.error(`Exceção ao enviar mensagem para WhatsApp: ${err.message}`);
+        // Atualize o status da mensagem no banco para 'failed'
         await supabase
           .from('messages')
-          .update({
-            status: messageStatus,
-            metadata: messageMetadata
-          })
-          .eq('id', data[0].id);
-        
-        // Incluir informações do WhatsApp na resposta
-        return res.status(201).json({
-          success: true,
-          message: {
-            id: data[0].id,
-            content: data[0].content,
-            sender_id: data[0].sender_id,
-            receiver_id: data[0].recipient_id,
-            created_at: data[0].timestamp,
-            is_read: false,
-            whatsapp_status: messageStatus,
-            role: data[0].role || validRole
-          },
-          whatsapp_response: whatsappResponse.success 
-            ? { success: true } 
-            : { success: false, error: whatsappResponse.error }
+          .update({ status: 'failed', metadata: { error: err.message } })
+          .eq('conversation_id', conversationId)
+          .eq('timestamp', msgTimestamp);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao enviar mensagem para o WhatsApp',
+          error: err.message
         });
-      } catch (whatsappError) {
-        logger.error(`Erro ao enviar mensagem pelo WhatsApp: ${whatsappError.message}`, { whatsappError });
-        
-        // Mesmo com erro no WhatsApp, a mensagem foi salva no banco
-        // Atualizar status da mensagem para failed
-        await supabase
-          .from('messages')
-          .update({
-            status: 'failed',
-            metadata: { error_details: whatsappError.message }
-          })
-          .eq('id', data[0].id);
       }
     }
     

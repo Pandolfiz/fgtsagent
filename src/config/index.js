@@ -1,6 +1,6 @@
 const path = require('path');
-// Carregar variáveis de ambiente do arquivo .env na raiz do projeto
-require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+// Carregar variáveis de ambiente do arquivo .env na pasta src
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 // Verificar se as variáveis de ambiente foram carregadas
 // Adaptação para usar os nomes de variáveis que existem no arquivo .env

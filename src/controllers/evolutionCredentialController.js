@@ -1,7 +1,7 @@
-const EvolutionCredential = require('../models/evolutionCredential');
 const logger = require('../utils/logger');
 const EvolutionService = require('../services/evolutionService');
 const config = require('../config');
+const { supabaseAdmin } = require('../config/supabase');
 
 class EvolutionCredentialController {
   // Lista credenciais do cliente autenticado
@@ -9,31 +9,28 @@ class EvolutionCredentialController {
     try {
       const clientId = req.clientId;
       // Buscar todas as credenciais do cliente
-      const creds = await EvolutionCredential.findAllByClientId(clientId);
-
+      const { data: creds, error } = await supabaseAdmin
+        .from('evolution_credentials')
+        .select('*')
+        .eq('client_id', clientId);
+      if (error) throw error;
       // Para cada credencial, buscar e atualizar status da instância
       if (Array.isArray(creds) && creds.length > 0) {
         for (const cred of creds) {
           try {
             const service = EvolutionService.fromCredential(cred);
-            // Primeiro tentar com fetchInstances
             try {
               const instances = await service.fetchInstances();
-              
               if (instances && Array.isArray(instances)) {
                 const instance = instances.find(i => i.instance?.instanceName === cred.instance_name);
                 if (instance) {
                   cred.status = instance.instance.status;
-                  // Se encontrou status, continuar para próxima credencial
                   continue;
                 }
               }
-              // Se não encontrou a instância ou status, tentar usar connectionState
             } catch (fetchErr) {
               logger.warn(`Erro ao buscar instância via fetchInstances: ${fetchErr.message}, tentando connectionState`);
             }
-
-            // Segundo método: tentar com connectionState 
             try {
               const state = await service.fetchConnectionState();
               if (state && state.state) {
@@ -41,17 +38,14 @@ class EvolutionCredentialController {
               }
             } catch (stateErr) {
               logger.warn(`Também falhou ao buscar status via connectionState: ${stateErr.message}`);
-              // Usar "unknown" como fallback de status
               cred.status = "unknown";
             }
           } catch (err) {
             logger.warn(`Erro geral ao buscar status da instância ${cred.instance_name}: ${err.message}`);
-            // Usar "unknown" como fallback
             cred.status = "unknown";
           }
         }
       }
-      
       return res.json({ success: true, data: creds });
     } catch (err) {
       logger.error('EvolutionCredentialController.list error:', err.message || err);
@@ -63,7 +57,12 @@ class EvolutionCredentialController {
   async getById(req, res) {
     try {
       const { id } = req.params;
-      const cred = await EvolutionCredential.findById(id);
+      const { data: creds, error } = await supabaseAdmin
+        .from('evolution_credentials')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
+      const cred = creds && creds[0];
       if (!cred || cred.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
       }
@@ -77,28 +76,24 @@ class EvolutionCredentialController {
   // Cria nova credencial para o cliente autenticado
   async create(req, res) {
     try {
-      // Verificar se o nome do agente foi fornecido
       if (!req.body.agent_name) {
         return res.status(400).json({ success: false, message: 'Nome do agente é obrigatório' });
       }
-
-      // Obter nome do usuário (se disponível) ou usar um valor padrão
-      let userName = req.user?.displayName || req.user?.user_metadata?.full_name || req.user?.profile?.full_name || 
-                    req.user?.user_metadata?.first_name || req.user?.email?.split('@')[0] || 'Usuario';
-      
-      // Gerar nome da instância baseado no nome do usuário + nome do agente
+      let userName = req.user?.displayName || req.user?.user_metadata?.full_name || req.user?.profile?.full_name || req.user?.user_metadata?.first_name || req.user?.email?.split('@')[0] || 'Usuario';
       const generatedInstanceName = `${userName} - ${req.body.agent_name}`;
-      
       const payload = {
         client_id: req.clientId,
         phone: req.body.phone,
         instance_name: generatedInstanceName,
-        partner_secret: config.evolutionApi.apiKey, // Usar chave API global
+        partner_secret: config.evolutionApi.apiKey,
         agent_name: req.body.agent_name,
         metadata: req.body.metadata || {}
       };
-      const cred = new EvolutionCredential(payload);
-      const saved = await cred.save();
+      const { data: saved, error } = await supabaseAdmin
+        .from('evolution_credentials')
+        .insert([payload])
+        .select();
+      if (error) throw error;
       return res.status(201).json({ success: true, data: saved });
     } catch (err) {
       logger.error('EvolutionCredentialController.create error:', err.message || err);
@@ -110,34 +105,33 @@ class EvolutionCredentialController {
   async update(req, res) {
     try {
       const { id } = req.params;
-      const existing = await EvolutionCredential.findById(id);
+      const { data: creds, error } = await supabaseAdmin
+        .from('evolution_credentials')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
+      const existing = creds && creds[0];
       if (!existing || existing.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
       }
-
-      // Verificar se o nome do agente foi fornecido
       if (req.body.agent_name === undefined || req.body.agent_name === '') {
         return res.status(400).json({ success: false, message: 'Nome do agente é obrigatório' });
       }
-
-      // Obtém nome do usuário para atualizar o nome da instância
-      let userName = req.user?.displayName || req.user?.user_metadata?.full_name || req.user?.profile?.full_name || 
-                    req.user?.user_metadata?.first_name || req.user?.email?.split('@')[0] || 'Usuario';
-      
-      // Gerar novo nome da instância no formato "nomeUsuario - nomeAgente"
+      let userName = req.user?.displayName || req.user?.user_metadata?.full_name || req.user?.profile?.full_name || req.user?.user_metadata?.first_name || req.user?.email?.split('@')[0] || 'Usuario';
       const updatedInstanceName = `${userName} - ${req.body.agent_name}`;
-
-      // Merge campos permitidos
-      const updates = ['phone', 'agent_name', 'metadata'];
-      updates.forEach(field => {
+      const updates = {};
+      ['phone', 'agent_name', 'metadata'].forEach(field => {
         if (req.body[field] !== undefined) {
-          existing[field] = req.body[field];
+          updates[field] = req.body[field];
         }
       });
-      
-      // Atualizar o nome da instância
-      existing.instance_name = updatedInstanceName;
-      const updated = await existing.save();
+      updates.instance_name = updatedInstanceName;
+      const { data: updated, error: updateError } = await supabaseAdmin
+        .from('evolution_credentials')
+        .update(updates)
+        .eq('id', id)
+        .select();
+      if (updateError) throw updateError;
       return res.json({ success: true, data: updated });
     } catch (err) {
       logger.error('EvolutionCredentialController.update error:', err.message || err);
@@ -149,18 +143,22 @@ class EvolutionCredentialController {
   async delete(req, res) {
     try {
       const { id } = req.params;
-      const existing = await EvolutionCredential.findById(id);
+      const { data: creds, error } = await supabaseAdmin
+        .from('evolution_credentials')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
+      const existing = creds && creds[0];
       if (!existing || existing.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
       }
-      const { supabaseAdmin } = require('../config/supabase');
-      const { error } = await supabaseAdmin
+      const { error: deleteError } = await supabaseAdmin
         .from('evolution_credentials')
         .delete()
         .eq('id', id);
-      if (error) {
-        logger.error('EvolutionCredentialController.delete error:', error.message || error);
-        return res.status(500).json({ success: false, message: error.message });
+      if (deleteError) {
+        logger.error('EvolutionCredentialController.delete error:', deleteError.message || deleteError);
+        return res.status(500).json({ success: false, message: deleteError.message });
       }
       return res.json({ success: true, message: 'Credencial excluída com sucesso' });
     } catch (err) {
@@ -173,7 +171,12 @@ class EvolutionCredentialController {
   async setupInstance(req, res) {
     try {
       const { id } = req.params;
-      const existing = await EvolutionCredential.findById(id);
+      const { data: creds, error } = await supabaseAdmin
+        .from('evolution_credentials')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
+      const existing = creds && creds[0];
       if (!existing || existing.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
       }
@@ -193,24 +196,23 @@ class EvolutionCredentialController {
       const apiRes = await service.createInstance(existing.phone);
       const oldId = existing.id;
       const newId = apiRes.instance.instanceId;
-      const { supabaseAdmin } = require('../config/supabase');
       const updates = {
         id: newId,
         instance_name: apiRes.instance.instanceName,
         partner_secret: apiRes.hash.apikey,
         metadata: { ...existing.metadata, evolution: apiRes }
       };
-      const { data, error } = await supabaseAdmin
+      const { data: updated, error: updateError } = await supabaseAdmin
         .from('evolution_credentials')
         .update(updates)
         .eq('id', oldId)
         .select()
         .single();
-      if (error) {
-        logger.error('Erro ao atualizar credencial com id da instância:', error.message);
-        throw error;
+      if (updateError) {
+        logger.error('Erro ao atualizar credencial com id da instância:', updateError.message);
+        throw updateError;
       }
-      const saved = new EvolutionCredential(data);
+      const saved = new EvolutionCredential(updated);
       return res.json({ success: true, data: saved });
     } catch (err) {
       logger.error('EvolutionCredentialController.setupInstance error:', err.message || err);
@@ -222,7 +224,12 @@ class EvolutionCredentialController {
   async disconnect(req, res) {
     try {
       const { id } = req.params;
-      const existing = await EvolutionCredential.findById(id);
+      const { data: creds, error } = await supabaseAdmin
+        .from('evolution_credentials')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
+      const existing = creds && creds[0];
       if (!existing || existing.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
       }
@@ -240,7 +247,12 @@ class EvolutionCredentialController {
   async fetchQrCode(req, res) {
     try {
       const { id } = req.params;
-      const credential = await EvolutionCredential.findById(id);
+      const { data: creds, error } = await supabaseAdmin
+        .from('evolution_credentials')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
+      const credential = creds && creds[0];
       if (!credential || credential.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
       }
@@ -274,14 +286,19 @@ class EvolutionCredentialController {
       }
       
       // Atualizar metadata local com novo QR Code
-      credential.metadata = {
+      const updates = {
         ...credential.metadata,
         evolution: {
           ...credential.metadata.evolution,
           qrcode: qrData
         }
       };
-      await credential.save();
+      const { data: updated, error: updateError } = await supabaseAdmin
+        .from('evolution_credentials')
+        .update(updates)
+        .eq('id', id)
+        .select();
+      if (updateError) throw updateError;
       // Retornar apenas os campos relevantes
       return res.json({ success: true, data: {
         base64: qrData.base64 || null,
@@ -299,7 +316,12 @@ class EvolutionCredentialController {
     try {
       const { id } = req.params;
       // Buscar credencial para obter dados da Evolution
-      const cred = await EvolutionCredential.findById(id);
+      const { data: creds, error } = await supabaseAdmin
+        .from('evolution_credentials')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
+      const cred = creds && creds[0];
       if (!cred || cred.client_id !== req.user.id) {
         req.flash('error', 'Credencial não encontrada');
         return res.redirect('/whatsapp-credentials');
@@ -308,13 +330,12 @@ class EvolutionCredentialController {
       const service = EvolutionService.fromCredential(cred);
       await service.deleteInstance();
       // Deletar credencial no banco
-      const { supabaseAdmin } = require('../config/supabase');
-      const { error } = await supabaseAdmin
+      const { error: deleteError } = await supabaseAdmin
         .from('evolution_credentials')
         .delete()
         .eq('id', id);
-      if (error) {
-        logger.error('Erro ao deletar credencial no banco:', error.message || error);
+      if (deleteError) {
+        logger.error('Erro ao deletar credencial no banco:', deleteError.message || deleteError);
         req.flash('error', 'Erro ao excluir credencial');
       } else {
         req.flash('success', 'Instância e credencial excluídas com sucesso');
@@ -331,7 +352,12 @@ class EvolutionCredentialController {
   async restartInstance(req, res) {
     try {
       const { id } = req.params;
-      const existing = await EvolutionCredential.findById(id);
+      const { data: creds, error } = await supabaseAdmin
+        .from('evolution_credentials')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
+      const existing = creds && creds[0];
       if (!existing || existing.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
       }

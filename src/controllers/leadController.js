@@ -1,11 +1,15 @@
-const Lead = require('../models/lead');
 const logger = require('../utils/logger');
+const { supabaseAdmin } = require('../config/supabase');
 
 class LeadController {
   async list(req, res) {
     try {
       const clientId = req.clientId;
-      const leads = await Lead.findByClientId(clientId);
+      const { data: leads, error } = await supabaseAdmin
+        .from('leads')
+        .select('*')
+        .eq('client_id', clientId);
+      if (error) throw error;
       return res.json({ success: true, data: leads });
     } catch (err) {
       logger.error('LeadController.list error:', err.message || err);
@@ -16,21 +20,16 @@ class LeadController {
   async getById(req, res) {
     try {
       const { id } = req.params;
-      const lead = await Lead.findById(id);
-      console.log('[DEBUG] Lead retornado do banco:', lead);
-      console.log('[DEBUG] Comparação de client_id:', {
-        leadClientId: lead?.client_id,
-        reqClientId: req.clientId,
-        leadClientIdType: typeof lead?.client_id,
-        reqClientIdType: typeof req.clientId,
-        iguais: String(lead?.client_id).trim() === String(req.clientId).trim(),
-        url: req.originalUrl
-      });
+      const { data: lead, error } = await supabaseAdmin
+        .from('leads')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
       if (!lead || String(lead.client_id).trim() !== String(req.clientId).trim()) {
         console.log('[DEBUG] Lead não encontrado ou client_id não bate');
         return res.status(404).json({ success: false, message: 'Lead não encontrado' });
       }
-      return res.json({ success: true, data: lead.toJSON() });
+      return res.json({ success: true, data: lead });
     } catch (err) {
       logger.error('LeadController.getById error:', err.message || err);
       return res.status(500).json({ success: false, message: err.message });
@@ -47,8 +46,11 @@ class LeadController {
         status: req.body.status,
         data: req.body.data || {}
       };
-      const lead = new Lead(payload);
-      const saved = await lead.save();
+      const { data: saved, error } = await supabaseAdmin
+        .from('leads')
+        .insert([payload])
+        .select();
+      if (error) throw error;
       return res.status(201).json({ success: true, data: saved });
     } catch (err) {
       logger.error('LeadController.create error:', err.message || err);
@@ -59,14 +61,23 @@ class LeadController {
   async update(req, res) {
     try {
       const { id } = req.params;
-      const existing = await Lead.findById(id);
+      const { data: existing, error } = await supabaseAdmin
+        .from('leads')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
       if (!existing || existing.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Lead não encontrado' });
       }
       ['name','email','phone','status','data'].forEach(field => {
         if (req.body[field] !== undefined) existing[field] = req.body[field];
       });
-      const updated = await existing.save();
+      const { data: updated, error: updateError } = await supabaseAdmin
+        .from('leads')
+        .update(existing)
+        .eq('id', id)
+        .select();
+      if (updateError) throw updateError;
       return res.json({ success: true, data: updated });
     } catch (err) {
       logger.error('LeadController.update error:', err.message || err);
@@ -77,18 +88,21 @@ class LeadController {
   async delete(req, res) {
     try {
       const { id } = req.params;
-      const existing = await Lead.findById(id);
+      const { data: existing, error } = await supabaseAdmin
+        .from('leads')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
       if (!existing || existing.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Lead não encontrado' });
       }
-      const { supabaseAdmin } = require('../config/supabase');
-      const { error } = await supabaseAdmin
+      const { error: deleteError } = await supabaseAdmin
         .from('leads')
         .delete()
         .eq('id', id);
-      if (error) {
-        logger.error('LeadController.delete error:', error.message || error);
-        return res.status(500).json({ success: false, message: error.message });
+      if (deleteError) {
+        logger.error('LeadController.delete error:', deleteError.message || deleteError);
+        return res.status(500).json({ success: false, message: deleteError.message });
       }
       return res.json({ success: true, message: 'Lead excluído com sucesso' });
     } catch (err) {
