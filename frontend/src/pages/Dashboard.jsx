@@ -35,6 +35,7 @@ import { EyeIcon, TrashIcon, CalendarIcon } from '@heroicons/react/24/outline'
 import { Dialog, Transition } from '@headlessui/react'
 import ReactDOM from 'react-dom'
 import { useNavigate } from 'react-router-dom'
+import supabase from '../lib/supabaseClient'
 
 ChartJS.register(
   CategoryScale,
@@ -146,35 +147,64 @@ export default function Dashboard() {
       try {
         setIsLoading(true);
         
-        // Tentar obter tokens de várias fontes
-        let authToken = null;
+        // Obter o token de autenticação de forma consistente
+        let authToken = localStorage.getItem('authToken');
         
-        // 1. Verificar localStorage (tokens do Supabase)
-        const storedTokens = localStorage.getItem('supabase_tokens');
-        if (storedTokens) {
-          try {
-            const tokens = JSON.parse(storedTokens);
-            if (tokens && tokens.access_token) {
-              authToken = tokens.access_token;
-              console.log('Token encontrado no localStorage');
+        // Se não encontrar no localStorage, tentar obter de outras fontes
+        if (!authToken) {
+          // 1. Verificar tokens do Supabase no localStorage
+          const storedTokens = localStorage.getItem('supabase.auth.token');
+          if (storedTokens) {
+            try {
+              const tokens = JSON.parse(storedTokens);
+              if (tokens?.currentSession?.access_token) {
+                authToken = tokens.currentSession.access_token;
+                console.log('Token encontrado no localStorage (supabase.auth.token)');
+                // Armazenar de forma consistente
+                localStorage.setItem('authToken', authToken);
+              }
+            } catch (e) {
+              console.error('Erro ao ler tokens do localStorage:', e);
             }
-          } catch (e) {
-            console.error('Erro ao ler tokens do localStorage:', e);
+          }
+          
+          // 2. Verificar cookies
+          if (!authToken) {
+            const getCookie = (name) => {
+              const value = `; ${document.cookie}`;
+              const parts = value.split(`; ${name}=`);
+              if (parts.length === 2) return parts.pop().split(';').shift();
+            };
+            
+            authToken = getCookie('supabase-auth-token') || getCookie('js-auth-token');
+            
+            if (authToken) {
+              console.log('Token encontrado nos cookies');
+              // Armazenar de forma consistente
+              localStorage.setItem('authToken', authToken);
+            }
           }
         }
         
-        // 2. Verificar cookies
-        const jsAuthToken = document.cookie
-          .split('; ')
-          .find(row => row.startsWith('js-auth-token='))
-          ?.split('=')[1];
-          
-        if (jsAuthToken) {
-          console.log('Token encontrado nos cookies JavaScript');
-          authToken = jsAuthToken;
+        // Se ainda não temos token, tentar obter via Supabase SDK
+        if (!authToken) {
+          try {
+            const { data } = await supabase.auth.getSession();
+            if (data?.session?.access_token) {
+              authToken = data.session.access_token;
+              console.log('Token obtido via Supabase SDK');
+              // Armazenar de forma consistente
+              localStorage.setItem('authToken', authToken);
+              // Definir também nos cookies para consistência
+              document.cookie = `supabase-auth-token=${authToken}; path=/; max-age=86400; SameSite=Lax`;
+              document.cookie = `js-auth-token=${authToken}; path=/; max-age=86400; SameSite=Lax`;
+            }
+          } catch (supabaseError) {
+            console.error('Erro ao obter sessão do Supabase:', supabaseError);
+          }
         }
         
-        // Tentar fazer a requisição com o token se disponível
+        // Preparar headers para a requisição
         const headers = {
           'Content-Type': 'application/json',
         };
@@ -183,6 +213,7 @@ export default function Dashboard() {
           headers['Authorization'] = `Bearer ${authToken}`;
         }
         
+        // Fazer a requisição de verificação
         const response = await fetch('/api/auth/me', {
           method: 'GET',
           credentials: 'include',
@@ -194,8 +225,34 @@ export default function Dashboard() {
           const responseText = await response.text();
           console.log('Detalhes da resposta:', responseText);
           
-          localStorage.setItem('redirectAfterLogin', '/dashboard');
-          navigate('/login?error=auth_required&message=Você precisa estar autenticado para acessar o dashboard.');
+          // Se o erro for de autenticação, limpar tokens e redirecionar para login
+          if (response.status === 401) {
+            // Limpar tokens armazenados
+            localStorage.removeItem('authToken');
+            document.cookie = `supabase-auth-token=; path=/; max-age=0`;
+            document.cookie = `js-auth-token=; path=/; max-age=0`;
+            
+            // Tentar fazer logout via Supabase para garantir
+            try {
+              await supabase.auth.signOut();
+            } catch (e) {
+              console.error('Erro ao fazer logout via Supabase:', e);
+            }
+            
+            localStorage.setItem('redirectAfterLogin', '/dashboard');
+            navigate('/login?error=auth_required&message=Você precisa estar autenticado para acessar o dashboard.');
+            return;
+          }
+          
+          // Se falhar por outro motivo, tentar recarregar a página uma vez
+          if (!window.sessionStorage.getItem('auth_retry')) {
+            window.sessionStorage.setItem('auth_retry', 'true');
+            window.location.reload();
+            return;
+          }
+          
+          window.sessionStorage.removeItem('auth_retry');
+          navigate('/login?error=auth_error&message=Erro ao verificar autenticação. Por favor, faça login novamente.');
           return;
         }
 

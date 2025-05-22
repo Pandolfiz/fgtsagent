@@ -238,7 +238,7 @@ const confirmPasswordResetWithService = async (req, res, next) => {
  */
 const register = async (req, res) => {
   try {
-    const { name, email, password } = req.body;
+    const { name, email, password, phone } = req.body;
 
     // Validar entrada
     if (!name || !email || !password) {
@@ -256,7 +256,10 @@ const register = async (req, res) => {
       email,
       password,
       email_confirm: true,
-      user_metadata: { full_name: name }
+      user_metadata: { 
+        full_name: name,
+        phone: phone || null 
+      }
     });
 
     if (error) {
@@ -275,6 +278,7 @@ const register = async (req, res) => {
           id: user.id,
           full_name: name,
           email: user.email,
+          phone: phone || null,
           avatar_url: null
         });
 
@@ -293,7 +297,8 @@ const register = async (req, res) => {
       message: 'Conta criada com sucesso! Faça login para continuar.',
       user: {
         id: user.id,
-        email: user.email
+        email: user.email,
+        phone: phone || null
       }
     });
   } catch (err) {
@@ -403,8 +408,18 @@ const login = async (req, res) => {
  */
 const logout = async (req, res) => {
   try {
-    // Limpar cookie
+    logger.info(`Realizando logout para usuário: ${req.user?.id || 'desconhecido'}`);
+    
+    // Limpar todos os cookies relacionados à autenticação
     res.clearCookie('authToken');
+    res.clearCookie('refreshToken');
+    res.clearCookie('supabase-auth-token');
+    res.clearCookie('js-auth-token');
+    
+    // Limpar qualquer sessão que possa existir
+    if (req.session) {
+      req.session.destroy();
+    }
     
     // Encerrar sessão no Supabase
     const { error } = await supabase.auth.signOut();
@@ -632,7 +647,9 @@ const renderLogin = (req, res) => {
   res.render('auth/login', { 
     title: 'Login',
     error: errorMessage,
-    isNgrok
+    isNgrok,
+    googleEnabled: true,
+    googleLoginUrl: '/auth/login/google'
   });
 };
 
@@ -1289,6 +1306,153 @@ const verifyToken = async (req, res) => {
   }
 };
 
+/**
+ * Redireciona o usuário para autenticação do Google
+ */
+const redirectToGoogleAuth = async (req, res) => {
+  try {
+    // Usar o URL da aplicação frontend para redirecionamento de callback
+    const redirectTo = process.env.OAUTH_SUPABASE_REDIRECT_URL || 
+                      `${process.env.APP_URL || req.protocol + '://' + req.get('host')}/auth/google/callback`;
+    
+    logger.info(`Iniciando autenticação Google com redirecionamento para: ${redirectTo}`);
+    
+    // O Supabase usará PKCE por padrão para o fluxo OAuth
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: redirectTo,
+        // Solicitar escopo offline para obter um refresh token
+        queryParams: {
+          access_type: 'offline',
+          prompt: 'consent'
+        },
+        // Importante: não precisamos configurar o PKCE explicitamente, 
+        // o Supabase o faz automaticamente no navegador
+        skipBrowserRedirect: true // Obter apenas a URL, não redirecionar automaticamente
+      }
+    });
+    
+    if (error) {
+      logger.error(`Erro ao iniciar autenticação com Google: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao iniciar autenticação com Google: ' + error.message
+      });
+    }
+    
+    if (!data || !data.url) {
+      logger.error('URL de autenticação não gerado pelo Supabase');
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao gerar URL de autenticação'
+      });
+    }
+    
+    logger.info(`URL de autenticação Google gerado: ${data.url}`);
+    
+    // Redirecionar o usuário para o URL de autenticação do Google
+    return res.redirect(data.url);
+  } catch (err) {
+    logger.error(`Erro no redirecionamento para Google: ${err.message}`, err);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao processar autenticação: ' + err.message
+    });
+  }
+};
+
+/**
+ * Processa o callback do Google após autenticação
+ */
+const handleGoogleCallback = async (req, res) => {
+  try {
+    // Obter o código de autorização da URL
+    const code = req.query.code;
+    const error = req.query.error;
+    const errorDescription = req.query.error_description;
+    
+    // Verificar se ocorreu um erro no lado do provedor OAuth
+    if (error) {
+      logger.error(`Erro retornado pelo provedor OAuth: ${error} - ${errorDescription || 'Sem descrição'}`);
+      return res.redirect(`/login?error=${encodeURIComponent(errorDescription || error)}`);
+    }
+    
+    if (!code) {
+      logger.error('Nenhum código encontrado na URL do callback');
+      return res.redirect('/login?error=' + encodeURIComponent('Código de autorização ausente'));
+    }
+    
+    logger.info(`Recebendo callback do Google com código: ${code.substring(0, 10)}...`);
+    
+    // Verificar a origem do redirecionamento
+    const referer = req.headers.referer || req.headers.referrer || 'desconhecido';
+    logger.info(`Origem do callback: ${referer}`);
+    
+    // No backend, apenas redirecionamos para o frontend com o código
+    // O frontend vai trocar o código por uma sessão usando PKCE
+    return res.redirect(`/auth/callback?code=${encodeURIComponent(code)}`);
+  } catch (err) {
+    logger.error(`Erro no callback do Google: ${err.message}`, err);
+    return res.redirect('/login?error=' + encodeURIComponent('Falha na autenticação com Google: ' + err.message));
+  }
+};
+
+/**
+ * Login com Google via token ID (para apps mobile)
+ */
+const loginWithGoogleToken = async (req, res) => {
+  try {
+    const { idToken } = req.body;
+    
+    if (!idToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Token ID é obrigatório'
+      });
+    }
+    
+    // Autenticar usando o token ID do Google
+    const { data, error } = await supabase.auth.signInWithIdToken({
+      provider: 'google',
+      token: idToken
+    });
+    
+    if (error) {
+      logger.error('Erro ao autenticar com Google Token:', error.message);
+      return res.status(401).json({
+        success: false,
+        message: error.message
+      });
+    }
+    
+    // Configurar cookie com token de autenticação
+    res.cookie('supabase-auth-token', data.session.access_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
+    });
+    
+    logger.info(`Login com Google Token bem-sucedido: ${data.user.email}`);
+    
+    return res.status(200).json({
+      success: true,
+      data: {
+        user: data.user,
+        session: {
+          accessToken: data.session.access_token
+        }
+      }
+    });
+  } catch (err) {
+    logger.error('Erro no login com Google Token:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+};
+
 // Exportar todas as funções em um objeto único
 module.exports = {
   // Versões antigas (compatibilidade)
@@ -1312,5 +1476,8 @@ module.exports = {
   resendConfirmationEmail,
   refreshToken,
   createSession,
-  verifyToken
+  verifyToken,
+  redirectToGoogleAuth,
+  handleGoogleCallback,
+  loginWithGoogleToken
 };

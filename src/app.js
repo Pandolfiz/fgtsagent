@@ -23,6 +23,9 @@ const chatRoutes = require('./routes/chatRoutes');
 const contactsRoutes = require('./routes/contacts');
 const messagesRoutes = require('./routes/messages');
 const { webhookAuth } = require('./middleware/webhookAuth');
+const { errorHandler } = require('./middleware/errorHandler');
+const databaseChecker = require('./utils/databaseChecker');
+const { applyAllMigrations } = require('./utils/applyMigrations');
 
 // Definir variáveis de ambiente para autenticação OAuth2
 process.env.USE_SUPABASE_AUTH = process.env.USE_SUPABASE_AUTH || 'true';
@@ -82,10 +85,31 @@ app.use(helmet({
 
 // Configurar CORS para permitir requisições do frontend
 app.use(cors({
-  origin: ['http://localhost:5173', 'http://localhost:5174', 'http://127.0.0.1:5173'],
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization']
+  origin: function(origin, callback) {
+    // Permitir requisições sem origem (ex: Postman, aplicações móveis)
+    if (!origin) return callback(null, true);
+    
+    // Lista de domínios permitidos
+    const allowedOrigins = [
+      'http://localhost:5173',
+      'http://localhost:5174',
+      'http://127.0.0.1:5173',
+      'http://127.0.0.1:5174',
+      'http://localhost:3000',
+      'http://localhost:8000',
+      // Adicione URLs de produção ou ambiente de testes
+      process.env.FRONTEND_URL,
+      process.env.APP_URL
+    ].filter(Boolean); // Remove valores nulos ou undefined
+    
+    // Verificar se a origem da requisição está na lista
+    if (allowedOrigins.includes(origin) || origin.includes('localhost')) {
+      callback(null, true);
+    } else {
+      callback(new Error('Origem não permitida pelo CORS'), false);
+    }
+  },
+  credentials: true
 }));
 
 app.use(express.json({ limit: '20mb' }));
@@ -169,26 +193,44 @@ app.use('/api/messages', requireAuth, messagesRoutes);
 // Rotas específicas do backend com renderização de template
 app.use('/admin', webRoutes.router);
 
-// Rotas específicas de OAuth2 - tratadas separadamente
-app.get('/auth/v1/callback', (req, res) => {
-  console.log('Detectado callback do Supabase:', req.path, req.query);
-  res.redirect(`/oauth2-credential/callback?${new URLSearchParams(req.query).toString()}`);
+// Rotas específicas de OAuth2 
+// Importante: este padrão deve vir ANTES do handler do SPA React
+app.get('/auth/google/callback', (req, res, next) => {
+  console.log('Recebendo callback do Google em /auth/google/callback');
+  return authRoutes(req, res, next);
 });
 
+// Rotas de callback OAuth que devem ser tratadas pelo frontend
 app.get(['/auth/callback', '/auth/callback/'], (req, res) => {
-  console.log('Detectado callback específico do Google:', req.path);
-  res.sendFile(path.join(__dirname, '../frontend/dist/oauth-handler.html'));
+  console.log('Redirecionando para App React: callback de autenticação', req.url);
+  
+  // Verificar se temos um código na URL
+  if (req.query.code) {
+    console.log('Código OAuth detectado:', req.query.code.substring(0, 10) + '...');
+  }
+  
+  // Servir o HTML principal do React para que o frontend possa processar o código
+  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 
-app.get(['/oauth2-credential/callback', '/oauth2-credential/callback/'], (req, res) => {
-  console.log('Detectado callback OAuth2 específico:', req.path);
-  res.sendFile(path.join(__dirname, '../frontend/dist/oauth-handler.html'));
-});
-
-// Rota genérica para qualquer padrão de callback OAuth
-app.get('*/callback*', (req, res) => {
+// Rota genérica para qualquer outro padrão de callback OAuth
+app.get('*/callback*', (req, res, next) => {
+  // Verificar se é um callback específico do backend
+  if (req.path === '/auth/google/callback') {
+    return next();
+  }
+  
   console.log('Detectado padrão de callback OAuth genérico:', req.path);
-  res.sendFile(path.join(__dirname, '../frontend/dist/oauth-handler.html'));
+  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+});
+
+// Rota de fallback para SPA React (deve ser a última)
+app.get('*', (req, res) => {
+  // Log para depuração
+  console.log('Servindo App React para:', req.path);
+  
+  // Servir o HTML principal do React para qualquer outra rota
+  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 
 // Rota pública para verificação de saúde do sistema (para Docker e monitoramento)
@@ -198,26 +240,6 @@ app.get('/api/health', (req, res) => {
     timestamp: new Date().toISOString(),
     version: process.env.npm_package_version || '1.0.0'
   });
-});
-
-// Todas as outras solicitações são tratadas pelo React Router
-// Esta rota deve vir DEPOIS de todas as rotas API e callback OAuth específicas
-app.get('*', (req, res) => {
-  // Lista de rotas do backend que não devem ser tratadas pelo React Router
-  const backendRoutes = ['/api/', '/auth/', '/admin/', '/health', '/webhooks/'];
-  const isBackendRoute = backendRoutes.some(route => req.path.startsWith(route));
-  
-  if (isBackendRoute) {
-    // Se for uma rota de API ou backend não encontrada, retornar 404
-    return res.status(404).json({
-      success: false,
-      message: 'Endpoint não encontrado'
-    });
-  }
-  
-  // Para qualquer outra rota, servir o index.html do React
-  console.log('Servindo App React para:', req.path);
-  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
 });
 
 // Middleware para tratamento de erros
@@ -246,4 +268,5 @@ app.use((err, req, res, next) => {
   });
 });
 
+// Exportar o aplicativo Express
 module.exports = app;

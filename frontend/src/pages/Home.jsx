@@ -278,22 +278,22 @@ export default function Home({ isLoggedIn }) {
           {[{
             name: 'Ana Paula',
             text: 'O FgtsAgent revolucionou nosso atendimento! Automatização e agilidade que nunca vi antes.',
-            company: 'CredFácil',
+            company: '',
             avatar: '/img/testimonials/woman1.jpg'
           }, {
             name: 'Carlos Silva',
             text: 'A integração omnichannel e os relatórios em tempo real facilitaram muito a gestão dos leads.',
-            company: 'FinancePro',
+            company: '',
             avatar: '/img/testimonials/man1.jpg'
           }, {
             name: 'Juliana Souza',
             text: 'A parceria com a V8 Digital trouxe ainda mais inovação e segurança para nosso negócio!',
-            company: 'SaqueJá',
+            company: '',
             avatar: '/img/testimonials/woman2.jpg'
           }, {
             name: 'Roberto Oliveira',
             text: 'Conseguimos aumentar em 40% o número de propostas aprovadas desde que começamos a usar o FgtsAgent.',
-            company: 'Credirapid',
+            company: '',
             avatar: '/img/testimonials/man2-new.jpg'
           }].map((d, i) => (
             <Tilt

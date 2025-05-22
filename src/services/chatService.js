@@ -26,7 +26,7 @@ async function handleWebhookEvent(body) {
     const conversation_id = remoteJid;
     // Buscar credencial Evolution associada à instância via Supabase
     const { data: creds, error } = await supabaseAdmin
-      .from('evolution_credentials')
+      .from('whatsapp_credentials')
       .select('*')
       .eq('id', msg.instanceId);
     if (error) throw error;
@@ -72,7 +72,7 @@ async function handleOutgoing({ to, content, conversationId, senderId, instanceI
   }
   // Buscar credencial da instância via Supabase
   const { data: creds, error } = await supabaseAdmin
-    .from('evolution_credentials')
+    .from('whatsapp_credentials')
     .select('*')
     .eq('id', instanceId);
   if (error) throw error;

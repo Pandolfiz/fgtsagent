@@ -837,9 +837,9 @@ router.post('/agent/save-name', requireAuth, async (req, res) => {
   }
 
   try {
-    // Atualiza o nome do agente na tabela evolution_credentials para o usuário logado
+    // Atualiza o nome do agente na tabela whatsapp_credentials para o usuário logado
     const { error } = await require('../config/supabase').supabaseAdmin
-      .from('evolution_credentials')
+      .from('whatsapp_credentials')
       .update({ agent_name: agentName })
       .eq('client_id', userId);
 

@@ -10,7 +10,7 @@ class EvolutionCredentialController {
       const clientId = req.clientId;
       // Buscar todas as credenciais do cliente
       const { data: creds, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .select('*')
         .eq('client_id', clientId);
       if (error) throw error;
@@ -58,7 +58,7 @@ class EvolutionCredentialController {
     try {
       const { id } = req.params;
       const { data: creds, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .select('*')
         .eq('id', id);
       if (error) throw error;
@@ -90,7 +90,7 @@ class EvolutionCredentialController {
         metadata: req.body.metadata || {}
       };
       const { data: saved, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .insert([payload])
         .select();
       if (error) throw error;
@@ -106,7 +106,7 @@ class EvolutionCredentialController {
     try {
       const { id } = req.params;
       const { data: creds, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .select('*')
         .eq('id', id);
       if (error) throw error;
@@ -127,7 +127,7 @@ class EvolutionCredentialController {
       });
       updates.instance_name = updatedInstanceName;
       const { data: updated, error: updateError } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .update(updates)
         .eq('id', id)
         .select();
@@ -144,7 +144,7 @@ class EvolutionCredentialController {
     try {
       const { id } = req.params;
       const { data: creds, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .select('*')
         .eq('id', id);
       if (error) throw error;
@@ -153,7 +153,7 @@ class EvolutionCredentialController {
         return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
       }
       const { error: deleteError } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .delete()
         .eq('id', id);
       if (deleteError) {
@@ -172,7 +172,7 @@ class EvolutionCredentialController {
     try {
       const { id } = req.params;
       const { data: creds, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .select('*')
         .eq('id', id);
       if (error) throw error;
@@ -203,7 +203,7 @@ class EvolutionCredentialController {
         metadata: { ...existing.metadata, evolution: apiRes }
       };
       const { data: updated, error: updateError } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .update(updates)
         .eq('id', oldId)
         .select()
@@ -225,7 +225,7 @@ class EvolutionCredentialController {
     try {
       const { id } = req.params;
       const { data: creds, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .select('*')
         .eq('id', id);
       if (error) throw error;
@@ -248,7 +248,7 @@ class EvolutionCredentialController {
     try {
       const { id } = req.params;
       const { data: creds, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .select('*')
         .eq('id', id);
       if (error) throw error;
@@ -294,7 +294,7 @@ class EvolutionCredentialController {
         }
       };
       const { data: updated, error: updateError } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .update(updates)
         .eq('id', id)
         .select();
@@ -317,7 +317,7 @@ class EvolutionCredentialController {
       const { id } = req.params;
       // Buscar credencial para obter dados da Evolution
       const { data: creds, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .select('*')
         .eq('id', id);
       if (error) throw error;
@@ -331,7 +331,7 @@ class EvolutionCredentialController {
       await service.deleteInstance();
       // Deletar credencial no banco
       const { error: deleteError } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .delete()
         .eq('id', id);
       if (deleteError) {
@@ -353,7 +353,7 @@ class EvolutionCredentialController {
     try {
       const { id } = req.params;
       const { data: creds, error } = await supabaseAdmin
-        .from('evolution_credentials')
+        .from('whatsapp_credentials')
         .select('*')
         .eq('id', id);
       if (error) throw error;

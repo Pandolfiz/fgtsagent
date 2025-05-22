@@ -106,7 +106,7 @@ exports.sendMessage = async (req, res) => {
     logger.info(`Enviando mensagem como usuário: ${senderId} (${typeof senderId})`);
     // Buscar Nome do Agente via Supabase
     const { data: creds, error } = await supabaseAdmin
-      .from('evolution_credentials')
+      .from('whatsapp_credentials')
       .select('*')
       .eq('id', instanceId);
     if (error) throw error;
