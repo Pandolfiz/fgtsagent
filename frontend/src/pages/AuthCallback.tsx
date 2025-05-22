@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { apiFetch } from '../utilities/apiFetch';
+import supabase from '../lib/supabaseClient';
 
 const AuthCallback: React.FC = () => {
   const navigate = useNavigate();
@@ -9,22 +10,77 @@ const AuthCallback: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [details, setDetails] = useState<string | null>(null);
-  const [debugInfo, setDebugInfo] = useState<{path: string, hash: string, search: string} | null>(null);
+  const [debugInfo, setDebugInfo] = useState<{path: string, hash: string, search: string, origin: string, hostname: string} | null>(null);
 
   useEffect(() => {
     // Para depuração - captura informações da URL
     setDebugInfo({
       path: location.pathname,
       hash: location.hash,
-      search: location.search
+      search: location.search,
+      origin: window.location.origin,
+      hostname: window.location.hostname
+    });
+    
+    console.log("AuthCallback - Iniciando processamento. URL:", {
+      pathname: location.pathname,
+      search: location.search,
+      hash: location.hash,
+      hostname: window.location.hostname,
+      origin: window.location.origin,
+      href: window.location.href
     });
 
     async function processAuth() {
       try {
-        // Verificar se temos um código na URL ou hash fragment
+        console.log("Iniciando processamento de autenticação...");
+        
+        // Para domínio de produção
+        const isProduction = window.location.hostname === 'fgtsagent.com.br' || window.location.hostname === 'www.fgtsagent.com.br';
+        console.log(`Ambiente detectado: ${isProduction ? 'Produção' : 'Desenvolvimento'}`);
+        
+        // Verificar se temos um código ou hash na URL
         const queryParams = new URLSearchParams(location.search);
         const code = queryParams.get('code');
         const errorParam = queryParams.get('error');
+        const accessToken = queryParams.get('access_token');
+
+        console.log("Parâmetros da URL:", { 
+          code: code ? `${code.substring(0, 5)}...` : 'ausente', 
+          error: errorParam || 'ausente',
+          accessToken: accessToken ? 'presente' : 'ausente',
+          hasHash: !!location.hash
+        });
+        
+        // Definir função para redirecionar ao dashboard
+        const redirectToDashboard = () => {
+          console.log("Redirecionando para o dashboard...");
+          // Verificar se há um redirecionamento personalizado em localStorage
+          const redirectTo = localStorage.getItem('redirectAfterLogin');
+          const targetPath = redirectTo || '/dashboard';
+          
+          // Limpar possível redirecionamento salvo
+          if (redirectTo) localStorage.removeItem('redirectAfterLogin');
+          
+          // Usar replace para evitar que o usuário volte para a página de callback
+          setStatus('Autenticação bem-sucedida! Redirecionando...');
+          setIsLoading(false);
+          setTimeout(() => navigate(targetPath, { replace: true }), 1000);
+        };
+        
+        // Tentar obter sessão existente primeiro
+        const { data: sessionData } = await supabase.auth.getSession();
+        if (sessionData?.session) {
+          console.log("Sessão Supabase já existente:", sessionData.session.user.email);
+          // Salvar tokens em cookies para garantir
+          document.cookie = `authToken=${sessionData.session.access_token}; path=/; max-age=${60*60*24}; secure; samesite=strict;`;
+          
+          localStorage.setItem('auth.user', JSON.stringify(sessionData.session.user));
+          localStorage.setItem('auth.token', sessionData.session.access_token);
+          
+          redirectToDashboard();
+          return;
+        }
 
         // Verificar error nos parâmetros da URL
         if (errorParam) {
@@ -34,116 +90,176 @@ const AuthCallback: React.FC = () => {
           return;
         }
 
+        // Se temos access_token diretamente como query param (raro, mas possível)
+        if (accessToken) {
+          console.log("Token de acesso encontrado nos parâmetros da URL");
+          try {
+            // Tentar configurar a sessão com o token diretamente
+            const { data, error } = await supabase.auth.setSession({
+              access_token: accessToken,
+              refresh_token: queryParams.get('refresh_token') || ''
+            });
+            
+            if (error) throw error;
+            if (data.session) {
+              console.log("Sessão configurada com token da URL");
+              document.cookie = `authToken=${data.session.access_token}; path=/; max-age=${60*60*24}; secure; samesite=strict;`;
+              localStorage.setItem('auth.token', data.session.access_token);
+              localStorage.setItem('auth.user', JSON.stringify(data.session.user));
+              
+              redirectToDashboard();
+              return;
+            }
+          } catch (tokenError: any) {
+            console.error("Erro ao processar token da URL:", tokenError);
+          }
+        }
+
         // Verificar se temos um hash fragment (formato #access_token=...)
         if (location.hash) {
-          setStatus('Token de acesso detectado, processando...');
-          let hashParams: URLSearchParams;
+          setStatus('Token de acesso detectado no hash, processando...');
           
           try {
-            // Remover '#' do início do hash antes de passá-lo para URLSearchParams
-            const cleanHash = location.hash.startsWith('#') ? location.hash.substring(1) : location.hash;
-            hashParams = new URLSearchParams(cleanHash);
+            console.log('Processando hash fragment de autenticação');
             
-            // Para depuração
-            console.log("Hash processado:", cleanHash);
-            console.log("Parâmetros encontrados:", Array.from(hashParams.entries()));
-          } catch (err) {
-            console.error("Erro ao processar hash da URL:", err);
-            setDetails(JSON.stringify({
-              error: err,
-              hash: location.hash,
-              hashLength: location.hash.length
-            }, null, 2));
-            setError("Formato de token inválido na URL");
-            setIsLoading(false);
-            return;
-          }
-
-          const accessToken = hashParams.get('access_token');
-          const refreshToken = hashParams.get('refresh_token');
-          const expiresAt = hashParams.get('expires_at');
-          const providerToken = hashParams.get('provider_token');
-
-          if (accessToken) {
-            // Salvar tokens no localStorage temporariamente
-            localStorage.setItem('tempAccessToken', accessToken);
-            if (refreshToken) localStorage.setItem('tempRefreshToken', refreshToken);
-            if (expiresAt) localStorage.setItem('tempExpiresAt', expiresAt);
-
-            // Enviar tokens para o backend para validar/criar sessão
-            setStatus('Validando token...');
-            try {
-              const response = await apiFetch('/api/auth/process-token', {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({
-                  access_token: accessToken,
-                  refresh_token: refreshToken,
-                  expires_at: expiresAt,
-                  provider_token: providerToken
-                })
+            // Extrair os tokens do hash
+            const hashParams = new URLSearchParams(location.hash.substring(1));
+            const hashAccessToken = hashParams.get('access_token');
+            const hashRefreshToken = hashParams.get('refresh_token');
+            
+            if (hashAccessToken) {
+              console.log("Token extraído do hash, tentando configurar sessão");
+              
+              // Tentar configurar a sessão com o token extraído
+              const { data, error } = await supabase.auth.setSession({
+                access_token: hashAccessToken,
+                refresh_token: hashRefreshToken || ''
               });
-
-              const data = await response.json();
-
-              if (data.success) {
-                // Remover tokens temporários
-                localStorage.removeItem('tempAccessToken');
-                localStorage.removeItem('tempRefreshToken');
-                localStorage.removeItem('tempExpiresAt');
+              
+              if (error) throw error;
+              
+              if (data.session) {
+                console.log("Sessão configurada com token do hash");
+                // Definir cookie para garantir que o token está disponível para o backend
+                document.cookie = `authToken=${data.session.access_token}; path=/; max-age=${60*60*24}; secure; samesite=strict;`;
+                localStorage.setItem('auth.token', data.session.access_token);
+                localStorage.setItem('auth.user', JSON.stringify(data.session.user));
                 
-                // Salvar token definitivo ou cookie de sessão se o backend retornar
-                if (data.token) localStorage.setItem('authToken', data.token);
-                
-                setStatus('Autenticação bem-sucedida! Redirecionando...');
-                setIsLoading(false);
-                setTimeout(() => navigate('/dashboard'), 1500);
-              } else {
-                throw new Error(data.message || 'Falha na autenticação');
+                redirectToDashboard();
+                return;
               }
-            } catch (err: any) {
-              console.error("Erro ao validar token:", err);
-              setError(`Erro ao validar credenciais: ${err.message || 'Erro desconhecido'}`);
-              setIsLoading(false);
             }
-          } else {
-            setError('Token de acesso não encontrado na URL');
+            
+            // Se chegamos aqui, não conseguimos processar o hash diretamente
+            // Vamos aguardar o Supabase processar automaticamente
+            console.log("Aguardando processamento automático do hash pelo Supabase...");
+            await new Promise(resolve => setTimeout(resolve, 2000));
+            
+            // Verificar novamente se a sessão foi criada
+            const { data, error } = await supabase.auth.getSession();
+            
+            if (error) {
+              throw new Error(`Erro ao recuperar sessão: ${error.message}`);
+            }
+            
+            if (data?.session) {
+              console.log('Sessão recuperada com sucesso através do processamento automático');
+              document.cookie = `authToken=${data.session.access_token}; path=/; max-age=${60*60*24}; secure; samesite=strict;`;
+              localStorage.setItem('auth.token', data.session.access_token);
+              localStorage.setItem('auth.user', JSON.stringify(data.session.user));
+              
+              redirectToDashboard();
+              return;
+            }
+            
+            throw new Error('Nenhuma sessão encontrada após autenticação com hash fragment');
+          } catch (hashError: any) {
+            console.error('Erro no processamento do hash:', hashError);
+            setError(`Erro no processamento da autenticação: ${hashError.message}`);
             setIsLoading(false);
           }
         } 
         // Verificar se temos um código de autorização
         else if (code) {
-          setStatus('Código de autorização detectado, trocando por token...');
+          setStatus('Código de autorização detectado, finalizando login...');
           try {
-            // Enviar código para o backend trocar por token
-            const response = await apiFetch('/api/auth/exchange-code', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({ code })
-            });
+            console.log('Trocando código de autorização por sessão:', code.substring(0, 10) + '...');
+            
+            // Tenta trocar o código diretamente pelo Supabase
+            const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+            
+            if (error) {
+              console.error('Erro ao trocar código via Supabase:', error);
+              
+              // Se falhar e estivermos em fgtsagent.com.br, tentar via backend
+              if (isProduction) {
+                console.log('Tentando trocar código via backend...');
+                const response = await fetch('/api/auth/exchange-code', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json'
+                  },
+                  body: JSON.stringify({ code })
+                });
 
-            const data = await response.json();
+                if (!response.ok) {
+                  throw new Error(`Erro ao trocar código via backend: ${response.status}`);
+                }
 
-            if (data.success) {
-              if (data.token) localStorage.setItem('authToken', data.token);
-              setStatus('Autenticação bem-sucedida! Redirecionando...');
-              setIsLoading(false);
-              setTimeout(() => navigate('/dashboard'), 1500);
-            } else {
-              throw new Error(data.message || 'Falha ao trocar código por token');
+                const responseData = await response.json();
+                
+                if (responseData.success) {
+                  console.log('Código trocado com sucesso via backend');
+                  
+                  if (responseData.session) {
+                    // Salvar tokens recebidos do backend
+                    document.cookie = `authToken=${responseData.session.access_token}; path=/; max-age=${60*60*24}; secure; samesite=strict;`;
+                    localStorage.setItem('auth.token', responseData.session.access_token);
+                    localStorage.setItem('auth.user', JSON.stringify(responseData.session.user || {}));
+                  }
+                  
+                  redirectToDashboard();
+                  return;
+                } else {
+                  throw new Error(responseData.message || 'Falha ao trocar código por token');
+                }
+              } else {
+                throw error;
+              }
             }
+            
+            if (data?.session) {
+              console.log('Sessão criada com sucesso após troca de código via Supabase');
+              
+              // Salvando tokens em múltiplos lugares para garantir
+              // Cookies para o backend
+              document.cookie = `authToken=${data.session.access_token}; path=/; max-age=${60*60*24}; secure; samesite=strict;`;
+              // localStorage para o frontend
+              localStorage.setItem('auth.token', data.session.access_token);
+              localStorage.setItem('auth.user', JSON.stringify(data.session.user));
+              
+              redirectToDashboard();
+              return;
+            }
+            
           } catch (err: any) {
             console.error("Erro ao trocar código por token:", err);
             setError(`Erro ao trocar código: ${err.message || 'Erro desconhecido'}`);
             setIsLoading(false);
           }
         } else {
+          // Nenhum código ou token encontrado
           setError('Nenhum código ou token encontrado na URL');
           setIsLoading(false);
+          
+          // Verificar se o usuário já está autenticado de outra forma
+          setTimeout(async () => {
+            const { data } = await supabase.auth.getUser();
+            if (data?.user) {
+              console.log("Usuário já autenticado:", data.user.email);
+              navigate('/dashboard', { replace: true });
+            }
+          }, 2000);
         }
       } catch (err: any) {
         console.error('Erro durante autenticação:', err);
@@ -181,24 +297,23 @@ const AuthCallback: React.FC = () => {
               </div>
               <p className="text-gray-300 mb-4">{error}</p>
               
-              {(process.env.NODE_ENV === 'development' || true) && details && (
-                <div className="mt-4 p-4 bg-gray-700 rounded overflow-auto text-left">
-                  <details>
-                    <summary className="cursor-pointer font-medium text-gray-300 mb-2">Detalhes técnicos</summary>
-                    <pre className="text-xs text-gray-400 whitespace-pre-wrap">
-                      {details}
-                    </pre>
-                  </details>
-                </div>
-              )}
-
-              {/* Informações de depuração de rota - visível mesmo em produção */}
               {debugInfo && (
                 <div className="mt-4 p-4 bg-gray-700 rounded overflow-auto text-left">
                   <details>
                     <summary className="cursor-pointer font-medium text-gray-300 mb-2">Informações de URL</summary>
                     <pre className="text-xs text-gray-400 whitespace-pre-wrap">
                       {JSON.stringify(debugInfo, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              )}
+              
+              {details && (
+                <div className="mt-4 p-4 bg-gray-700 rounded overflow-auto text-left">
+                  <details>
+                    <summary className="cursor-pointer font-medium text-gray-300 mb-2">Detalhes técnicos</summary>
+                    <pre className="text-xs text-gray-400 whitespace-pre-wrap">
+                      {details}
                     </pre>
                   </details>
                 </div>

@@ -1,5 +1,5 @@
 // Utilitário para verificar a configuração do banco de dados
-const { supabaseAdmin } = require('../services/database');
+const { supabaseAdmin } = require('../config/supabase');
 const logger = require('./logger');
 
 /**

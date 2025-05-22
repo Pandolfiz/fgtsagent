@@ -134,10 +134,43 @@ export default function Navbar({ fullWidth }) {
     fetchUserProfile();
   }, []);
 
-  async function handleLogout() {
-    await supabase.auth.signOut()
-    window.location.href = '/'
-  }
+  // Função para fazer logout
+  const handleLogout = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Fazer logout via Supabase
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        console.error('Erro ao fazer logout via Supabase:', error);
+      }
+      
+      // Limpar tokens e cookies independentemente da resposta do Supabase
+      localStorage.removeItem('authToken');
+      localStorage.removeItem('supabase.auth.token');
+      document.cookie = 'supabase-auth-token=; path=/; max-age=0; SameSite=Lax';
+      document.cookie = 'js-auth-token=; path=/; max-age=0; SameSite=Lax';
+      document.cookie = 'sb-refresh-token=; path=/; max-age=0; SameSite=Lax';
+      document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax';
+      
+      // Fazer logout via API do backend como fallback
+      await fetch('/api/auth/logout', {
+        method: 'POST',
+        credentials: 'include',
+      }).catch(e => console.error('Erro ao fazer logout via API:', e));
+      
+      // Redirecionar para a página de login
+      navigate('/login?success=true&message=Logout realizado com sucesso');
+    } catch (error) {
+      console.error('Erro durante o logout:', error);
+      
+      // Mesmo com erro, forçar o redirecionamento para garantir que 
+      // o usuário não fique preso em páginas protegidas
+      navigate('/login');
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   return (
     <nav className={`bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 text-white ${fullWidth ? 'px-3 py-2' : 'px-6 py-3'} flex items-center justify-between relative`}>

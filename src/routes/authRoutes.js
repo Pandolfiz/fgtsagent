@@ -7,7 +7,6 @@ const jwt = require('jsonwebtoken');
 const { supabaseAdmin } = require('../services/database');
 const logger = require('../utils/logger');
 const authService = require('../services/auth');
-const { google } = require('googleapis');
 
 // Verificar se todas as funções necessárias existem no controller
 const ensureFunctionExists = (controller, fnName, defaultFn) => {
@@ -190,6 +189,11 @@ const router = express.Router();
 // Rotas de renderização (páginas web)
 router.get('/login', authController.renderLogin);
 router.get('/signup', authController.renderSignup);
+
+// Rotas de autenticação OAuth2 do Google
+router.get('/login/google', authController.redirectToGoogleAuth);
+router.get('/google/callback', authController.handleGoogleCallback);
+router.post('/api/auth/google/token', authController.loginWithGoogleToken);
 
 // API de autenticação
 router.post('/register', validateRequest(schemas.signup), authController.register);
@@ -399,605 +403,6 @@ if (process.env.NODE_ENV !== 'production') {
     }
   });
 }
-
-// Rota para lidar com o callback do OAuth2 do Google
-router.get('/callback', async (req, res) => {
-  try {
-    logger.info('Recebendo callback OAuth2 do Google');
-    logger.info(`Query params recebidos: ${JSON.stringify(req.query)}`);
-    
-    const { code, state, error } = req.query;
-    
-    // Verificar se houve erro
-    if (error) {
-      logger.error(`Erro no callback OAuth2: ${error}`);
-      return res.send(`
-        <html>
-          <head><title>Erro na Autenticação</title></head>
-          <body>
-            <h2>Erro na Autenticação</h2>
-            <p>${error}</p>
-            <script>
-              // Notificar a janela principal sobre o erro
-              if (window.opener) {
-                window.opener.postMessage({
-                  type: 'oauth2-callback',
-                  success: false,
-                  error: ${JSON.stringify(error)},
-                  message: 'Autenticação cancelada ou falhou'
-                }, '*');
-                
-                // Fechar a janela após um tempo
-                setTimeout(() => window.close(), 3000);
-              } else {
-                // Se não houver janela pai, redirecionar
-                window.location.href = '/login?error=auth_failed';
-              }
-            </script>
-          </body>
-        </html>
-      `);
-    }
-    
-    // Verificar se temos o código
-    if (!code) {
-      logger.error('Código de autorização não recebido no callback OAuth2');
-      return res.status(400).send(`
-        <html>
-          <head><title>Erro na Autenticação</title></head>
-          <body>
-            <h2>Erro na Autenticação</h2>
-            <p>Código de autorização necessário não recebido</p>
-            <script>
-              if (window.opener) {
-                window.opener.postMessage({
-                  type: 'oauth2-callback',
-                  success: false,
-                  error: 'missing_code',
-                  message: 'Código de autorização não recebido'
-                }, '*');
-                setTimeout(() => window.close(), 3000);
-              } else {
-                window.location.href = '/login?error=missing_code';
-              }
-            </script>
-          </body>
-        </html>
-      `);
-    }
-    
-    // Decodificar o state para obter informações adicionais (se disponível)
-    let stateData = {};
-    if (state) {
-      try {
-        stateData = JSON.parse(state);
-        logger.info(`State decodificado: ${JSON.stringify(stateData)}`);
-      } catch (stateError) {
-        logger.error(`Erro ao decodificar state: ${stateError.message}`);
-      }
-    } else {
-      logger.warn('State não fornecido no callback OAuth2. Usando valores padrão.');
-      // Definir valores padrão para quando o state não está disponível
-      stateData = {
-        provider: 'google',
-        organizationId: process.env.DEFAULT_ORGANIZATION_ID || 'default_org_id',
-        credentialName: `Google (Teste ${new Date().toISOString()})`
-      };
-    }
-    
-    const { provider = 'google', organizationId, credentialName } = stateData;
-    
-    // Processar o código de autorização do Google OAuth2
-    const axios = require('axios');
-    
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
-    const redirectUri = process.env.GOOGLE_REDIRECT_URI || `${req.protocol}://${req.get('host')}/auth/callback`;
-    
-    if (!clientId || !clientSecret) {
-      logger.error('Credenciais do Google não configuradas corretamente');
-      return res.status(500).send(`
-        <html>
-          <head><title>Erro de Configuração</title></head>
-          <body>
-            <h2>Erro de Configuração</h2>
-            <p>Credenciais do Google não configuradas no servidor</p>
-            <script>
-              if (window.opener) {
-                window.opener.postMessage({
-                  type: 'oauth2-callback',
-                  success: false,
-                  error: 'server_config_error',
-                  message: 'Configuração incorreta no servidor'
-                }, '*');
-                setTimeout(() => window.close(), 3000);
-              } else {
-                window.location.href = '/login?error=server_config';
-              }
-            </script>
-          </body>
-        </html>
-      `);
-    }
-    
-    try {
-      logger.info(`Trocando código por token para provedor: ${provider}`);
-      
-      // Trocar o código por tokens de acesso
-      const tokenResponse = await axios.post('https://oauth2.googleapis.com/token', {
-        code,
-        client_id: clientId,
-        client_secret: clientSecret,
-        redirect_uri: redirectUri,
-        grant_type: 'authorization_code'
-      });
-      
-      const { access_token, refresh_token, id_token, expires_in } = tokenResponse.data;
-      logger.info('Tokens OAuth2 obtidos com sucesso');
-      
-      // Obter informações do usuário
-      const userInfoResponse = await axios.get('https://www.googleapis.com/oauth2/v3/userinfo', {
-        headers: { Authorization: `Bearer ${access_token}` }
-      });
-      
-      const userInfo = userInfoResponse.data;
-      logger.info(`Informações do usuário Google obtidas: ${userInfo.email}`);
-      
-      // Se temos organizationId e o nome da credencial, salvar a credencial
-      if (organizationId) {
-        try {
-          const credentialsService = require('../services/credentialsService');
-          
-          // Preparar dados da credencial
-          const credentialData = {
-            name: credentialName || `Google (${userInfo.email})`,
-            type: 'google_oauth2',
-            organization_id: organizationId,
-            data: {
-              access_token,
-              refresh_token,
-              expires_in,
-              token_type: 'Bearer',
-              scope: req.query.scope,
-              user_info: {
-                email: userInfo.email,
-                name: userInfo.name,
-                picture: userInfo.picture,
-                given_name: userInfo.given_name,
-                family_name: userInfo.family_name,
-                locale: userInfo.locale,
-                sub: userInfo.sub
-              }
-            }
-          };
-          
-          // Salvar a credencial
-          const savedCredential = await credentialsService.saveCredential(credentialData);
-          logger.info(`Credencial OAuth2 salva com ID: ${savedCredential.id}`);
-          
-          // Redirecionar para uma página de sucesso
-          return res.send(`
-            <html>
-              <head><title>Autenticação Bem-sucedida</title></head>
-              <body>
-                <h2>Autenticação Concluída</h2>
-                <p>Sua conta Google foi conectada com sucesso!</p>
-                <script>
-                  // Notificar a janela principal sobre o sucesso
-                  if (window.opener) {
-                    window.opener.postMessage({
-                      type: 'oauth2-callback',
-                      success: true,
-                      credentialId: '${savedCredential.id}',
-                      provider: 'google',
-                      email: '${userInfo.email}'
-                    }, '*');
-                    
-                    // Fechar a janela após um tempo
-                    setTimeout(() => window.close(), 3000);
-                  } else {
-                    // Se não houver janela pai, redirecionar
-                    window.location.href = '/dashboard';
-                  }
-                </script>
-              </body>
-            </html>
-          `);
-        } catch (credentialError) {
-          logger.error(`Erro ao salvar credencial: ${credentialError.message}`);
-          
-          // Redirecionar para uma página de erro, mas incluir os tokens na mensagem
-          // para que o desenvolvedor possa depurar
-          return res.send(`
-            <html>
-              <head><title>Erro ao Salvar Credencial</title></head>
-              <body>
-                <h2>Autenticação Bem-sucedida, mas Erro ao Salvar</h2>
-                <p>A autenticação com o Google foi bem-sucedida, mas ocorreu um erro ao salvar a credencial.</p>
-                <p>Erro: ${credentialError.message}</p>
-                
-                <h3>Dados para Debug (remover em produção)</h3>
-                <pre>${JSON.stringify({access_token: '***redacted***', expires_in, user: userInfo.email})}</pre>
-                
-                <script>
-                  // Notificar a janela principal sobre o erro
-                  if (window.opener) {
-                    window.opener.postMessage({
-                      type: 'oauth2-callback',
-                      partialSuccess: true,
-                      success: false,
-                      error: 'credential_save_failed',
-                      message: '${credentialError.message.replace(/'/g, "\\'")}',
-                      userEmail: '${userInfo.email}'
-                    }, '*');
-                    
-                    // Fechar a janela após um tempo
-                    setTimeout(() => window.close(), 5000);
-                  } else {
-                    // Se não houver janela pai, redirecionar
-                    window.location.href = '/dashboard?error=credential_save_failed';
-                  }
-                </script>
-              </body>
-            </html>
-          `);
-        }
-      } else {
-        // Apenas exibir informações de sucesso sem salvar credencial
-        logger.info('Autenticação OAuth2 bem-sucedida, mas organizationId não fornecido para salvar credencial');
-        
-        return res.send(`
-          <html>
-            <head><title>Autenticação Bem-sucedida</title></head>
-            <body>
-              <h2>Autenticação Concluída</h2>
-              <p>Sua conta Google foi autenticada com sucesso!</p>
-              <p>Email: ${userInfo.email}</p>
-              
-              <script>
-                // Notificar a janela principal
-                if (window.opener) {
-                  window.opener.postMessage({
-                    type: 'oauth2-callback',
-                    success: true,
-                    tokens: {
-                      access_token: '${access_token}',
-                      expires_in: ${expires_in}
-                    },
-                    user: {
-                      email: '${userInfo.email}',
-                      name: '${userInfo.name || ''}'
-                    }
-                  }, '*');
-                  
-                  // Fechar a janela após um tempo
-                  setTimeout(() => window.close(), 3000);
-                } else {
-                  // Se não houver janela pai, redirecionar
-                  window.location.href = '/dashboard';
-                }
-              </script>
-            </body>
-          </html>
-        `);
-      }
-    } catch (error) {
-      logger.error(`Erro ao processar código OAuth2: ${error.message}`);
-      
-      // Lidar com diferentes tipos de erros
-      let errorMessage = 'Erro desconhecido ao processar autenticação';
-      let errorCode = 'unknown_error';
-      
-      if (error.response) {
-        // Erro na resposta do Google
-        errorMessage = `Erro na resposta do Google: ${error.response.status} - ${JSON.stringify(error.response.data)}`;
-        errorCode = 'google_api_error';
-      } else if (error.request) {
-        // Sem resposta do Google
-        errorMessage = 'Erro de conexão com o Google';
-        errorCode = 'connection_error';
-      } else {
-        // Erro de código
-        errorMessage = error.message;
-        errorCode = 'code_error';
-      }
-      
-      return res.status(500).send(`
-        <html>
-          <head><title>Erro na Autenticação</title></head>
-          <body>
-            <h2>Erro na Autenticação</h2>
-            <p>${errorMessage}</p>
-            
-            <script>
-              // Notificar a janela principal sobre o erro
-              if (window.opener) {
-                window.opener.postMessage({
-                  type: 'oauth2-callback',
-                  success: false,
-                  error: '${errorCode}',
-                  message: 'Erro ao processar código de autorização'
-                }, '*');
-                
-                // Fechar a janela após um tempo
-                setTimeout(() => window.close(), 5000);
-              } else {
-                // Se não houver janela pai, redirecionar
-                window.location.href = '/login?error=${errorCode}';
-              }
-            </script>
-          </body>
-        </html>
-      `);
-    }
-  } catch (error) {
-    logger.error(`Erro geral no callback OAuth2: ${error.message}`);
-    
-    return res.status(500).send(`
-      <html>
-        <head><title>Erro Inesperado</title></head>
-        <body>
-          <h2>Erro Inesperado</h2>
-          <p>${error.message}</p>
-          <script>
-            if (window.opener) {
-              window.opener.postMessage({
-                type: 'oauth2-callback',
-                success: false,
-                error: 'unexpected_error',
-                message: 'Erro inesperado durante a autenticação'
-              }, '*');
-              setTimeout(() => window.close(), 3000);
-            } else {
-              window.location.href = '/login?error=unexpected';
-            }
-          </script>
-        </body>
-      </html>
-    `);
-  }
-});
-
-// Rota para capturar o callback com hash fragment do Supabase
-router.get('/oauth2-credential/callback', (req, res) => {
-  // Esta rota vai receber apenas o fragmento de hash da URL após autenticação
-  // Como os parâmetros estão após # (hash fragment), eles não são enviados ao servidor
-  // Precisamos usar JavaScript do lado do cliente para extraí-los
-  
-  logger.info('Recebendo callback OAuth2 na rota /oauth2-credential/callback');
-  logger.info(`Headers do request: ${JSON.stringify(req.headers)}`);
-  logger.info(`Host: ${req.headers.host}`);
-  
-  // Enviar uma página minimalista que processa o token e redireciona automaticamente
-  return res.send(`
-    <!DOCTYPE html>
-    <html lang="pt-BR">
-    <head>
-      <meta charset="UTF-8">
-      <title>Redirecionando...</title>
-      <style>
-        body {
-          font-family: Arial, sans-serif;
-          display: flex;
-          justify-content: center;
-          align-items: center;
-          height: 100vh;
-          margin: 0;
-          background-color: #f8f9fa;
-        }
-        .loader {
-          border: 5px solid #f3f3f3;
-          border-top: 5px solid #3498db;
-          border-radius: 50%;
-          width: 50px;
-          height: 50px;
-          animation: spin 1s linear infinite;
-        }
-        @keyframes spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        .container {
-          text-align: center;
-        }
-      </style>
-    </head>
-    <body>
-      <div class="container">
-        <div class="loader"></div>
-        <p>Redirecionando...</p>
-      </div>
-      <script>
-        (function() {
-          // Extrair parâmetros do fragmento de hash
-          const hash = window.location.hash.substring(1);
-          const hashParams = hash.split('&').reduce((acc, param) => {
-            const parts = param.split('=');
-            if (parts.length === 2) {
-              acc[parts[0]] = decodeURIComponent(parts[1]);
-            }
-            return acc;
-          }, {});
-          
-          // Salvar tokens localmente como fallback
-          try {
-            localStorage.setItem('supabase_tokens', JSON.stringify({
-              access_token: hashParams.access_token,
-              refresh_token: hashParams.refresh_token,
-              expires_in: hashParams.expires_in,
-              timestamp: Date.now()
-            }));
-          } catch (e) {
-            console.error('Erro ao salvar tokens localmente:', e);
-          }
-          
-          // Enviar token para o servidor e redirecionar
-          if (hashParams.access_token) {
-            fetch('/auth/process-token', {
-              method: 'POST',
-              headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-              },
-              body: JSON.stringify(hashParams),
-              credentials: 'same-origin'
-            })
-            .then(response => response.json())
-            .then(data => {
-              // Redirecionar para o dashboard imediatamente
-              window.location.href = data.redirectUrl || '/dashboard';
-            })
-            .catch(error => {
-              console.error('Erro ao processar token:', error);
-              // Em caso de erro, tentar usar o token armazenado no localStorage
-              // para redirecionar diretamente
-              window.location.href = '/login?error=token_ausente';
-            });
-          } else {
-            // Sem token, redirecionar para login
-            window.location.href = '/login?error=token_ausente';
-          }
-        })();
-      </script>
-    </body>
-    </html>
-  `);
-});
-
-// Rota para processar o token enviado pelo cliente
-router.post('/process-token', async (req, res) => {
-  try {
-    logger.info('Recebendo requisição na rota /process-token');
-    logger.info(`Cookies recebidos: ${JSON.stringify(req.cookies || {})}`);
-    logger.info(`Headers: ${JSON.stringify(req.headers)}`);
-    
-    const { access_token, refresh_token, provider_token, expires_in } = req.body;
-    
-    if (!access_token) {
-      logger.error('Token de acesso não fornecido no request para /process-token');
-      return res.status(400).json({
-        success: false,
-        error: 'Token não fornecido'
-      });
-    }
-    
-    logger.info(`Token recebido, expires_in: ${expires_in}`);
-    
-    // IMPORTANTE: Obter dados do usuário a partir do token
-    let userData = null;
-    try {
-      const { data: userResponse, error: userError } = await supabaseAdmin.auth.getUser(access_token);
-      if (userError) {
-        logger.error(`Erro ao obter usuário a partir do token: ${userError.message}`);
-      } else if (userResponse && userResponse.user) {
-        userData = userResponse.user;
-        logger.info(`Usuário obtido a partir do token: ${userData.email}`);
-        
-        // IMPORTANTE: Verificar e criar perfil de usuário e cliente se não existir
-        const { ensureUserProfile } = require('../middleware/authMiddleware');
-        if (typeof ensureUserProfile === 'function') {
-          logger.info(`Iniciando verificação/criação de perfil para usuário OAuth2: ${userData.id}`);
-          const profileResult = await ensureUserProfile(userData);
-          logger.info(`Resultado da verificação/criação de perfil OAuth2: ${profileResult ? 'sucesso' : 'falha'}`);
-        } else {
-          logger.error('Função ensureUserProfile não encontrada no middleware de autenticação');
-        }
-      }
-    } catch (userFetchError) {
-      logger.error(`Exceção ao obter usuário a partir do token: ${userFetchError.message}`);
-    }
-    
-    // Se provider_token estiver disponível, podemos obter informações do usuário do Google
-    if (provider_token) {
-      try {
-        const userInfo = await authService.getGoogleUserInfo(provider_token);
-        logger.info(`Autenticação OAuth2 bem-sucedida para: ${userInfo.email}`);
-      } catch (error) {
-        logger.warn(`Erro ao obter informações do usuário Google: ${error.message}`);
-        // Continuamos mesmo se houver erro aqui
-      }
-    }
-    
-    // Verificar se estamos em ambiente ngrok
-    const isNgrok = req.headers.host && req.headers.host.includes('ngrok');
-    
-    // Definir cookie para autenticação com configurações adaptadas para ngrok
-    const cookieMaxAge = (expires_in || 3600) * 1000;
-    logger.info(`Definindo cookie 'authToken' com duração de ${cookieMaxAge}ms`);
-    
-    // Se for ngrok, usar configurações mais permissivas para os cookies
-    const cookieOptions = {
-      httpOnly: true,
-      secure: isNgrok || process.env.NODE_ENV === 'production',
-      maxAge: cookieMaxAge,
-      sameSite: isNgrok ? 'none' : 'lax',
-      path: '/'
-    };
-    
-    logger.info(`Configuração de cookie para ambiente ${isNgrok ? 'ngrok' : 'normal'}: ${JSON.stringify(cookieOptions)}`);
-    
-    // CRÍTICO: Definir o cookie authToken corretamente - este é o principal usado na autenticação
-    res.cookie('authToken', access_token, cookieOptions);
-    
-    // Cookies adicionais para compatibilidade com diferentes modos de acesso
-    res.cookie('supabase-auth-token', access_token, cookieOptions);
-    
-    // Cookie de acesso para JavaScript (não httpOnly)
-    res.cookie('js-auth-token', access_token, {
-      ...cookieOptions,
-      httpOnly: false
-    });
-    
-    // Se houver refresh token, armazená-lo também
-    if (refresh_token) {
-      const refreshTokenMaxAge = 30 * 24 * 60 * 60 * 1000; // 30 dias
-      logger.info(`Definindo cookie 'refreshToken' com duração de ${refreshTokenMaxAge}ms`);
-      
-      const refreshCookieOptions = {
-        ...cookieOptions,
-        maxAge: refreshTokenMaxAge
-      };
-      
-      res.cookie('refreshToken', refresh_token, refreshCookieOptions);
-      res.cookie('supabase-refresh-token', refresh_token, refreshCookieOptions);
-    }
-    
-    // Definir um cookie simples para testar se os cookies estão funcionando
-    res.cookie('auth-test-cookie', 'test-value', {
-      httpOnly: false,
-      secure: isNgrok || process.env.NODE_ENV === 'production',
-      maxAge: cookieMaxAge,
-      sameSite: isNgrok ? 'none' : 'lax',
-      path: '/'
-    });
-    
-    // Adicionalmente, criar uma sessão real no Express para redundância
-    if (req.session) {
-      req.session.userId = userData?.id;
-      req.session.userEmail = userData?.email;
-      req.session.accessToken = access_token;
-      logger.info(`Sessão Express criada para usuário: ${userData?.id}`);
-    } else {
-      logger.warn('Sessão Express não disponível - isso pode afetar a persistência da autenticação');
-    }
-    
-    logger.info('Autenticação processada com sucesso, enviando resposta');
-    return res.json({
-      success: true,
-      message: 'Autenticação processada com sucesso',
-      redirectUrl: '/dashboard',
-      cookieDefined: true,
-      loginTime: new Date().toISOString(),
-      isNgrok: isNgrok
-    });
-  } catch (error) {
-    logger.error(`Erro ao processar token: ${error.message}`);
-    return res.status(500).json({
-      success: false,
-      error: 'Erro interno ao processar autenticação: ' + error.message
-    });
-  }
-});
 
 // Rota de diagnóstico de autenticação
 router.get('/auth-diagnostics', (req, res) => {
@@ -1384,6 +789,149 @@ router.get('/test-auth', async (req, res) => {
       title: 'Teste de Autenticação',
       isAuthenticated: false,
       error: `Erro inesperado: ${error.message}`
+    });
+  }
+});
+
+/**
+ * Endpoint para trocar código de autorização por token (usado no OAuth2)
+ * Este endpoint segue a recomendação da documentação do Supabase para o fluxo PKCE
+ */
+router.post('/exchange-code', async (req, res) => {
+  try {
+    const { code } = req.body;
+    
+    if (!code) {
+      return res.status(400).json({
+        success: false,
+        message: 'Código de autorização é obrigatório'
+      });
+    }
+    
+    console.log('Recebendo solicitação para trocar código por sessão:', code.substring(0, 10) + '...');
+    
+    // Trocar o código por sessão através do Supabase
+    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
+    
+    if (error) {
+      console.error('Erro ao trocar código por sessão:', error.message);
+      return res.status(400).json({
+        success: false,
+        message: 'Erro ao trocar código: ' + error.message
+      });
+    }
+    
+    if (!data?.session) {
+      return res.status(400).json({
+        success: false,
+        message: 'Sessão não retornada pelo Supabase'
+      });
+    }
+    
+    console.log('Código trocado por sessão com sucesso. Usuário:', data.user?.email);
+    
+    // Configurar cookie com token de autenticação
+    res.cookie('supabase-auth-token', data.session.access_token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
+    });
+    
+    // Retornar informações de sessão para o cliente
+    return res.status(200).json({
+      success: true,
+      message: 'Autenticação bem-sucedida',
+      data: {
+        user: {
+          id: data.user.id,
+          email: data.user.email
+        },
+        session: {
+          accessToken: data.session.access_token,
+          refreshToken: data.session.refresh_token,
+          expiresAt: data.session.expires_at
+        }
+      }
+    });
+  } catch (err) {
+    console.error('Erro no endpoint exchange-code:', err);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor: ' + err.message
+    });
+  }
+});
+
+/**
+ * Endpoint para verificar se um token é válido
+ */
+router.post('/verify-token', async (req, res) => {
+  try {
+    // Obter o token de autenticação
+    let token;
+
+    // Verificar nos cabeçalhos
+    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+      token = req.headers.authorization.split(' ')[1];
+    } 
+    // Verificar nos cookies
+    else if (req.cookies && (req.cookies.authToken || req.cookies['supabase-auth-token'])) {
+      token = req.cookies.authToken || req.cookies['supabase-auth-token'];
+    }
+    // Verificar no corpo da requisição
+    else if (req.body && req.body.token) {
+      token = req.body.token;
+    }
+
+    if (!token) {
+      return res.status(401).json({
+        success: false,
+        message: 'Token não fornecido'
+      });
+    }
+
+    // Verificar o token com o Supabase
+    const { data, error } = await supabaseAdmin.auth.getUser(token);
+    
+    if (error) {
+      logger.warn(`Token inválido: ${error.message}`);
+      return res.status(401).json({
+        success: false,
+        message: `Token inválido: ${error.message}`
+      });
+    }
+    
+    if (!data || !data.user) {
+      logger.warn('Token validado sem dados de usuário');
+      return res.status(401).json({
+        success: false,
+        message: 'Token validado sem dados de usuário'
+      });
+    }
+    
+    // Definir o cookie com o token validado
+    res.cookie('authToken', token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      maxAge: 24 * 60 * 60 * 1000, // 24 horas
+      sameSite: 'lax'
+    });
+    
+    // Retornar sucesso com informações do usuário
+    return res.status(200).json({
+      success: true,
+      message: 'Token válido',
+      user: {
+        id: data.user.id,
+        email: data.user.email,
+        role: data.user.app_metadata?.role || 'user'
+      }
+    });
+  } catch (error) {
+    logger.error(`Erro ao verificar token: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao verificar token'
     });
   }
 });

@@ -41,24 +41,61 @@ exports.verifyToken = async (req, res, next) => {
 };
 
 /**
+ * Função auxiliar para extrair token de várias fontes
+ */
+const extractToken = (req) => {
+  let token = null;
+  
+  // 1. Verificar no header de autorização
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    token = req.headers.authorization.split(' ')[1];
+    logger.info('Token encontrado no header Authorization');
+    return token;
+  }
+  
+  // 2. Verificar nos cookies do Express
+  const cookieNames = ['authToken', 'supabase-auth-token', 'js-auth-token', 'sb-access-token'];
+  for (const name of cookieNames) {
+    if (req.cookies && req.cookies[name]) {
+      token = req.cookies[name];
+      logger.info(`Token encontrado no cookie ${name}`);
+      return token;
+    }
+  }
+  
+  // 3. Verificar no cookie header manual (caso não tenha sido parseado pelo cookie-parser)
+  if (req.headers.cookie) {
+    for (const name of cookieNames) {
+      const match = new RegExp(`${name}=([^;]+)`).exec(req.headers.cookie);
+      if (match) {
+        token = match[1];
+        logger.info(`Token encontrado no cookie header para ${name}`);
+        return token;
+      }
+    }
+  }
+  
+  // 4. Verificar em query param (menos seguro, mas útil para download de arquivos)
+  if (req.query && req.query.token) {
+    token = req.query.token;
+    logger.info('Token encontrado no query param');
+    return token;
+  }
+  
+  return null;
+};
+
+/**
  * Middleware para requerir autenticação
  * Suporta tokens do Supabase e tokens personalizados
  */
 exports.requireAuth = async (req, res, next) => {
   try {
     // Obter o token de autenticação
-    let token;
-
-    // Verificar nos cabeçalhos
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-      token = req.headers.authorization.split(' ')[1];
-    } 
-    // Verificar nos cookies
-    else if (req.cookies && (req.cookies.authToken || req.cookies['supabase-auth-token'])) {
-      token = req.cookies.authToken || req.cookies['supabase-auth-token'];
-    }
+    const token = extractToken(req);
 
     if (!token) {
+      logger.warn('Tentativa de acesso protegido sem token');
       return res.status(401).json({
         success: false,
         message: 'Acesso não autorizado. Faça login para continuar.'
@@ -66,30 +103,8 @@ exports.requireAuth = async (req, res, next) => {
     }
 
     try {
-      // Para fins de teste, vamos permitir qualquer token JWT válido 
-      // que tenha uma reivindicação 'sub' (user ID)
-      const jwt = require('jsonwebtoken');
-      const config = require('../config');
-      
+      // Verificar com Supabase primeiro
       try {
-        // Tentar decodificar o token sem verificação
-        const decoded = jwt.decode(token);
-        
-        if (decoded && (decoded.sub || decoded.userId)) {
-          // É um JWT com um ID de usuário, vamos considerá-lo válido
-          const userId = decoded.sub || decoded.userId;
-          
-          // Adicionar dados mínimos do usuário ao objeto req
-          req.user = {
-            id: userId,
-            app_metadata: decoded.app_metadata || { role: 'admin' } // Para teste, consideramos admin
-          };
-          
-          logger.info(`Usuário autenticado via token personalizado: ${userId}`);
-          return next();
-        }
-        
-        // Se não tem sub/userId, tenta verificar com Supabase
         const { data, error } = await supabase.auth.getUser(token);
         
         if (data && data.user && !error) {
@@ -97,12 +112,38 @@ exports.requireAuth = async (req, res, next) => {
           logger.info(`Usuário autenticado via Supabase: ${req.user.id}`);
           return next();
         }
+      } catch (supabaseError) {
+        logger.warn(`Erro na verificação Supabase: ${supabaseError.message}`);
+        // Falha na verificação Supabase, tentar JWT genérico
+      }
+      
+      // Tentar como JWT genérico se falhar com Supabase
+      const jwt = require('jsonwebtoken');
+      
+      try {
+        // Tentar decodificar o token sem verificação primeiro
+        const decoded = jwt.decode(token);
         
-        // Se não é um token do Supabase nem um JWT com ID válido
-        logger.warn('Token não reconhecido como válido');
+        if (decoded && (decoded.sub || decoded.userId)) {
+          // É um JWT com um ID de usuário, vamos considerá-lo válido para testes
+          const userId = decoded.sub || decoded.userId;
+          
+          // Adicionar dados mínimos do usuário ao objeto req
+          req.user = {
+            id: userId,
+            email: decoded.email || 'user@example.com',
+            app_metadata: decoded.app_metadata || { role: 'user' }
+          };
+          
+          logger.info(`Usuário autenticado via token JWT genérico: ${userId}`);
+          return next();
+        }
+        
+        // Se chegou aqui, o token não foi reconhecido
+        logger.warn(`Token ${token.substring(0, 10)}... não é válido`);
         return res.status(401).json({
           success: false,
-          message: 'Token não reconhecido.'
+          message: 'Token inválido.'
         });
       } catch (jwtError) {
         logger.warn(`Erro ao processar JWT: ${jwtError.message}`);
@@ -187,10 +228,9 @@ exports.requireAdmin = async (req, res, next) => {
     // Em ambiente de produção, remover esta condição e usar apenas a verificação padrão
     if (process.env.NODE_ENV !== 'production') {
       const jwt = require('jsonwebtoken');
-      const authHeader = req.headers.authorization;
+      const token = extractToken(req);
       
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        const token = authHeader.split(' ')[1];
+      if (token) {
         try {
           const decoded = jwt.decode(token);
           if (decoded && decoded.hasOwnProperty('userId')) {

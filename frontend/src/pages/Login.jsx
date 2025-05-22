@@ -74,13 +74,65 @@ export default function Login() {
     setShowConfirmation(false);
     setLoading(true);
     try {
+      // Primeiro tentar o login com Supabase diretamente
+      const { data: supabaseData, error: supabaseError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+      
+      if (!supabaseError && supabaseData.session) {
+        // Login com Supabase bem-sucedido
+        console.log('Login com Supabase bem-sucedido!');
+        
+        // Armazenar o token em localStorage para maior consistência
+        localStorage.setItem('authToken', supabaseData.session.access_token);
+        
+        // Definir o token em cookies para que o backend tenha acesso
+        document.cookie = `supabase-auth-token=${supabaseData.session.access_token}; path=/; max-age=86400; SameSite=Lax`;
+        document.cookie = `js-auth-token=${supabaseData.session.access_token}; path=/; max-age=86400; SameSite=Lax`;
+        
+        // Verificar se a sessão está funcionando fazendo uma requisição de teste
+        try {
+          const testResponse = await fetch('/api/auth/me', {
+            method: 'GET',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${supabaseData.session.access_token}`
+            },
+            credentials: 'include'
+          });
+          
+          if (!testResponse.ok) {
+            console.warn('Verificação de autenticação falhou após login com Supabase');
+            // Continuar mesmo se falhar, tentaremos o método de fallback abaixo
+          } else {
+            console.log('Verificação de autenticação bem-sucedida após login com Supabase');
+            setSuccess('Login bem-sucedido! Redirecionando...');
+            setInfo('');
+            const timeoutId = setTimeout(() => {
+              clearTimeout(timeoutId);
+              navigate(getRedirect());
+            }, 1200);
+            return;
+          }
+        } catch (testError) {
+          console.error('Erro ao verificar autenticação após login com Supabase:', testError);
+          // Continuar mesmo se falhar, tentaremos o método de fallback abaixo
+        }
+      }
+      
+      // Fallback: usar o endpoint de API do backend
       const response = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json'
+        },
         credentials: 'include',
         body: JSON.stringify({ email, password })
       });
+      
       const data = await response.json();
+      
       if (!response.ok) {
         const msg = data.message || 'Falha ao realizar login';
         if (msg.toLowerCase().includes('confirm')) {
@@ -94,6 +146,14 @@ export default function Login() {
         setLoading(false);
         return;
       }
+      
+      // Se o login via API foi bem-sucedido, armazenar o token retornado
+      if (data.data?.token) {
+        localStorage.setItem('authToken', data.data.token);
+        document.cookie = `supabase-auth-token=${data.data.token}; path=/; max-age=86400; SameSite=Lax`;
+        document.cookie = `js-auth-token=${data.data.token}; path=/; max-age=86400; SameSite=Lax`;
+      }
+      
       setSuccess('Login bem-sucedido! Redirecionando...');
       setInfo('');
       const timeoutId = setTimeout(() => {
@@ -101,6 +161,7 @@ export default function Login() {
         navigate(getRedirect());
       }, 1200);
     } catch (error) {
+      console.error('Erro no login:', error);
       setError('Erro de conexão. Tente novamente.');
       setInfo('');
       setLoading(false);
@@ -127,23 +188,6 @@ export default function Login() {
     } catch {
       setError('Erro de conexão.');
     }
-  };
-
-  // Login Google (usando supabase-js)
-  const handleGoogle = async () => {
-    // Armazenar o redirecionamento atual no localStorage para uso posterior
-    const searchParams = new URLSearchParams(location.search);
-    const urlRedirect = searchParams.get('redirect');
-    if (urlRedirect) {
-      localStorage.setItem('redirectAfterLogin', urlRedirect);
-    }
-    
-    const redirectUrl = import.meta.env.VITE_OAUTH_APP_REDIRECT_URL
-      || `${window.location.origin}/oauth2-credential/callback`;
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: { redirectTo: redirectUrl }
-    });
   };
 
   return (
@@ -211,17 +255,7 @@ export default function Login() {
             {loading ? 'Entrando...' : <><i className="fas fa-sign-in-alt mr-2" />Entrar</>}
           </button>
         </form>
-        <div className="my-4 flex items-center justify-center gap-2">
-          <hr className="flex-grow border-cyan-900/40" />
-          <span className="mx-2 text-cyan-300">ou</span>
-          <hr className="flex-grow border-cyan-900/40" />
-        </div>
-        <button
-          onClick={handleGoogle}
-          className="w-full flex items-center justify-center gap-2 px-8 py-3 rounded-lg border border-red-400 text-red-400 font-bold shadow hover:bg-red-400/10 transition mb-2"
-        >
-          <i className="fab fa-google" /> Entrar com Google
-        </button>
+
         <div className="mt-6 text-center text-cyan-200">
           Não tem conta?{' '}
           <Link to="/signup" className="font-bold text-cyan-300 hover:underline">Criar Conta</Link>

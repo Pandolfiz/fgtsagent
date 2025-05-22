@@ -5,12 +5,35 @@ import supabase from '../lib/supabaseClient';
 export default function Signup() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  // Função para formatar o telefone enquanto o usuário digita
+  const formatPhone = (value) => {
+    // Remove tudo que não seja número
+    const numbersOnly = value.replace(/\D/g, '');
+    
+    // Aplica a máscara de telefone brasileiro
+    if (numbersOnly.length <= 2) {
+      return numbersOnly;
+    } else if (numbersOnly.length <= 6) {
+      return `(${numbersOnly.slice(0, 2)}) ${numbersOnly.slice(2)}`;
+    } else if (numbersOnly.length <= 10) {
+      return `(${numbersOnly.slice(0, 2)}) ${numbersOnly.slice(2, 6)}-${numbersOnly.slice(6)}`;
+    } else {
+      return `(${numbersOnly.slice(0, 2)}) ${numbersOnly.slice(2, 7)}-${numbersOnly.slice(7, 11)}`;
+    }
+  };
+
+  // Handler para o campo de telefone
+  const handlePhoneChange = (e) => {
+    setPhone(formatPhone(e.target.value));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -27,14 +50,21 @@ export default function Signup() {
       setError('A senha deve ter pelo menos 8 caracteres');
       return;
     }
+    
+    // Validar formato do telefone (deve ter pelo menos 14 caracteres incluindo formatação)
+    if (phone && phone.replace(/\D/g, '').length < 10) {
+      setError('Número de telefone inválido. Use o formato (XX) XXXXX-XXXX');
+      return;
+    }
+    
     setLoading(true);
     try {
-      // Chamar API do backend para registro usando o campo name
+      // Chamar API do backend para registro incluindo o telefone
       const resp = await fetch('/api/auth/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify({ name, email, password })
+        body: JSON.stringify({ name, email, phone, password })
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.message || 'Falha ao registrar a conta');
@@ -66,19 +96,6 @@ export default function Signup() {
       setError(err.message || 'Erro de conexão. Tente novamente.');
     }
     setLoading(false);
-  };
-
-  // Cadastro Google (usando supabase-js)
-  const handleGoogle = async () => {
-    const redirectUrl = import.meta.env.VITE_OAUTH_APP_REDIRECT_URL
-      || `${window.location.origin}/oauth2-credential/callback`;
-    await supabase.auth.signInWithOAuth({
-      provider: 'google',
-      options: {
-        redirectTo: redirectUrl,
-        queryParams: { signup: 'true' }
-      }
-    });
   };
 
   return (
@@ -114,6 +131,20 @@ export default function Signup() {
                 required
               />
             </div>
+          </div>
+          <div>
+            <label className="block text-cyan-200 mb-1">Telefone</label>
+            <div className="relative flex items-center">
+              <span className="absolute left-3 text-cyan-400"><i className="fas fa-phone" /></span>
+              <input
+                type="tel"
+                placeholder="(XX) XXXXX-XXXX"
+                className="pl-10 pr-3 py-2 rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition w-full"
+                value={phone}
+                onChange={handlePhoneChange}
+              />
+            </div>
+            <div className="text-xs text-cyan-200/70 mt-0.5">Formato: (XX) XXXXX-XXXX</div>
           </div>
           <div>
             <label className="block text-cyan-200 mb-1">Senha</label>
@@ -159,17 +190,6 @@ export default function Signup() {
             {loading ? 'Criando conta...' : <><i className="fas fa-user-plus mr-2" />Criar Conta</>}
           </button>
         </form>
-        <div className="my-2 flex items-center justify-center gap-2">
-          <hr className="flex-grow border-cyan-900/40" />
-          <span className="mx-2 text-cyan-300">ou</span>
-          <hr className="flex-grow border-cyan-900/40" />
-        </div>
-        <button
-          onClick={handleGoogle}
-          className="w-full flex items-center justify-center gap-2 px-8 py-2 rounded-lg border border-red-400 text-red-400 font-bold shadow hover:bg-red-400/10 transition mb-2"
-        >
-          <i className="fab fa-google" /> Cadastrar com Google
-        </button>
         <div className="mt-6 text-center text-cyan-200">
           Já tem uma conta?{' '}
           <Link to="/login" className="font-bold text-cyan-300 hover:underline">Fazer login</Link>

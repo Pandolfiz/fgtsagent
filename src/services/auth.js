@@ -3,7 +3,6 @@ const { supabaseAdmin } = require('./database');
 const { AppError } = require('../utils/errors');
 const logger = require('../utils/logger');
 const axios = require('axios');
-const { google } = require('googleapis');
 
 class AuthService {
   async signUp(email, password, userData) {
@@ -613,45 +612,69 @@ class AuthService {
   }
 
   /**
-   * Obtém informações do usuário usando um token do Google
-   * @param {string} token - Token de acesso do Google
-   * @returns {Promise<Object>} - Informações do usuário
+   * Inicia o processo de login com Google OAuth
+   * @returns {Promise<string>} URL para redirecionamento
    */
-  async getGoogleUserInfo(token) {
+  async loginWithGoogle() {
     try {
-      logger.info('Obtendo informações do usuário Google');
+      const { data, error } = await supabaseAdmin.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: process.env.OAUTH_SUPABASE_REDIRECT_URL || `${process.env.APP_URL}/auth/google/callback`
+        }
+      });
       
-      // Método 1: Usando a API OAuth2 do Google
-      try {
-        const oauth2Client = new google.auth.OAuth2();
-        oauth2Client.setCredentials({ access_token: token });
-        
-        const oauth2 = google.oauth2({
-          auth: oauth2Client,
-          version: 'v2'
-        });
-        
-        const { data } = await oauth2.userinfo.get();
-        logger.info(`Informações do usuário Google obtidas via API: ${data.email}`);
-        
-        return data;
-      } catch (googleApiError) {
-        logger.warn(`Erro ao obter informações via Google API: ${googleApiError.message}`);
-        logger.info('Tentando método alternativo via axios');
-        
-        // Método 2: Fazer requisição direta ao endpoint
-        const response = await axios.get('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
-        });
-        
-        logger.info(`Informações do usuário Google obtidas via Axios: ${response.data.email}`);
-        return response.data;
-      }
+      if (error) throw new AppError(error.message, 400);
+      
+      return data.url;
     } catch (error) {
-      logger.error(`Erro ao obter informações do usuário Google: ${error.message}`);
-      throw new AppError('Erro ao obter informações do usuário do Google', 500);
+      logger.error(`Erro ao iniciar login com Google: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Verifica um token ID do Google e autentica o usuário
+   * @param {string} idToken - Token ID do Google
+   * @returns {Promise<Object>} Dados do usuário e sessão
+   */
+  async verifyGoogleToken(idToken) {
+    try {
+      const { data, error } = await supabaseAdmin.auth.signInWithIdToken({
+        provider: 'google',
+        token: idToken
+      });
+      
+      if (error) throw new AppError(error.message, 401);
+      
+      return {
+        user: data.user,
+        session: data.session
+      };
+    } catch (error) {
+      logger.error(`Erro ao verificar token do Google: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Processa o callback do OAuth após autenticação bem-sucedida
+   * @param {string} code - Código de autenticação 
+   * @returns {Promise<Object>} Dados da sessão
+   */
+  async handleOAuthCallback(code) {
+    try {
+      const { data, error } = await supabaseAdmin.auth.exchangeCodeForSession(code);
+      
+      if (error) throw new AppError(error.message, 401);
+      
+      return {
+        session: data.session,
+        user: data.user
+      };
+    } catch (error) {
+      logger.error(`Erro ao processar callback OAuth: ${error.message}`);
+      throw error;
     }
   }
 }
