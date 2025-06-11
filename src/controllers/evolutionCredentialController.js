@@ -14,9 +14,24 @@ class EvolutionCredentialController {
         .select('*')
         .eq('client_id', clientId);
       if (error) throw error;
+      
       // Para cada credencial, buscar e atualizar status da instância
       if (Array.isArray(creds) && creds.length > 0) {
         for (const cred of creds) {
+          // Para credenciais de anúncios, definir status especial sem verificar Evolution API
+          if (cred.connection_type === 'ads') {
+            const requiresConfig = cred.metadata?.requires_configuration;
+            const scheduledSetup = cred.metadata?.scheduled_setup;
+            
+            if (requiresConfig && scheduledSetup) {
+              cred.status = "aguardando_configuracao";
+            } else {
+              cred.status = "configuracao_pendente";
+            }
+            continue; // Pular verificação na Evolution API
+          }
+          
+          // Para credenciais WhatsApp Business normais, verificar status na Evolution API
           try {
             const service = EvolutionService.fromCredential(cred);
             try {
@@ -79,21 +94,30 @@ class EvolutionCredentialController {
       if (!req.body.agent_name) {
         return res.status(400).json({ success: false, message: 'Nome do agente é obrigatório' });
       }
+      
       let userName = req.user?.displayName || req.user?.user_metadata?.full_name || req.user?.profile?.full_name || req.user?.user_metadata?.first_name || req.user?.email?.split('@')[0] || 'Usuario';
-      const generatedInstanceName = `${userName} - ${req.body.agent_name}`;
+      
+      // Usar o instance_name fornecido ou gerar um padrão
+      const instanceName = req.body.instance_name || `${userName} - ${req.body.agent_name}`;
+      
       const payload = {
         client_id: req.clientId,
         phone: req.body.phone,
-        instance_name: generatedInstanceName,
-        partner_secret: config.evolutionApi.apiKey,
+        instance_name: instanceName,
         agent_name: req.body.agent_name,
+        connection_type: req.body.connection_type || 'whatsapp_business',
         metadata: req.body.metadata || {}
       };
+      
       const { data: saved, error } = await supabaseAdmin
         .from('whatsapp_credentials')
         .insert([payload])
-        .select();
+        .select()
+        .single();
       if (error) throw error;
+      
+      logger.info(`Nova credencial criada: ${saved.id} - Tipo: ${saved.connection_type} - Agente: ${saved.agent_name}`);
+      
       return res.status(201).json({ success: true, data: saved });
     } catch (err) {
       logger.error('EvolutionCredentialController.create error:', err.message || err);
@@ -130,7 +154,8 @@ class EvolutionCredentialController {
         .from('whatsapp_credentials')
         .update(updates)
         .eq('id', id)
-        .select();
+        .select()
+        .single();
       if (updateError) throw updateError;
       return res.json({ success: true, data: updated });
     } catch (err) {
@@ -139,7 +164,7 @@ class EvolutionCredentialController {
     }
   }
 
-  // Exclui credencial do cliente autenticado
+  // Exclui credencial do cliente autenticado e deleta instância da Evolution API
   async delete(req, res) {
     try {
       const { id } = req.params;
@@ -152,6 +177,23 @@ class EvolutionCredentialController {
       if (!existing || existing.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
       }
+
+      // Para credenciais WhatsApp Business, deletar instância na Evolution API
+      // Para credenciais de anúncios, pular esta etapa
+      if (existing.connection_type === 'whatsapp_business') {
+        try {
+          const service = EvolutionService.fromCredential(existing);
+          await service.deleteInstance();
+          logger.info(`Instância ${existing.instance_name} deletada da Evolution API`);
+        } catch (evolutionError) {
+          // Log mas não falhe completamente se a Evolution API não responder
+          logger.warn(`Falha ao deletar instância da Evolution API: ${evolutionError.message}`);
+        }
+      } else {
+        logger.info(`Credencial de anúncios ${existing.instance_name} será deletada apenas do banco (não há instância na Evolution API)`);
+      }
+
+      // Deletar credencial do banco
       const { error: deleteError } = await supabaseAdmin
         .from('whatsapp_credentials')
         .delete()
@@ -181,6 +223,15 @@ class EvolutionCredentialController {
         return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
       }
       
+      // Verificar se é uma credencial de anúncios que requer configuração manual
+      if (existing.connection_type === 'ads') {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Credenciais para anúncios requerem configuração manual pela nossa equipe. Por favor, agende um horário.',
+          requires_scheduling: true
+        });
+      }
+      
       // Obter nome do usuário (se disponível) ou usar um valor padrão
       let userName = req.user?.displayName || req.user?.user_metadata?.full_name || req.user?.profile?.full_name || 
                     req.user?.user_metadata?.first_name || req.user?.email?.split('@')[0] || 'Usuario';
@@ -199,8 +250,11 @@ class EvolutionCredentialController {
       const updates = {
         id: newId,
         instance_name: apiRes.instance.instanceName,
-        partner_secret: apiRes.hash.apikey,
-        metadata: { ...existing.metadata, evolution: apiRes }
+        metadata: { 
+          ...existing.metadata, 
+          evolution: apiRes,
+          evolution_api_key: apiRes.hash.apikey
+        }
       };
       const { data: updated, error: updateError } = await supabaseAdmin
         .from('whatsapp_credentials')
@@ -212,8 +266,7 @@ class EvolutionCredentialController {
         logger.error('Erro ao atualizar credencial com id da instância:', updateError.message);
         throw updateError;
       }
-      const saved = new EvolutionCredential(updated);
-      return res.json({ success: true, data: saved });
+      return res.json({ success: true, data: updated });
     } catch (err) {
       logger.error('EvolutionCredentialController.setupInstance error:', err.message || err);
       return res.status(500).json({ success: false, message: err.message });
@@ -286,16 +339,16 @@ class EvolutionCredentialController {
       }
       
       // Atualizar metadata local com novo QR Code
-      const updates = {
+      const updatedMetadata = {
         ...credential.metadata,
         evolution: {
-          ...credential.metadata.evolution,
+          ...credential.metadata?.evolution,
           qrcode: qrData
         }
       };
       const { data: updated, error: updateError } = await supabaseAdmin
         .from('whatsapp_credentials')
-        .update(updates)
+        .update({ metadata: updatedMetadata })
         .eq('id', id)
         .select();
       if (updateError) throw updateError;

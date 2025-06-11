@@ -92,4 +92,7 @@ router.use('/api/leads', require('./leadRoutes'));
 // Rotas de KnowledgeBase
 router.use('/api/knowledge-base', require('./knowledgeBaseRoutes'));
 
+// Rotas do Stripe
+router.use('/api/stripe', require('./stripeRoutes'));
+
 module.exports = router; 

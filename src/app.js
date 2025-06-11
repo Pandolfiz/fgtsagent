@@ -10,6 +10,8 @@ const logger = require('./utils/logger');
 const rateLimit = require('express-rate-limit');
 const slowDown = require('express-slow-down');
 const { sanitizeRequest } = require('./middleware/sanitizationMiddleware');
+const { requestLogger, errorLogger } = require('./middleware/requestLogger');
+const { sanitizeInput } = require('./middleware/validationMiddleware');
 const session = require('express-session');
 const flash = require('connect-flash');
 const config = require('./config');
@@ -22,6 +24,7 @@ const chatWebhookRoutes = require('./routes/chatWebhookRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const contactsRoutes = require('./routes/contacts');
 const messagesRoutes = require('./routes/messages');
+const healthRoutes = require('./routes/healthRoutes');
 const { webhookAuth } = require('./middleware/webhookAuth');
 const { errorHandler } = require('./middleware/errorHandler');
 const databaseChecker = require('./utils/databaseChecker');
@@ -117,7 +120,11 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 app.use(cookieParser());
 
+// Aplicar logging avançado (deve vir antes de outras rotas)
+app.use(requestLogger);
+
 // Aplicar sanitização de dados para todas as rotas
+app.use(sanitizeInput);
 app.use(sanitizeRequest(['body', 'query', 'params']));
 
 // Servir arquivos estáticos - primeiro as assets do backend
@@ -167,11 +174,10 @@ app.use((req, res, next) => {
 const webRoutes = require('./routes/webRoutes');
 const authRoutes = require('./routes/authRoutes');
 const credentialsRoutes = require('./routes/credentialsRoutes');
+const stripeRoutes = require('./routes/stripeRoutes');
 
-// Rota de verificação de saúde (deve vir antes de outras rotas)
-app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok' });
-});
+// Rotas de health check (deve vir antes de outras rotas)
+app.use('/health', healthRoutes);
 
 // Rota do webhook (deve vir antes das rotas autenticadas)
 app.use('/api/webhooks/evolution', webhookAuth, chatWebhookRoutes);
@@ -180,6 +186,7 @@ app.use('/api/webhooks/evolution', webhookAuth, chatWebhookRoutes);
 app.use('/api', apiRoutes);
 app.use('/auth', authLimiter, authRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
+app.use('/api/stripe', stripeRoutes);
 app.use('/api/whatsapp-credentials', requireAuth, evolutionCredentialRoutes);
 app.use('/api/credentials', credentialsRoutes);
 app.use('/api', credentialsRoutes);
@@ -243,6 +250,7 @@ app.get('/api/health', (req, res) => {
 });
 
 // Middleware para tratamento de erros
+app.use(errorLogger);
 app.use((err, req, res, next) => {
   logger.error(`Erro na aplicação: ${err.stack || err.message}`);
   
