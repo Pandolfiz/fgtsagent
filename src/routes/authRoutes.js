@@ -2,7 +2,7 @@
 const express = require('express');
 const authController = require('../controllers/authController');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { validateRequest, schemas } = require('../middleware/validationMiddleware');
+const { validate, schemas } = require('../middleware/validationMiddleware');
 const jwt = require('jsonwebtoken');
 const { supabaseAdmin } = require('../services/database');
 const logger = require('../utils/logger');
@@ -196,18 +196,14 @@ router.get('/google/callback', authController.handleGoogleCallback);
 router.post('/api/auth/google/token', authController.loginWithGoogleToken);
 
 // API de autenticação
-router.post('/register', validateRequest(schemas.signup), authController.register);
-router.post('/login', validateRequest(schemas.login), authController.login);
+router.post('/register', validate(schemas.register), authController.register);
+router.post('/login', validate(schemas.login), authController.login);
 router.post('/logout', requireAuth, authController.logout);
-router.post('/reset-password', validateRequest(schemas.resetPassword), authController.requestPasswordReset);
-router.post('/reset-password/confirm', validateRequest(schemas.resetPasswordConfirm), authController.confirmPasswordReset);
-router.post('/resend-confirmation', validateRequest({ email: { required: true, type: 'string', isEmail: true } }), authController.resendConfirmationEmail);
+router.post('/reset-password', validate(schemas.resetPassword), authController.requestPasswordReset);
+router.post('/reset-password/confirm', validate(schemas.confirmResetPassword), authController.confirmPasswordReset);
+router.post('/resend-confirmation', validate(schemas.resetPassword), authController.resendConfirmationEmail);
 router.get('/me', requireAuth, authController.getMe);
-router.put('/me', requireAuth, validateRequest({
-  firstName: { required: false, type: 'string', minLength: 2, maxLength: 50 },
-  lastName: { required: false, type: 'string', minLength: 2, maxLength: 50 },
-  avatarUrl: { required: false, type: 'string' }
-}), authController.updateCurrentUser);
+router.put('/me', requireAuth, validate(schemas.updateProfile), authController.updateCurrentUser);
 router.post('/refresh-token', refreshToken);
 
 // Rotas administrativas

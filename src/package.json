@@ -15,6 +15,7 @@
     "@supabase/supabase-js": "^2.49.4",
     "@tailwindcss/cli": "^4.1.5",
     "@tailwindcss/vite": "^4.1.5",
+    "autoprefixer": "^10.4.21",
     "axios": "^1.9.0",
     "bull": "^4.16.5",
     "commander": "^13.1.0",
@@ -31,30 +32,30 @@
     "express-slow-down": "^2.0.3",
     "googleapis": "^148.0.0",
     "helmet": "^8.1.0",
+    "joi": "^17.13.3",
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "multer": "^1.4.5-lts.2",
     "node-fetch": "^2.7.0",
     "openai": "^4.92.1",
     "pg": "^8.14.1",
+    "postcss": "^8.5.3",
     "qrcode.react": "^4.2.0",
     "redis": "^4.7.0",
     "socket.io": "^4.8.1",
     "socket.io-client": "^4.8.1",
-    "toastify-js": "^1.12.0",
-    "winston": "^3.17.0",
-    "xss": "^1.0.15",
-    "tailwindcss": "^3.4.17",
-    "uuid": "^11.1.0",
+    "stripe": "^17.5.1",
     "supabase": "^2.20.12",
-    "postcss": "^8.5.3",
-    "autoprefixer": "^10.4.21"
+    "tailwindcss": "^3.4.17",
+    "toastify-js": "^1.12.0",
+    "uuid": "^11.1.0",
+    "winston": "^3.17.0",
+    "xss": "^1.0.15"
   },
   "devDependencies": {
     "jest": "^29.7.0",
     "nodemon": "^3.1.9",
     "rimraf": "^6.0.1",
     "supertest": "^7.1.0"
-
   }
 }

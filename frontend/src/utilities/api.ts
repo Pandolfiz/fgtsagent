@@ -22,6 +22,7 @@ export interface EvolutionCredential {
   updated_at: string;
   agent_name?: string;
   status?: string;
+  connection_type?: 'whatsapp_business' | 'ads';
 }
 
 // Tipos para credenciais de parceiros
@@ -179,10 +180,20 @@ export const evolutionCredentialsApi = {
   }
 };
 
+// API para usuários
+export const userApi = {
+  // Obter usuário atual
+  getCurrentUser: async (): Promise<ApiResponse<{ id: string; full_name?: string; email: string; [key: string]: any }>> => {
+    const response = await apiFetch(`${API_URL}/auth/me`);
+    return response.json();
+  }
+};
+
 // Exportar todas as APIs
 export const api = {
   evolution: evolutionCredentialsApi,
-  partnerCredentials: partnerCredentialsApi
+  partnerCredentials: partnerCredentialsApi,
+  user: userApi
 };
 
 export default api; 

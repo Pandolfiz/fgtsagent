@@ -344,13 +344,13 @@ export default function Home({ isLoggedIn }) {
         <span className="mb-4 text-lg animate-fade-in">Uma solução em parceria com</span>
         <a href="https://www.v8digital.online/" target="_blank" rel="noopener noreferrer" className="inline-block animate-fade-in-delay">
           <img 
-            src="https://placehold.co/300x100/00bcd4/white?text=V8+DIGITAL" 
+            src="/img/partners/v8digital-logo.svg" 
             alt="Logo V8 Digital" 
             className="h-16 md:h-20 drop-shadow-neon hover:scale-105 transition" 
             style={{ filter: 'drop-shadow(0 0 8px #00bcd4)' }}
             onError={(e) => {
               e.target.onerror = null;
-              e.target.src = "/img/partners/v8digital-logo.svg";
+              e.target.src = "https://placehold.co/300x100/00bcd4/white?text=V8+DIGITAL";
             }}
           />
         </a>
@@ -358,7 +358,29 @@ export default function Home({ isLoggedIn }) {
 
       {/* Efeito neon no rodapé */}
       <footer className="relative z-10 py-8 text-center text-cyan-200 animate-fade-in">
-        <span className="drop-shadow-neon">FgtsAgent &copy; {new Date().getFullYear()} &mdash; Tecnologia para o futuro do crédito</span>
+        <div className="container mx-auto px-4">
+          {/* Links legais */}
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
+            <Link 
+              to="/terms-of-use" 
+              className="text-cyan-300 hover:text-cyan-100 transition-colors underline decoration-cyan-300/50 hover:decoration-cyan-100"
+            >
+              Termos de Uso
+            </Link>
+            <span className="hidden sm:inline text-cyan-400">•</span>
+            <Link 
+              to="/privacy-policy" 
+              className="text-cyan-300 hover:text-cyan-100 transition-colors underline decoration-cyan-300/50 hover:decoration-cyan-100"
+            >
+              Política de Privacidade
+            </Link>
+          </div>
+          
+          {/* Copyright */}
+          <span className="drop-shadow-neon">
+            FgtsAgent &copy; {new Date().getFullYear()} &mdash; Tecnologia para o futuro do crédito
+          </span>
+        </div>
       </footer>
       </div>
       {/* Fundo degradê animado ainda mais escuro cobrindo toda a página */}

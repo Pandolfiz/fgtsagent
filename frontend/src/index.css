@@ -136,3 +136,8 @@ button:focus-visible {
 .card-futuristic-glow {
   border-radius: 1rem; /* 16px, igual ao rounded-2xl do Tailwind */
 }
+
+/* Efeito neon para textos */
+.drop-shadow-neon {
+  filter: drop-shadow(0 0 8px #00bcd4) drop-shadow(0 0 16px #00bcd4);
+}

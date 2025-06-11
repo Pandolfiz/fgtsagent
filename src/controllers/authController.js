@@ -4,6 +4,7 @@ const { AppError } = require('../utils/errors');
 const { supabaseAdmin } = require('../config/supabase');
 const logger = require('../utils/logger');
 const { supabase } = require('../config/supabase');
+const subscriptionController = require('./subscriptionController');
 
 /**
  * Registrar um novo usuário
@@ -238,7 +239,7 @@ const confirmPasswordResetWithService = async (req, res, next) => {
  */
 const register = async (req, res) => {
   try {
-    const { name, email, password, phone } = req.body;
+    const { name, email, password, phone, planType } = req.body;
 
     // Validar entrada
     if (!name || !email || !password) {
@@ -251,6 +252,35 @@ const register = async (req, res) => {
     // Log para depuração (remover em produção)
     console.log(`Tentativa de registro para: ${email}`);
 
+    // Se um plano foi especificado, usar o processo de signup com pagamento
+    if (planType) {
+      try {
+        const signupResult = await subscriptionController.signupWithPlan(
+          { 
+            email, 
+            password, 
+            firstName: name.split(' ')[0] || name,
+            lastName: name.split(' ').slice(1).join(' ') || ''
+          },
+          planType
+        );
+
+        return res.status(201).json({
+          success: true,
+          message: 'Usuário criado! Finalize o pagamento para ativar sua conta.',
+          data: signupResult,
+          requiresPayment: true
+        });
+      } catch (subscriptionError) {
+        logger.error('Erro no signup com plano:', subscriptionError);
+        return res.status(400).json({
+          success: false,
+          message: subscriptionError.message || 'Erro ao processar assinatura'
+        });
+      }
+    }
+
+    // Processo de registro normal (sem plano)
     // Registrar usuário via Admin API do Supabase com email auto-confirmado
     const { data: { user }, error } = await supabaseAdmin.auth.admin.createUser({
       email,

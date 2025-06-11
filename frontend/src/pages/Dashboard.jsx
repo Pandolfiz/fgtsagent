@@ -25,6 +25,7 @@ import {
 import { DateRange } from 'react-date-range'
 import 'react-date-range/dist/styles.css'
 import 'react-date-range/dist/theme/default.css'
+import '../styles/calendar-custom.css'
 import ptBR from 'date-fns/locale/pt-BR'
 import { format, subDays, startOfMonth, endOfMonth, subMonths } from 'date-fns'
 import Navbar from '../components/Navbar'
@@ -131,14 +132,132 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const calendarPositionRef = useRef({ right: '0px', width: '650px' })
+
+  // Função para calcular a posição do calendário
+  const updateCalendarPosition = () => {
+    try {
+      // Buscar elementos de referência
+      const dateButton = document.getElementById('date-display');
+      const dateRangeButton = document.getElementById('date-range-input') || document.getElementById('date-range-input-mobile');
+      const windowWidth = window.innerWidth;
+      const windowHeight = window.innerHeight;
+      
+      const referenceElement = dateButton || dateRangeButton;
+      
+      // Se os elementos necessários existirem
+      if (referenceElement) {
+        const refRect = referenceElement.getBoundingClientRect();
+        
+        // Se for mobile, centralize o calendário
+        if (windowWidth < 768) {
+          // Em dispositivos móveis, tornar o calendário mais compacto
+          const mobileWidth = Math.min(300, windowWidth - 32); // 16px de padding em cada lado
+          
+          calendarPositionRef.current = {
+            right: 'auto',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            width: `${mobileWidth}px`,
+            maxHeight: `${windowHeight - 100}px`,
+            overflow: 'auto'
+          };
+        } 
+        // Se for tablet
+        else if (windowWidth < 1024) {
+          const tabletWidth = Math.min(450, windowWidth - 48);
+          
+          // Calcular se há espaço suficiente à direita
+          const rightSpace = windowWidth - refRect.right;
+          const leftSpace = refRect.left;
+          
+          // Verificar qual lado tem mais espaço
+          if (rightSpace > leftSpace && rightSpace > tabletWidth) {
+            // Alinhar à direita do elemento
+            calendarPositionRef.current = {
+              left: `${refRect.right - tabletWidth}px`,
+              right: 'auto',
+              transform: 'none',
+              width: `${tabletWidth}px`,
+              maxHeight: `${windowHeight - 100}px`,
+              overflow: 'auto'
+            };
+          } else {
+            // Alinhar à esquerda, mas garantir que não ultrapasse a borda
+            const leftPosition = Math.max(16, refRect.left);
+            
+            calendarPositionRef.current = {
+              left: `${leftPosition}px`,
+              right: 'auto',
+              transform: 'none',
+              width: `${tabletWidth}px`,
+              maxHeight: `${windowHeight - 100}px`,
+              overflow: 'auto'
+            };
+          }
+        }
+        // Se for desktop
+        else {
+          // Largura responsiva que não ultrapasse a viewport
+          const desktopWidth = Math.min(640, windowWidth - 64);
+          
+          // Calcular posição horizontal para não ultrapassar as bordas
+          let leftPosition = refRect.left;
+          
+          // Verificar se o calendário ultrapassaria a borda direita
+          if (leftPosition + desktopWidth > windowWidth - 16) {
+            leftPosition = windowWidth - desktopWidth - 16;
+          }
+          
+          // Garantir que não ultrapasse a borda esquerda
+          leftPosition = Math.max(16, leftPosition);
+          
+          calendarPositionRef.current = {
+            right: 'auto',
+            left: `${leftPosition}px`,
+            transform: 'none',
+            width: `${desktopWidth}px`,
+            maxHeight: `${windowHeight - 100}px`,
+            overflow: 'auto'
+          };
+        }
+        
+        // Verificar se há espaço suficiente abaixo para o calendário
+        // Estimar altura do calendário (aproximadamente)
+        const calendarHeight = isMobile ? 450 : 350;
+        
+        // Se não houver espaço suficiente abaixo, posicionar acima
+        const bottomSpace = windowHeight - refRect.bottom;
+        if (bottomSpace < calendarHeight && refRect.top > calendarHeight) {
+          // Posicionar acima do elemento
+          calendarPositionRef.current.top = `${refRect.top - calendarHeight - 5 + window.scrollY}px`;
+        } else {
+          // Posicionar abaixo do elemento (comportamento padrão)
+          calendarPositionRef.current.top = `${refRect.bottom + 5 + window.scrollY}px`;
+        }
+      }
+    } catch (error) {
+      console.error('Erro ao calcular posição do calendário:', error);
+      // Valores padrão em caso de erro
+      calendarPositionRef.current = {
+        right: 'auto',
+        left: '16px',
+        width: '300px',
+        maxHeight: '80vh',
+        overflow: 'auto'
+      };
+    }
+  };
 
   // Detectar mudanças no tamanho da tela para ajustar o calendário
   useEffect(() => {
     function handleResize() {
       setIsMobile(window.innerWidth < 768);
+      updateCalendarPosition();
     }
     
     window.addEventListener('resize', handleResize);
+    updateCalendarPosition(); // Calcular posição inicial
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
@@ -276,34 +395,33 @@ export default function Dashboard() {
     
     // Usar um temporizador para evitar múltiplas chamadas em sequência
     const timeoutId = setTimeout(() => {
-      const apiPeriod = period === 'custom' ? 'range' : period
-      
+      const isRange = (period === 'custom' || period === 'monthly');
+      const apiPeriod = isRange ? 'range' : period;
+
       // Formatar datas explicitamente para garantir que não haja problemas de timezone
-      let url = `/api/dashboard/stats?period=${apiPeriod}`
-      if (period === 'custom') {
-        // Garantir que estamos formatando corretamente as datas para o backend
-        // Formato YYYY-MM-DD sem considerar timezone
+      let url = `/api/dashboard/stats?period=${apiPeriod}`;
+      if (isRange) {
         const formatDateToYYYYMMDD = (date) => {
           const year = date.getFullYear();
           const month = String(date.getMonth() + 1).padStart(2, '0');
           const day = String(date.getDate()).padStart(2, '0');
           return `${year}-${month}-${day}`;
         };
-        
+
         const start = formatDateToYYYYMMDD(dateRange[0].startDate);
         const end = formatDateToYYYYMMDD(dateRange[0].endDate);
-        
+
         url += `&startDate=${start}&endDate=${end}`;
-        
+
         // Logs para depuração
         console.log(`[API-DEBUG] Data início objeto: ${dateRange[0].startDate}`);
         console.log(`[API-DEBUG] Data início formatada: ${start}`);
         console.log(`[API-DEBUG] Data fim objeto: ${dateRange[0].endDate}`);
         console.log(`[API-DEBUG] Data fim formatada: ${end}`);
       }
-      
+
       console.log(`[DASHBOARD] Buscando dados com: ${url}`);
-      
+
       const fetchData = async () => {
         try {
           const res = await fetch(url, { credentials: 'include' });
@@ -346,7 +464,7 @@ export default function Dashboard() {
       };
       
       fetchData();
-    }, 300); // Espera 300ms antes de fazer a chamada para evitar várias em sequência
+    }, 300);
     
     // Cleanup function
     return () => {
@@ -361,20 +479,78 @@ export default function Dashboard() {
     return `${format(range[0].startDate, 'dd/MM/yyyy')} a ${format(range[0].endDate, 'dd/MM/yyyy')}`
   }
 
-  // Fechar calendário ao clicar fora
+  // Função para formatar a data do dia atual
+  function formatSingleDate(date) {
+    return `Dia ${format(date, 'dd/MM/yyyy')}`
+  }
+
+  // Fechar calendário ao clicar fora e atualizar posição quando necessário
   useEffect(() => {
     function handleClickOutside(event) {
-      if (!event.target.closest('#calendar-dropdown') && !event.target.closest('#date-range-input')) {
+      if (!event.target.closest('#calendar-dropdown') && !event.target.closest('#date-range-input') && !event.target.closest('#date-range-input-mobile') && !event.target.closest('#date-display')) {
         setIsCalendarOpen(false)
       }
     }
+    
+    function handleScroll() {
+      if (isCalendarOpen) {
+        updateCalendarPosition();
+      }
+    }
+    
     if (isCalendarOpen) {
       document.addEventListener('mousedown', handleClickOutside)
+      window.addEventListener('scroll', handleScroll)
+      window.addEventListener('resize', handleScroll)
+      // Atualizar a posição ao abrir o calendário
+      updateCalendarPosition();
     } else {
       document.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('resize', handleScroll)
     }
-    return () => document.removeEventListener('mousedown', handleClickOutside)
+    
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside)
+      window.removeEventListener('scroll', handleScroll)
+      window.removeEventListener('resize', handleScroll)
+    }
   }, [isCalendarOpen])
+
+  // Inicializar com a data de hoje
+  useEffect(() => {
+    const today = new Date();
+    setDateRange([{ startDate: today, endDate: today, key: 'selection' }]);
+    // Não definimos o período como 'custom' aqui para manter o comportamento padrão
+  }, []);
+
+  // Atualizar o intervalo de datas quando o período for alterado para diário, semanal ou mensal
+  useEffect(() => {
+    if (period === 'custom') return;
+    const today = new Date();
+    if (period === 'daily') {
+      setDateRange([{ startDate: today, endDate: today, key: 'selection' }]);
+    } else if (period === 'weekly') {
+      const startDate = new Date();
+      startDate.setDate(today.getDate() - 6);
+      setDateRange([{ startDate, endDate: today, key: 'selection' }]);
+    } else if (period === 'monthly') {
+      const startDate = new Date();
+      startDate.setDate(today.getDate() - 29);
+      setDateRange([{ startDate, endDate: today, key: 'selection' }]);
+    }
+  }, [period]);
+
+  // Garante que o calendário possa ser aberto corretamente após carregamento
+  useEffect(() => {
+    if (stats && !window.calendarInitialized) {
+      window.calendarInitialized = true;
+      // Pequeno atraso para garantir que o DOM tenha sido completamente renderizado
+      setTimeout(() => {
+        updateCalendarPosition();
+      }, 300);
+    }
+  }, [stats]);
 
   // Função para renderizar o badge de status com a cor apropriada
   function StatusBadge({ status }) {
@@ -551,41 +727,30 @@ export default function Dashboard() {
           <div className="w-full lg:w-auto lg:flex lg:flex-row lg:items-center lg:gap-2 lg:ml-auto">
             {/* Desktop: todos os filtros em uma linha */}
             <div className="hidden lg:flex lg:flex-row lg:items-center lg:gap-2">
-              <Listbox value={period} onChange={setPeriod}>
-                <div className="relative min-w-[180px]">
-                  <Listbox.Button className="w-full px-3 py-2 rounded-lg bg-white/5 backdrop-blur border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner flex items-center justify-between">
-                    {period === 'custom' && dateRange[0].startDate && dateRange[0].endDate ? 
-                      (dateRange[0].startDate.getTime() === dateRange[0].endDate.getTime() ? 
-                        `Dia ${format(dateRange[0].startDate, 'dd/MM/yyyy')}` : 
-                        `${format(dateRange[0].startDate, 'dd/MM')} a ${format(dateRange[0].endDate, 'dd/MM/yyyy')}`) 
-                      : periodOptions.find(opt => opt.value === period)?.label || 'Personalizado'}
-                    <ChevronUpDownIcon className="w-5 h-5 text-cyan-300 ml-2 flex-shrink-0" />
-                  </Listbox.Button>
-                  <Listbox.Options className="absolute z-50 mt-1 w-full rounded-lg bg-cyan-950/95 border border-cyan-700 shadow-lg ring-1 ring-cyan-800/30 focus:outline-none">
-                    {periodOptions.map(option => (
-                      <Listbox.Option
-                        key={option.value}
-                        value={option.value}
-                        className={({ active, selected }) =>
-                          `cursor-pointer select-none px-4 py-2 text-base rounded-lg transition-colors duration-100 
-                          ${selected ? 'bg-cyan-700/60 text-white font-semibold' : ''}
-                          ${active && !selected ? 'bg-cyan-800/80 text-cyan-100' : ''}`
-                        }
-                      >
-                        {option.label}
-                      </Listbox.Option>
-                    ))}
-                  </Listbox.Options>
-                </div>
-              </Listbox>
-              
               <div className="flex items-center">
                 <button
                   type="button"
-                  className="p-2 rounded-lg bg-white/10 border border-cyan-500 text-cyan-100 hover:bg-cyan-800/30 transition-colors flex-shrink-0"
+                  className={`px-3 py-2 rounded-lg border text-sm transition-colors duration-200 ${period === 'custom' ? 'bg-white/5 backdrop-blur border-cyan-500 text-cyan-100' : 'border-transparent bg-cyan-700/40 text-white'}`}
+                  onClick={() => {
+                    updateCalendarPosition();
+                    setIsCalendarOpen(true);
+                    setPeriod('custom');
+                  }}
+                  id="date-display"
+                >
+                  {dateRange[0].startDate && dateRange[0].endDate ? 
+                    (dateRange[0].startDate.getTime() === dateRange[0].endDate.getTime() ? 
+                      formatSingleDate(dateRange[0].startDate) : 
+                      `${format(dateRange[0].startDate, 'dd/MM')} a ${format(dateRange[0].endDate, 'dd/MM/yyyy')}`) 
+                    : formatSingleDate(dateRange[0].startDate)}
+                </button>
+                <button
+                  type="button"
+                  className="p-2 rounded-lg bg-white/10 border border-cyan-500 text-cyan-100 hover:bg-cyan-800/30 transition-colors flex-shrink-0 ml-1"
                   title="Selecionar período personalizado"
                   onClick={() => {
-                    setIsCalendarOpen(open => !open);
+                    updateCalendarPosition();
+                    setIsCalendarOpen(prev => !prev);
                     if (!isCalendarOpen) {
                       setPeriod('custom');
                     }
@@ -596,198 +761,63 @@ export default function Dashboard() {
                 </button>
               </div>
               
-              <Button onClick={() => {
-                const now = new Date();
-                const yesterday = new Date(now);
-                yesterday.setDate(now.getDate() - 1);
-                yesterday.setHours(0, 0, 0, 0);
-                
-                const yesterdayEnd = new Date(yesterday);
-                yesterdayEnd.setHours(23, 59, 59, 999);
-                
-                const newDateRange = [{ 
-                  startDate: yesterday, 
-                  endDate: yesterday,
-                  key: 'selection' 
-                }];
-                
-                setPeriod('custom');
-                setDateRange(newDateRange);
-                setIsCalendarOpen(false);
-              }} className="text-sm px-3 py-1 whitespace-nowrap">Ontem</Button>
-              
-              <Button onClick={() => {
-                const end = new Date()
-                const start = subDays(end, 7)
-                
-                const newDateRange = [{ 
-                  startDate: start, 
-                  endDate: end, 
-                  key: 'selection' 
-                }]
-                
-                setPeriod('custom')
-                setDateRange(newDateRange)
-                setIsCalendarOpen(false)
-              }} className="text-sm px-3 py-1 whitespace-nowrap">7 dias</Button>
-              
-              <Button onClick={() => {
-                const end = new Date()
-                const start = subDays(end, 30)
-                
-                const newDateRange = [{ 
-                  startDate: start, 
-                  endDate: end, 
-                  key: 'selection' 
-                }]
-                
-                setPeriod('custom')
-                setDateRange(newDateRange)
-                setIsCalendarOpen(false)
-              }} className="text-sm px-3 py-1 whitespace-nowrap">30 dias</Button>
-              
-              <Button onClick={() => {
-                const last = subMonths(new Date(), 1)
-                const start = startOfMonth(last)
-                const end = endOfMonth(last)
-                
-                const newDateRange = [{ 
-                  startDate: start, 
-                  endDate: end, 
-                  key: 'selection' 
-                }]
-                
-                setPeriod('custom')
-                setDateRange(newDateRange)
-                setIsCalendarOpen(false)
-              }} className="text-sm px-3 py-1 whitespace-nowrap">Último mês</Button>
+{/* Botões de período removidos conforme solicitado */}
             </div>
             
             {/* Mobile: filtros empilhados */}
             <div className="flex flex-col lg:hidden w-full">
-              {/* Primeira linha: seletor dropdown e calendário */}
+              {/* Primeira linha: botão de período personalizado e botão de calendário */}
               <div className="flex flex-wrap items-center gap-2 mb-2">
-                <Listbox value={period} onChange={setPeriod}>
-                  <div className="relative w-full min-w-[180px] max-w-[200px]">
-                    <Listbox.Button className="w-full px-3 py-2 rounded-lg bg-white/5 backdrop-blur border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner flex items-center justify-between">
-                      {period === 'custom' && dateRange[0].startDate && dateRange[0].endDate ? 
-                        (dateRange[0].startDate.getTime() === dateRange[0].endDate.getTime() ? 
-                          `Dia ${format(dateRange[0].startDate, 'dd/MM/yyyy')}` : 
-                          `${format(dateRange[0].startDate, 'dd/MM')} a ${format(dateRange[0].endDate, 'dd/MM/yyyy')}`) 
-                        : periodOptions.find(opt => opt.value === period)?.label || 'Personalizado'}
-                      <ChevronUpDownIcon className="w-5 h-5 text-cyan-300 ml-2 flex-shrink-0" />
-                    </Listbox.Button>
-                    <Listbox.Options className="absolute z-50 mt-1 w-full rounded-lg bg-cyan-950/95 border border-cyan-700 shadow-lg ring-1 ring-cyan-800/30 focus:outline-none">
-                      {periodOptions.map(option => (
-                        <Listbox.Option
-                          key={option.value}
-                          value={option.value}
-                          className={({ active, selected }) =>
-                            `cursor-pointer select-none px-4 py-2 text-base rounded-lg transition-colors duration-100 
-                            ${selected ? 'bg-cyan-700/60 text-white font-semibold' : ''}
-                            ${active && !selected ? 'bg-cyan-800/80 text-cyan-100' : ''}`
-                          }
-                        >
-                          {option.label}
-                        </Listbox.Option>
-                      ))}
-                    </Listbox.Options>
-                  </div>
-                </Listbox>
-                <div className="flex items-center">
+                <div className="flex items-center flex-1">
                   <button
                     type="button"
-                    className="p-2 rounded-lg bg-white/10 border border-cyan-500 text-cyan-100 hover:bg-cyan-800/30 transition-colors flex-shrink-0"
+                    className={`px-3 py-2 rounded-lg border text-sm transition-colors duration-200 ${period === 'custom' ? 'bg-white/5 backdrop-blur border-cyan-500 text-cyan-100' : 'border-transparent bg-cyan-700/40 text-white'} flex-1`}
+                    onClick={() => {
+                      updateCalendarPosition();
+                      setIsCalendarOpen(true);
+                      setPeriod('custom');
+                    }}
+                  >
+                    {dateRange[0].startDate && dateRange[0].endDate ? 
+                      (dateRange[0].startDate.getTime() === dateRange[0].endDate.getTime() ? 
+                        formatSingleDate(dateRange[0].startDate) : 
+                        `${format(dateRange[0].startDate, 'dd/MM')} a ${format(dateRange[0].endDate, 'dd/MM/yyyy')}`) 
+                      : formatSingleDate(dateRange[0].startDate)}
+                  </button>
+                  <button
+                    type="button"
+                    className="p-2 rounded-lg bg-white/10 border border-cyan-500 text-cyan-100 hover:bg-cyan-800/30 transition-colors flex-shrink-0 ml-1"
                     title="Selecionar período personalizado"
                     onClick={() => {
-                      setIsCalendarOpen(open => !open);
+                      updateCalendarPosition();
+                      setIsCalendarOpen(prev => !prev);
                       if (!isCalendarOpen) {
                         setPeriod('custom');
                       }
                     }}
-                    id="date-range-input"
+                    id="date-range-input-mobile"
                   >
                     <CalendarIcon className="w-5 h-5" />
                   </button>
                 </div>
               </div>
               
-              {/* Segunda linha: botões de período */}
-              <div className="flex flex-wrap gap-2">
-                <Button onClick={() => {
-                  const now = new Date();
-                  const yesterday = new Date(now);
-                  yesterday.setDate(now.getDate() - 1);
-                  yesterday.setHours(0, 0, 0, 0);
-                  
-                  const yesterdayEnd = new Date(yesterday);
-                  yesterdayEnd.setHours(23, 59, 59, 999);
-                  
-                  const newDateRange = [{ 
-                    startDate: yesterday, 
-                    endDate: yesterday,
-                    key: 'selection' 
-                  }];
-                  
-                  setPeriod('custom');
-                  setDateRange(newDateRange);
-                  setIsCalendarOpen(false);
-                }} className="text-sm px-3 py-1 whitespace-nowrap">Ontem</Button>
-                
-                <Button onClick={() => {
-                  const end = new Date()
-                  const start = subDays(end, 7)
-                  
-                  const newDateRange = [{ 
-                    startDate: start, 
-                    endDate: end, 
-                    key: 'selection' 
-                  }]
-                  
-                  setPeriod('custom')
-                  setDateRange(newDateRange)
-                  setIsCalendarOpen(false)
-                }} className="text-sm px-3 py-1 whitespace-nowrap">7 dias</Button>
-                
-                <Button onClick={() => {
-                  const end = new Date()
-                  const start = subDays(end, 30)
-                  
-                  const newDateRange = [{ 
-                    startDate: start, 
-                    endDate: end, 
-                    key: 'selection' 
-                  }]
-                  
-                  setPeriod('custom')
-                  setDateRange(newDateRange)
-                  setIsCalendarOpen(false)
-                }} className="text-sm px-3 py-1 whitespace-nowrap">30 dias</Button>
-                
-                <Button onClick={() => {
-                  const last = subMonths(new Date(), 1)
-                  const start = startOfMonth(last)
-                  const end = endOfMonth(last)
-                  
-                  const newDateRange = [{ 
-                    startDate: start, 
-                    endDate: end, 
-                    key: 'selection' 
-                  }]
-                  
-                  setPeriod('custom')
-                  setDateRange(newDateRange)
-                  setIsCalendarOpen(false)
-                }} className="text-sm px-3 py-1 whitespace-nowrap">Último mês</Button>
-              </div>
+{/* Segunda linha: botões de período removidos conforme solicitado */}
             </div>
             
             {/* Calendário compartilhado por ambos os modos (web e mobile) */}
             {isCalendarOpen && (
-              <div id="calendar-dropdown" className="fixed sm:absolute z-50 sm:mt-2 top-1/2 left-1/2 sm:left-auto sm:right-0 lg:right-auto -translate-x-1/2 -translate-y-1/2 sm:translate-x-0 sm:translate-y-0 sm:top-auto shadow-lg max-w-full overflow-auto">
-                <div className={`${isMobile ? 'max-w-[300px]' : 'max-w-full'} bg-gray-900/90 p-3 rounded-lg border border-cyan-700`}>
-                  <div className="flex justify-between items-center mb-2">
-                    <h3 className="text-white font-medium">Selecionar Período</h3>
+              <Portal>
+                <div id="calendar-dropdown" className="absolute z-[999] mt-2 bg-cyan-950 border border-cyan-800 rounded-lg shadow-lg" style={{
+                  top: calendarPositionRef.current.top,
+                  right: calendarPositionRef.current.right,
+                  left: calendarPositionRef.current.left || 'auto',
+                  transform: calendarPositionRef.current.transform || 'none',
+                  boxShadow: '0 8px 16px rgba(0, 0, 0, 0.3)',
+                  maxWidth: '100vw'
+                }}>
+                  <div className="flex justify-between items-center px-4 py-3 border-b border-cyan-800/50">
+                    <h3 className="text-cyan-100 font-medium">Selecionar Período</h3>
                     <button 
                       onClick={() => setIsCalendarOpen(false)} 
                       className="text-cyan-300 hover:text-white"
@@ -798,29 +828,118 @@ export default function Dashboard() {
                       </svg>
                     </button>
                   </div>
-                  <DateRange
-                    editableDateInputs
-                    onChange={item => {
-                      setDateRange([item.selection]);
-                      setPeriod('custom');
-                    }}
-                    moveRangeOnFirstSelection={false}
-                    ranges={dateRange}
-                    locale={ptBR}
-                    className="bg-white rounded shadow"
-                    months={isMobile ? 1 : 2}
-                    direction={isMobile ? "vertical" : "horizontal"}
-                    rangeColors={["#06b6d4"]} // Cor Cyan para combinar com o tema
-                    color="#06b6d4"
-                  />
-                  <div className="flex justify-end mt-3">
+                  
+                  <div className="calendar-content">
+                    <DateRange
+                      editableDateInputs
+                      onChange={item => {
+                        setDateRange([item.selection]);
+                        setPeriod('custom');
+                      }}
+                      moveRangeOnFirstSelection={false}
+                      ranges={dateRange}
+                      locale={ptBR}
+                      showMonthAndYearPickers={true}
+                      showDateDisplay={false}
+                      months={isMobile ? 1 : window.innerWidth < 1024 ? 1 : 2}
+                      direction={window.innerWidth < 1024 ? "vertical" : "horizontal"}
+                      rangeColors={["#06b6d4"]}
+                      color="#06b6d4"
+                      weekStartsOn={0}
+                      weekdayDisplayFormat="EEEEE"
+                      fixedHeight={true}
+                    />
+                  </div>
+                  
+                  <div className="flex flex-wrap justify-between items-center px-4 pb-4 gap-2 border-t border-cyan-800/30 pt-3">
+                    <Button 
+                      onClick={() => {
+                        const today = new Date();
+                        setDateRange([{
+                          startDate: today,
+                          endDate: today,
+                          key: 'selection'
+                        }]);
+                        setPeriod('custom');
+                        setIsCalendarOpen(false);
+                      }} 
+                      className="text-sm px-3 py-1 bg-cyan-700/40 border border-cyan-600 text-cyan-100 hover:bg-cyan-600/60"
+                    >
+                      Hoje
+                    </Button>
+                    
                     <Button onClick={() => {
-                      setIsCalendarOpen(false);
+                      const now = new Date();
+                      const yesterday = new Date(now);
+                      yesterday.setDate(now.getDate() - 1);
+                      yesterday.setHours(0, 0, 0, 0);
+                      const yesterdayEnd = new Date(yesterday);
+                      yesterdayEnd.setHours(23, 59, 59, 999);
+                      const newDateRange = [{ 
+                        startDate: yesterday, 
+                        endDate: yesterday,
+                        key: 'selection' 
+                      }];
                       setPeriod('custom');
-                    }} className="ml-2 w-full sm:w-auto">Aplicar</Button>
+                      setDateRange(newDateRange);
+                      setIsCalendarOpen(false);
+                    }} className="text-sm px-3 py-1 whitespace-nowrap">Ontem</Button>
+                    
+                    <Button onClick={() => {
+                      const today = new Date();
+                      const start = new Date(today);
+                      start.setDate(today.getDate() - today.getDay());
+                      const end = new Date(start);
+                      end.setDate(start.getDate() + 6);
+                      setPeriod('custom');
+                      setDateRange([{ startDate: start, endDate: end, key: 'selection' }]);
+                      setIsCalendarOpen(false);
+                    }} className="text-sm px-3 py-1 whitespace-nowrap">Semanal</Button>
+                    
+                    <Button onClick={() => {
+                      const end = new Date();
+                      const start = subDays(end, 6);
+                      const newDateRange = [{ 
+                        startDate: start, 
+                        endDate: end, 
+                        key: 'selection' 
+                      }];
+                      setPeriod('custom');
+                      setDateRange(newDateRange);
+                      setIsCalendarOpen(false);
+                    }} className="text-sm px-3 py-1 whitespace-nowrap">7 dias</Button>
+                    
+                    <Button onClick={() => {
+                      const end = new Date();
+                      const start = subDays(end, 29);
+                      const newDateRange = [{ 
+                        startDate: start, 
+                        endDate: end, 
+                        key: 'selection' 
+                      }];
+                      setPeriod('custom');
+                      setDateRange(newDateRange);
+                      setIsCalendarOpen(false);
+                    }} className="text-sm px-3 py-1 whitespace-nowrap">30 dias</Button>
+                    
+                    <Button onClick={() => {
+                      const today = new Date();
+                      const start = startOfMonth(today);
+                      const end = endOfMonth(today);
+                      const newDateRange = [{ 
+                        startDate: start, 
+                        endDate: end, 
+                        key: 'selection' 
+                      }];
+                      setPeriod('custom');
+                      setDateRange(newDateRange);
+                      setIsCalendarOpen(false);
+                    }} className="text-sm px-3 py-1 whitespace-nowrap">Mensal</Button>
+                    
+{/* Botão Aplicar removido conforme solicitado */}
                   </div>
                 </div>
-              </div>
+              </Portal>
             )}
           </div>
         </div>

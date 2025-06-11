@@ -3,9 +3,14 @@ const path = require('path');
 require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 // Verificar se as variáveis de ambiente foram carregadas
-// Adaptação para usar os nomes de variáveis que existem no arquivo .env
-const requiredEnvVars = ['SUPABASE_PROJECT_ID', 'SUPABASE_SERVICE_KEY', 'SUPABASE_ANON_KEY'];
+// SUPABASE_URL pode ser usada em vez de SUPABASE_PROJECT_ID
+const requiredEnvVars = ['SUPABASE_SERVICE_KEY', 'SUPABASE_ANON_KEY'];
 const missingEnvVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+// Verificar se pelo menos uma das configurações de URL está presente
+if (!process.env.SUPABASE_URL && !process.env.SUPABASE_PROJECT_ID) {
+  missingEnvVars.push('SUPABASE_URL ou SUPABASE_PROJECT_ID');
+}
 
 if (missingEnvVars.length > 0) {
   console.error(`ERRO: As seguintes variáveis de ambiente são obrigatórias e não foram definidas: ${missingEnvVars.join(', ')}`);
