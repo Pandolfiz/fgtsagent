@@ -1,0 +1,74 @@
+# Arquivo para produção com serviços extras (backup, logs, monitoring)
+# Use: docker compose -f docker-compose.yml -f docker-compose.production.yml up -d
+
+services:
+  # Serviços extras para produção
+  logrotate:
+    image: alpine:latest
+    restart: unless-stopped
+    volumes:
+      - ./src/logs:/app/logs:rw
+      - ./scripts:/scripts:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+    command: >
+      /bin/sh -c "
+      apk add --no-cache logrotate &&
+      echo '0 2 * * * logrotate /scripts/logrotate.conf' > /etc/crontabs/root &&
+      crond -f
+      "
+    networks:
+      - app-network
+
+  # Backup automático
+  backup:
+    image: alpine:latest
+    restart: unless-stopped
+    volumes:
+      - ./src/logs:/backup/logs:ro
+      - ./src/uploads:/backup/uploads:ro
+      - ./data:/backup/data:ro
+      - ./backups:/backups:rw
+      - ./scripts:/scripts:ro
+    environment:
+      - BACKUP_RETENTION_DAYS=30
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 128M
+    command: >
+      /bin/sh -c "
+      apk add --no-cache tar gzip &&
+      echo '0 3 * * * /scripts/backup.sh' > /backups/cron.log 2>&1' > /etc/crontabs/root &&
+      crond -f
+      "
+    networks:
+      - app-network
+
+  # Monitoring (opcional)
+  watchtower:
+    image: containrrr/watchtower:latest
+    restart: unless-stopped
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_SCHEDULE=0 0 4 * * *  # 4am diariamente
+      - WATCHTOWER_NOTIFICATIONS=email
+      - WATCHTOWER_NOTIFICATION_EMAIL_FROM=${NOTIFICATION_EMAIL_FROM}
+      - WATCHTOWER_NOTIFICATION_EMAIL_TO=${NOTIFICATION_EMAIL_TO}
+    deploy:
+      resources:
+        limits:
+          cpus: '0.1'
+          memory: 64M
+    profiles:
+      - monitoring
+
+networks:
+  app-network:
+    external: false 

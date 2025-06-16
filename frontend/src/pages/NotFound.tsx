@@ -1,11 +1,14 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
+import LandingNavbar from '../components/LandingNavbar';
 
 const NotFound: React.FC = () => {
   const location = useLocation();
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800 text-white">
+    <>
+      <LandingNavbar />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-gray-900 to-slate-800 text-white pt-20">
       <div className="max-w-md w-full p-8 bg-gray-800 rounded-lg shadow-lg text-center">
         <h1 className="text-4xl font-bold text-red-400 mb-2">404</h1>
         <h2 className="text-2xl font-semibold mb-6">Página Não Encontrada</h2>
@@ -37,7 +40,8 @@ const NotFound: React.FC = () => {
           </Link>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

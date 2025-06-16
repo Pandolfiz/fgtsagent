@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
+import LandingNavbar from '../components/LandingNavbar.jsx';
+import NeuralNetworkBackground from '../NeuralNetworkBackground.jsx';
 import supabase from '../lib/supabaseClient';
 
 export default function Signup() {
@@ -99,19 +101,22 @@ export default function Signup() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 animate-gradient-move overflow-hidden">
-      <div className="relative z-10 w-full max-w-md mx-auto p-1 px-4 py-4 mt-8 rounded-2xl card-futuristic shadow-2xl backdrop-blur-lg border border-cyan-400/30">
-        <h1 className="text-2xl md:text-3xl font-extrabold text-center mb-3 bg-gradient-to-r from-cyan-400 via-emerald-400 to-blue-500 text-transparent bg-clip-text drop-shadow-neon leading-tight">Criar Conta</h1>
-        {error && <div className="text-red-400 text-center text-sm animate-pulse mb-2">{error}</div>}
-        <form onSubmit={handleSubmit} className="flex flex-col gap-0.5">
+    <>
+      <LandingNavbar />
+      <div className="relative h-screen flex items-center justify-center bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 animate-gradient-move overflow-hidden pt-20 pb-4">
+        <NeuralNetworkBackground />
+        <div className="relative z-10 w-full max-w-md mx-auto p-3 px-4 py-3 rounded-2xl card-futuristic shadow-2xl backdrop-blur-lg border border-cyan-400/30">
+        <h1 className="text-xl md:text-2xl font-extrabold text-center mb-2 bg-gradient-to-r from-cyan-400 via-emerald-400 to-blue-500 text-transparent bg-clip-text drop-shadow-neon leading-tight">Criar Conta</h1>
+        {error && <div className="text-red-400 text-center text-xs animate-pulse mb-1">{error}</div>}
+        <form onSubmit={handleSubmit} className="flex flex-col gap-1">
           <div>
-            <label className="block text-cyan-200 mb-1">Nome completo</label>
+            <label className="block text-cyan-200 mb-0.5 text-sm">Nome completo</label>
             <div className="relative flex items-center">
               <span className="absolute left-3 text-cyan-400"><i className="fas fa-user" /></span>
               <input
                 type="text"
                 placeholder="Nome completo"
-                className="pl-10 pr-3 py-2 rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition w-full"
+                className="pl-10 pr-3 py-1.5 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition w-full"
                 value={name}
                 onChange={e => setName(e.target.value)}
                 required
@@ -119,13 +124,13 @@ export default function Signup() {
             </div>
           </div>
           <div>
-            <label className="block text-cyan-200 mb-1">Email</label>
+            <label className="block text-cyan-200 mb-0.5 text-sm">Email</label>
             <div className="relative flex items-center">
               <span className="absolute left-3 text-cyan-400"><i className="fas fa-envelope" /></span>
               <input
                 type="email"
                 placeholder="E-mail"
-                className="pl-10 pr-3 py-2 rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition w-full"
+                className="pl-10 pr-3 py-1.5 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition w-full"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
                 required
@@ -133,68 +138,67 @@ export default function Signup() {
             </div>
           </div>
           <div>
-            <label className="block text-cyan-200 mb-1">Telefone</label>
+            <label className="block text-cyan-200 mb-0.5 text-sm">Telefone</label>
             <div className="relative flex items-center">
               <span className="absolute left-3 text-cyan-400"><i className="fas fa-phone" /></span>
               <input
                 type="tel"
                 placeholder="(XX) XXXXX-XXXX"
-                className="pl-10 pr-3 py-2 rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition w-full"
+                className="pl-10 pr-3 py-1.5 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition w-full"
                 value={phone}
                 onChange={handlePhoneChange}
               />
             </div>
-            <div className="text-xs text-cyan-200/70 mt-0.5">Formato: (XX) XXXXX-XXXX</div>
           </div>
           <div>
-            <label className="block text-cyan-200 mb-1">Senha</label>
+            <label className="block text-cyan-200 mb-0.5 text-sm">Senha</label>
             <div className="relative flex items-center">
               <span className="absolute left-3 text-cyan-400"><i className="fas fa-lock" /></span>
               <input
                 type="password"
-                placeholder="Senha (mínimo 8 caracteres)"
-                className="pl-10 pr-3 py-2 rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition w-full"
+                placeholder="Mínimo 8 caracteres"
+                className="pl-10 pr-3 py-1.5 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition w-full"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 minLength={8}
                 required
               />
             </div>
-            <div className="text-xs text-cyan-200/70 mt-0.5">A senha deve ter pelo menos 8 caracteres</div>
           </div>
           <div>
-            <label className="block text-cyan-200 mb-1">Confirmar senha</label>
+            <label className="block text-cyan-200 mb-0.5 text-sm">Confirmar senha</label>
             <div className="relative flex items-center">
               <span className="absolute left-3 text-cyan-400"><i className="fas fa-lock" /></span>
               <input
                 type="password"
                 placeholder="Confirmar senha"
-                className="pl-10 pr-3 py-2 rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition w-full"
+                className="pl-10 pr-3 py-1.5 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition w-full"
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
                 required
               />
             </div>
           </div>
-          <label className="flex flex-col sm:flex-row items-start sm:items-center gap-1 sm:gap-2 text-cyan-200 text-sm">
-            <input type="checkbox" className="accent-cyan-400 mt-0.5" checked={agree} onChange={e => setAgree(e.target.checked)} required />
+          <label className="flex items-start gap-2 text-cyan-200 text-xs">
+            <input type="checkbox" className="accent-cyan-400 mt-0.5 flex-shrink-0" checked={agree} onChange={e => setAgree(e.target.checked)} required />
             <span>
-              Concordo com os <a href="/terms" target="_blank" className="text-cyan-300 hover:underline whitespace-nowrap">Termos de Serviço</a> e <a href="/privacy" target="_blank" className="text-cyan-300 hover:underline whitespace-nowrap">Política de Privacidade</a>
+              Concordo com os <a href="/terms" target="_blank" className="text-cyan-300 hover:underline">Termos</a> e <a href="/privacy" target="_blank" className="text-cyan-300 hover:underline">Política</a>
             </span>
           </label>
           <button
             type="submit"
             disabled={loading}
-            className="mt-1 px-8 py-2 rounded-lg bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 text-white font-bold shadow-lg hover:from-cyan-800 hover:via-cyan-600 hover:to-blue-700 transition border border-cyan-400/30 drop-shadow-neon disabled:opacity-60 disabled:cursor-not-allowed"
+            className="mt-2 px-6 py-2 text-sm rounded-lg bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 text-white font-bold shadow-lg hover:from-cyan-800 hover:via-cyan-600 hover:to-blue-700 transition border border-cyan-400/30 drop-shadow-neon disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {loading ? 'Criando conta...' : <><i className="fas fa-user-plus mr-2" />Criar Conta</>}
           </button>
         </form>
-        <div className="mt-6 text-center text-cyan-200">
+        <div className="mt-3 text-center text-cyan-200 text-sm">
           Já tem uma conta?{' '}
           <Link to="/login" className="font-bold text-cyan-300 hover:underline">Fazer login</Link>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 } 

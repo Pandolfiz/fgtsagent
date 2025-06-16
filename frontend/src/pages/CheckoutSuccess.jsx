@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { CheckCircle, Home, Settings, CreditCard } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
+import LandingNavbar from '../components/LandingNavbar.jsx';
 import axios from 'axios';
 
 const CheckoutSuccess = () => {
@@ -63,18 +64,22 @@ const CheckoutSuccess = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <>
+        <LandingNavbar />
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center pt-20">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
           <p className="text-gray-600">Verificando seu pagamento...</p>
         </div>
-      </div>
+      </>
     );
   }
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <>
+        <LandingNavbar />
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center pt-20">
         <div className="max-w-md mx-auto bg-white rounded-xl shadow-lg p-8 text-center">
           <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
             <CreditCard className="w-8 h-8 text-red-600" />
@@ -98,12 +103,14 @@ const CheckoutSuccess = () => {
             </button>
           </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12">
+    <>
+      <LandingNavbar />
+      <div className="min-h-screen bg-gray-50 py-12 pt-20">
       <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Success Header */}
         <div className="text-center mb-12">
@@ -246,7 +253,7 @@ const CheckoutSuccess = () => {
           </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };
 

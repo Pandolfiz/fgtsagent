@@ -1,10 +1,13 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { FaArrowLeft, FaUserShield } from 'react-icons/fa';
+import LandingNavbar from '../components/LandingNavbar.jsx';
 
 export default function PrivacyPolicy() {
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 relative">
+    <>
+      <LandingNavbar />
+      <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 relative pt-20">
       {/* Header */}
       <header className="relative z-10 py-8 px-6">
         <div className="container mx-auto">
@@ -258,6 +261,7 @@ export default function PrivacyPolicy() {
       <div className="fixed inset-0 w-full h-full z-[-20] animate-gradient-move bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950" 
            style={{backgroundSize: '400% 400%'}} 
            aria-hidden="true" />
-    </div>
+      </div>
+    </>
   );
 } 

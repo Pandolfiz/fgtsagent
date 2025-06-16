@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import NeuralNetworkBackground from '../NeuralNetworkBackground.jsx';
+import LandingNavbar from '../components/LandingNavbar.jsx';
 import supabase from '../lib/supabaseClient';
 
 export default function Login() {
@@ -191,8 +192,10 @@ export default function Login() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 animate-gradient-move overflow-hidden">
-      <NeuralNetworkBackground />
+    <>
+      <LandingNavbar />
+      <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 animate-gradient-move overflow-hidden pt-20">
+        <NeuralNetworkBackground />
       <div className="relative z-10 w-full max-w-md mx-auto p-8 rounded-2xl card-futuristic shadow-2xl backdrop-blur-lg border border-cyan-400/30">
         <h1 className="text-3xl md:text-4xl font-extrabold text-center mb-6 bg-gradient-to-r from-cyan-400 via-emerald-400 to-blue-500 text-transparent bg-clip-text drop-shadow-neon leading-tight">Entrar</h1>
         {error && <div className="text-red-400 text-center text-sm animate-pulse mb-2">{error}</div>}
@@ -261,6 +264,7 @@ export default function Login() {
           <Link to="/signup" className="font-bold text-cyan-300 hover:underline">Criar Conta</Link>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 } 

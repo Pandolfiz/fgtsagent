@@ -3,113 +3,142 @@ services:
     build: 
       context: ./src
       dockerfile: Dockerfile
-    restart: always
+    restart: unless-stopped
     expose:
       - "3000"
     env_file:
       - ./src/.env
-#    depends_on:
-#      - redis
+    environment:
+      - NODE_ENV=${NODE_ENV:-production}
+      - PORT=3000
     volumes:
-      - ./src/logs:/app/logs
-      - ./src/uploads:/app/uploads
+      - ./src/logs:/app/logs:rw
+      - ./src/uploads:/app/uploads:rw
+      - /tmp:/app/temp:rw
     networks:
       - app-network
     deploy:
       resources:
         limits:
-          cpus: '0.50'
-          memory: 512M
+          cpus: '1.0'
+          memory: 1024M
+        reservations:
+          cpus: '0.25'
+          memory: 256M
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:3000/api/health || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
     
   frontend:
     build: 
       context: ./frontend
       dockerfile: Dockerfile
-    restart: always
-    # expose:
-    #   - "80"
+    restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     networks:
       - app-network
     deploy:
       resources:
         limits:
-          cpus: '0.25'
-          memory: 256M
+          cpus: '0.5'
+          memory: 512M
+        reservations:
+          cpus: '0.1'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
 
   nginx:
     image: nginx:1.25-alpine
-    restart: always
+    restart: unless-stopped
     ports:
-      - "80:80"
-      - "443:443"
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./data/certbot/conf:/etc/letsencrypt
-      - certbot-var:/var/lib/letsencrypt
-      - ./data/certbot/www:/var/www/certbot
-      - ./frontend/dist:/usr/share/nginx/html
+      - ./data/certbot/conf:/etc/letsencrypt:ro
+      - certbot-var:/var/lib/letsencrypt:ro
+      - ./data/certbot/www:/var/www/certbot:ro
+      - ./frontend/dist:/usr/share/nginx/html:ro
+      - nginx-cache:/var/cache/nginx
     depends_on:
-      - api
-      - frontend
+      api:
+        condition: service_healthy
+      frontend:
+        condition: service_started
     networks:
       - app-network
     deploy:
       resources:
         limits:
-          cpus: '0.25'
-          memory: 128M
-    command: "/bin/sh -c 'while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g \"daemon off;\"'"
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.1'
+          memory: 64M
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    command: >
+      /bin/sh -c "
+      if [ -f /etc/letsencrypt/live/fgtsagent.com.br/fullchain.pem ]; then
+        echo 'Certificados SSL encontrados, iniciando nginx com SSL...'
+      else
+        echo 'Certificados SSL não encontrados, iniciando nginx sem SSL...'
+      fi &&
+      exec nginx -g 'daemon off;'
+      "
 
   certbot:
     image: certbot/certbot:latest
-    restart: always
+    restart: unless-stopped
     volumes:
       - ./data/certbot/conf:/etc/letsencrypt
       - certbot-var:/var/lib/letsencrypt
       - ./data/certbot/www:/var/www/certbot
     depends_on:
       - nginx
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew; sleep 12h & wait $${!}; done;'"
-
-#  redis:
-#    image: redis:7-alpine
-#    restart: always
-#    command: redis-server --appendonly yes
-#    volumes:
-#     - redis-data:/data
-#  networks:
-  #   - app-network
-  #deploy:
-    # resources:
-    #  limits:
-    #    cpus: '0.25'
-    #    memory: 256M
-
-  # Banco de dados Postgres (comentado por padrão, descomente se necessário)
-  # db:
-  #   image: postgres:15-alpine
-  #   restart: always
-  #   environment:
-  #     POSTGRES_DB: ${POSTGRES_DB:-saas_fgts}
-  #     POSTGRES_USER: ${POSTGRES_USER:-postgres}
-  #     POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
-  #   volumes:
-  #     - db-data:/var/lib/postgresql/data
-  #   networks:
-  #     - app-network
-  #   deploy:
-  #     resources:
-  #       limits:
-  #         cpus: '0.50'
-  #         memory: 512M
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 128M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done;'"
 
 volumes:
-  # redis-data:
   certbot-var:
-  # db-data:
+    driver: local
+  nginx-cache:
+    driver: local
 
 networks:
   app-network:
     driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
