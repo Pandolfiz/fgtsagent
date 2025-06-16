@@ -76,17 +76,53 @@ exports.fixDatabasePolicies = async (req, res) => {
 exports.getLeadCpfByLeadId = async (req, res) => {
   try {
     const { lead_id } = req.params;
+    
+    // Validar se o lead_id é um UUID válido
+    if (!lead_id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lead_id)) {
+      logger.warn(`Tentativa de buscar lead com ID inválido: ${lead_id}`);
+      return res.status(400).json({ 
+        success: false, 
+        message: 'ID do lead inválido. Deve ser um UUID válido.',
+        lead_id 
+      });
+    }
+
     const { supabaseAdmin } = require('../config/supabase');
+    logger.info(`Buscando CPF para lead: ${lead_id}`);
+    
     const { data, error } = await supabaseAdmin
       .from('leads')
       .select('id, client_id, cpf')
       .eq('id', lead_id)
       .single();
-    if (error || !data) {
-      return res.status(404).json({ success: false, message: 'Lead não encontrado', error });
+      
+    if (error) {
+      logger.error(`Erro ao buscar lead ${lead_id}:`, error);
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Lead não encontrado no banco de dados', 
+        error: error.message,
+        lead_id 
+      });
     }
+    
+    if (!data) {
+      logger.warn(`Lead não encontrado: ${lead_id}`);
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Lead não encontrado', 
+        lead_id 
+      });
+    }
+    
+    logger.info(`CPF encontrado para lead ${lead_id}: ${data.cpf ? 'SIM' : 'NÃO'}`);
     return res.json({ success: true, cpf: data.cpf, lead: data });
   } catch (err) {
-    return res.status(500).json({ success: false, message: err.message });
+    logger.error(`Erro interno ao buscar CPF do lead ${req.params.lead_id}:`, err);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Erro interno do servidor', 
+      error: err.message 
+    });
   }
 }; 

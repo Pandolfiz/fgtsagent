@@ -100,7 +100,12 @@ app.use(cors({
       'http://127.0.0.1:5174',
       'http://localhost:3000',
       'http://localhost:8000',
-      // Adicione URLs de produção ou ambiente de testes
+      // URLs de produção
+      'https://fgtsagent.com.br',
+      'https://www.fgtsagent.com.br',
+      'http://fgtsagent.com.br',
+      'http://www.fgtsagent.com.br',
+      // Variáveis de ambiente
       process.env.FRONTEND_URL,
       process.env.APP_URL
     ].filter(Boolean); // Remove valores nulos ou undefined
@@ -179,6 +184,15 @@ const stripeRoutes = require('./routes/stripeRoutes');
 // Rotas de health check (deve vir antes de outras rotas)
 app.use('/health', healthRoutes);
 
+// Rota pública para verificação de saúde do sistema (para Docker e monitoramento)
+app.get('/api/health', (req, res) => {
+  res.status(200).json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    version: process.env.npm_package_version || '1.0.0'
+  });
+});
+
 // Rota do webhook (deve vir antes das rotas autenticadas)
 app.use('/api/webhooks/evolution', webhookAuth, chatWebhookRoutes);
 
@@ -233,20 +247,25 @@ app.get('*/callback*', (req, res, next) => {
 
 // Rota de fallback para SPA React (deve ser a última)
 app.get('*', (req, res) => {
+  // Verificar se o arquivo existe antes de tentar servir
+  const indexPath = path.join(__dirname, '../frontend/dist/index.html');
+  
+  // Se o arquivo não existir, retornar um fallback simples
+  if (!require('fs').existsSync(indexPath)) {
+    console.log('Arquivo index.html não encontrado, retornando fallback para:', req.path);
+    return res.status(200).json({
+      message: 'FgtsAgent API está rodando',
+      timestamp: new Date().toISOString(),
+      path: req.path,
+      note: 'Frontend build não encontrado - execute o build do frontend'
+    });
+  }
+  
   // Log para depuração
   console.log('Servindo App React para:', req.path);
   
   // Servir o HTML principal do React para qualquer outra rota
-  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
-});
-
-// Rota pública para verificação de saúde do sistema (para Docker e monitoramento)
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    version: process.env.npm_package_version || '1.0.0'
-  });
+  res.sendFile(indexPath);
 });
 
 // Middleware para tratamento de erros

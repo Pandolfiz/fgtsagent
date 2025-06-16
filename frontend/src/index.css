@@ -89,38 +89,22 @@ button:focus-visible {
   border: 1.5px solid #00bcd4;
 }
 
-/* Animação de gradiente de fundo escuro e partículas dinâmicas */
+/* Animação de gradiente otimizada */
 .bg-animated-tech {
   position: relative;
   background: linear-gradient(120deg, #181f2a, #232946, #1a2a40, #232946 80%, #0e223a 100%);
   background-size: 400% 400%;
-  animation: gradientMoveDark 18s ease-in-out infinite;
+  animation: gradientMoveDark 24s ease-in-out infinite;
   overflow: hidden;
+  will-change: background-position;
 }
 @keyframes gradientMoveDark {
   0% {background-position: 0% 50%;}
-  25% {background-position: 50% 100%;}
   50% {background-position: 100% 50%;}
-  75% {background-position: 50% 0%;}
   100% {background-position: 0% 50%;}
 }
-.bg-animated-tech::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  z-index: -1;
-  pointer-events: none;
-  background-image:
-    radial-gradient(rgba(0,188,212,0.08) 1.5px, transparent 1.5px),
-    radial-gradient(rgba(255,255,255,0.04) 1.5px, transparent 1.5px);
-  background-size: 40px 40px, 80px 80px;
-  background-position: 0 0, 20px 20px;
-  animation: particlesMove 32s linear infinite;
-}
-@keyframes particlesMove {
-  0% {background-position: 0 0, 20px 20px;}
-  100% {background-position: 80px 80px, 100px 100px;}
-}
+
+/* Removida animação de partículas para reduzir carga de CPU */
 
 @keyframes gradientMove {
   0% { background-position: 0% 50%; }
@@ -128,7 +112,8 @@ button:focus-visible {
   100% { background-position: 0% 50%; }
 }
 .animate-gradient-move {
-  animation: gradientMove 16s ease-in-out infinite;
+  animation: gradientMove 20s ease-in-out infinite;
+  will-change: background-position;
 }
 
 /* Garantir bordas iguais para camada de destaque dos cards */
@@ -141,3 +126,22 @@ button:focus-visible {
 .drop-shadow-neon {
   filter: drop-shadow(0 0 8px #00bcd4) drop-shadow(0 0 16px #00bcd4);
 }
+
+/* Estilos específicos para planos */
+.plan-card-popular {
+  background: linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(6,182,212,0.1) 100%);
+  border: 2px solid rgba(16,185,129,0.6);
+  box-shadow: 0 0 20px rgba(16,185,129,0.3), 0 4px 24px rgba(0,0,0,0.2);
+}
+
+.plan-card-popular::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(45deg, #10b981, #06b6d4, #10b981);
+  border-radius: 1rem;
+  z-index: -1;
+  opacity: 0.3;
+}
+
+

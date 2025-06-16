@@ -53,18 +53,18 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
     switch (planId) {
       case 'pro':
         return (
-          <div className="absolute -top-2 left-1/2 transform -translate-x-1/2">
-            <span className="bg-gradient-to-r from-emerald-500 to-cyan-500 text-white text-xs font-semibold px-3 py-1 rounded-full">
+          <div className="absolute -top-2 -right-2 w-24 h-24 overflow-hidden">
+            <div className="bg-gradient-to-r from-emerald-500 to-cyan-500 text-white text-xs font-semibold px-8 py-1 transform rotate-45 translate-x-6 translate-y-6 shadow-lg">
               Mais Popular
-            </span>
+            </div>
           </div>
         );
       case 'premium':
         return (
-          <div className="absolute -top-2 left-1/2 transform -translate-x-1/2">
-            <span className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-xs font-semibold px-3 py-1 rounded-full">
+          <div className="absolute -top-2 -right-2 w-24 h-24 overflow-hidden">
+            <div className="bg-gradient-to-r from-blue-500 to-cyan-500 text-white text-xs font-semibold px-8 py-1 transform rotate-45 translate-x-6 translate-y-6 shadow-lg">
               Melhor Valor
-            </span>
+            </div>
           </div>
         );
       default:
@@ -96,55 +96,54 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
   }
 
   return (
-    <div className="py-12">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="text-center mb-12">
-          <h2 className="text-3xl font-bold text-white sm:text-4xl bg-gradient-to-r from-cyan-400 via-emerald-400 to-blue-500 text-transparent bg-clip-text drop-shadow-neon">
-            Escolha o Plano Ideal para Você
+    <div className="py-2">
+      <div className="max-w-5xl mx-auto px-2 sm:px-4">
+        <div className="text-center mb-2">
+          <h2 className="text-lg font-bold text-white bg-gradient-to-r from-cyan-400 via-emerald-400 to-blue-500 text-transparent bg-clip-text drop-shadow-neon">
+            Escolha o Plano Ideal
           </h2>
-          <p className="mt-4 text-xl text-cyan-200">
-            Gerencie seu FGTS com segurança e praticidade
-          </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 max-w-4xl mx-auto px-4">
           {plans.map((plan) => (
             <div
               key={plan.id}
-              className={`relative bg-white/10 rounded-2xl shadow-2xl backdrop-blur-lg p-8 transition-all duration-300 cursor-pointer transform hover:scale-105 border-2 card-futuristic ${
+              className={`relative bg-white/10 rounded-lg shadow-xl backdrop-blur-lg p-3 transition-all duration-300 cursor-pointer border-2 card-futuristic min-h-[280px] flex flex-col overflow-visible ${
                 selectedPlan === plan.id
-                  ? 'border-cyan-400 ring-2 ring-cyan-400/50 shadow-cyan-500/25'
+                  ? 'border-cyan-400 ring-1 ring-cyan-400/50 shadow-cyan-500/25'
                   : getPlanColor(plan.id)
               }`}
               onClick={() => onPlanSelect(plan.id)}
             >
               {getPlanBadge(plan.id)}
               
-              <div className="text-center mb-6">
-                <div className="flex justify-center mb-4">
-                  {getPlanIcon(plan.id)}
+              <div className="text-center mb-2">
+                <div className="flex justify-center mb-1">
+                  <div className="w-6 h-6">
+                    {React.cloneElement(getPlanIcon(plan.id), { className: "w-6 h-6 text-cyan-400" })}
+                  </div>
                 </div>
-                <h3 className="text-2xl font-bold text-white">{plan.name}</h3>
-                <div className="mt-4">
-                  <span className="text-4xl font-bold text-white">
+                <h3 className="text-base font-bold text-white">{plan.name}</h3>
+                <div className="mt-1">
+                  <span className="text-xl font-bold text-white">
                     {plan.priceFormatted}
                   </span>
-                  <span className="text-cyan-200 ml-1">/mês</span>
+                  <span className="text-cyan-200 ml-1 text-xs">/mês</span>
                 </div>
               </div>
 
-              <div className="space-y-4 mb-8">
+              <div className="space-y-1 mb-3 flex-grow">
                 {plan.features.map((feature, index) => (
                   <div key={index} className="flex items-start">
-                    <Check className="w-5 h-5 text-emerald-400 mt-0.5 mr-3 flex-shrink-0" />
-                    <span className="text-cyan-200">{feature}</span>
+                    <Check className="w-3 h-3 text-emerald-400 mt-0.5 mr-1.5 flex-shrink-0" />
+                    <span className="text-cyan-200 text-xs leading-tight">{feature}</span>
                   </div>
                 ))}
               </div>
 
-              <div className="text-center">
+              <div className="text-center mt-auto">
                 <button
-                  className={`w-full py-3 px-4 rounded-lg font-semibold transition-all duration-300 ${
+                  className={`w-full py-1.5 px-2 text-xs rounded-md font-semibold transition-all duration-300 ${
                     selectedPlan === plan.id
                       ? 'bg-gradient-to-r from-cyan-500 to-emerald-500 text-white hover:from-cyan-600 hover:to-emerald-600 shadow-lg shadow-cyan-500/25'
                       : 'bg-white/20 text-white hover:bg-white/30 border border-cyan-400/30'
@@ -154,29 +153,22 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
                     onPlanSelect(plan.id);
                   }}
                 >
-                  {selectedPlan === plan.id ? 'Plano Selecionado' : 'Selecionar Plano'}
+                  {selectedPlan === plan.id ? 'Selecionado' : 'Selecionar'}
                 </button>
               </div>
             </div>
           ))}
         </div>
 
-        <div className="text-center mt-12">
-          <p className="text-cyan-200 mb-4">
-            Todos os planos incluem criptografia de ponta e suporte técnico
-          </p>
-          <div className="flex justify-center items-center space-x-4 text-sm text-cyan-300">
+        <div className="text-center mt-2">
+          <div className="flex justify-center items-center space-x-3 text-xs text-cyan-300">
             <span className="flex items-center">
-              <Check className="w-4 h-4 mr-1 text-emerald-400" />
-              Cancelamento gratuito
+              <Check className="w-3 h-3 mr-0.5 text-emerald-400" />
+              Teste 7 dias gratuitos
             </span>
             <span className="flex items-center">
-              <Check className="w-4 h-4 mr-1 text-emerald-400" />
-              Sem taxa de instalação
-            </span>
-            <span className="flex items-center">
-              <Check className="w-4 h-4 mr-1 text-emerald-400" />
-              Garantia de 30 dias
+              <Check className="w-3 h-3 mr-0.5 text-emerald-400" />
+              Sem taxa de cancelamento
             </span>
           </div>
         </div>

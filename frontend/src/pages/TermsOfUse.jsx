@@ -1,11 +1,11 @@
 import React from 'react';
-import Navbar from '../components/Navbar';
+import LandingNavbar from '../components/LandingNavbar';
 
 export default function TermsOfUse() {
   return (
     <>
-      <Navbar />
-      <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 py-12 px-4 sm:px-6 lg:px-8">
+      <LandingNavbar />
+      <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 py-12 px-4 sm:px-6 lg:px-8 pt-20">
         <div className="max-w-4xl mx-auto">
           <div className="bg-white/10 backdrop-blur-sm rounded-xl shadow-xl border border-cyan-800/30 overflow-hidden">
             <div className="px-6 py-8 sm:px-8 sm:py-10">

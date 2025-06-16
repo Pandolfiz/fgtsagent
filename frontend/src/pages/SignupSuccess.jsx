@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { CheckCircle, Mail, ExternalLink } from 'lucide-react';
 import { useSearchParams } from 'react-router-dom';
 import NeuralNetworkBackground from '../NeuralNetworkBackground.jsx';
+import LandingNavbar from '../components/LandingNavbar.jsx';
 
 const SignupSuccess = () => {
   const [searchParams] = useSearchParams();
@@ -27,8 +28,10 @@ const SignupSuccess = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 relative overflow-hidden">
-      <NeuralNetworkBackground />
+    <>
+      <LandingNavbar />
+      <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 relative overflow-hidden pt-20">
+        <NeuralNetworkBackground />
       
       <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
         <div className="max-w-md w-full">
@@ -112,7 +115,8 @@ const SignupSuccess = () => {
           </div>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, CheckCircle } from 'lucide-react';
 import PricingPlans from '../components/PricingPlans';
 import StripeCheckout from '../components/StripeCheckout';
 import NeuralNetworkBackground from '../NeuralNetworkBackground.jsx';
+import LandingNavbar from '../components/LandingNavbar.jsx';
 import axios from 'axios';
 
 const SignUpWithPlans = () => {
@@ -99,35 +100,56 @@ const SignUpWithPlans = () => {
     setError(error.message || 'Erro no processamento do pagamento');
   };
 
+  const handleStepClick = (stepId) => {
+    // Só permite navegar para etapas anteriores ou a atual
+    if (stepId < currentStep) {
+      setCurrentStep(stepId);
+      setError('');
+    }
+  };
+
   const renderStepIndicator = () => (
-    <div className="flex items-center justify-center mb-8">
+    <div className="flex items-center justify-center mb-2">
       {steps.map((step, index) => (
         <React.Fragment key={step.id}>
           <div className="flex flex-col items-center">
             <div
-              className={`w-10 h-10 rounded-full flex items-center justify-center border-2 transition-colors ${
+              className={`w-6 h-6 rounded-full flex items-center justify-center border transition-colors ${
                 currentStep >= step.id
                   ? 'bg-cyan-400 border-cyan-400 text-gray-900'
                   : 'border-cyan-400/30 text-cyan-300'
+              } ${
+                step.id < currentStep 
+                  ? 'cursor-pointer hover:bg-cyan-300 hover:border-cyan-300' 
+                  : step.id === currentStep 
+                    ? 'cursor-default' 
+                    : 'cursor-not-allowed opacity-60'
               }`}
+              onClick={() => handleStepClick(step.id)}
+              title={step.id < currentStep ? `Voltar para ${step.title}` : step.title}
             >
               {currentStep > step.id ? (
-                <CheckCircle className="w-5 h-5" />
+                <CheckCircle className="w-3 h-3" />
               ) : (
-                step.id
+                <span className="text-xs">{step.id}</span>
               )}
             </div>
-            <div className="mt-2 text-center">
-              <p className={`text-sm font-medium ${
-                currentStep >= step.id ? 'text-cyan-300' : 'text-cyan-200/60'
-              }`}>
+            <div className="mt-0.5 text-center hidden sm:block">
+              <p 
+                className={`text-xs font-medium ${
+                  currentStep >= step.id ? 'text-cyan-300' : 'text-cyan-200/60'
+                } ${
+                  step.id < currentStep ? 'cursor-pointer hover:text-cyan-200' : ''
+                }`}
+                onClick={() => handleStepClick(step.id)}
+                title={step.id < currentStep ? `Voltar para ${step.title}` : step.title}
+              >
                 {step.title}
               </p>
-              <p className="text-xs text-cyan-200/40">{step.description}</p>
             </div>
           </div>
           {index < steps.length - 1 && (
-            <div className={`w-16 h-0.5 mx-4 transition-colors ${
+            <div className={`w-8 h-0.5 mx-1 transition-colors ${
               currentStep > step.id ? 'bg-cyan-400' : 'bg-cyan-400/30'
             }`} />
           )}
@@ -138,19 +160,19 @@ const SignUpWithPlans = () => {
 
   const renderStep1 = () => (
     <div className="max-w-md mx-auto">
-      <div className="bg-white/10 rounded-xl shadow-2xl backdrop-blur-lg border border-cyan-400/30 p-6 card-futuristic">
-        <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold text-white mb-2 bg-gradient-to-r from-cyan-400 via-emerald-400 to-blue-500 text-transparent bg-clip-text drop-shadow-neon">
+      <div className="bg-white/10 rounded-xl shadow-2xl backdrop-blur-lg border border-cyan-400/30 p-4 card-futuristic">
+        <div className="text-center mb-3">
+          <h2 className="text-xl font-bold text-white mb-1 bg-gradient-to-r from-cyan-400 via-emerald-400 to-blue-500 text-transparent bg-clip-text drop-shadow-neon">
             Criar Sua Conta
           </h2>
-          <p className="text-cyan-200">
+          <p className="text-cyan-200 text-sm">
             Preencha seus dados para começar
           </p>
         </div>
 
-        <form className="space-y-4">
+        <form className="space-y-2">
           <div>
-            <label className="block text-cyan-200 mb-1">
+            <label className="block text-cyan-200 mb-0.5 text-sm">
               Nome Completo
             </label>
             <input
@@ -158,14 +180,14 @@ const SignUpWithPlans = () => {
               name="name"
               value={userData.name}
               onChange={handleInputChange}
-              className="w-full px-3 py-3 rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition"
+              className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition"
               placeholder="Seu nome completo"
               required
             />
           </div>
 
           <div>
-            <label className="block text-cyan-200 mb-1">
+            <label className="block text-cyan-200 mb-0.5 text-sm">
               Email
             </label>
             <input
@@ -173,14 +195,14 @@ const SignUpWithPlans = () => {
               name="email"
               value={userData.email}
               onChange={handleInputChange}
-              className="w-full px-3 py-3 rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition"
+              className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition"
               placeholder="seu@email.com"
               required
             />
           </div>
 
           <div>
-            <label className="block text-cyan-200 mb-1">
+            <label className="block text-cyan-200 mb-0.5 text-sm">
               Telefone (Opcional)
             </label>
             <input
@@ -188,13 +210,13 @@ const SignUpWithPlans = () => {
               name="phone"
               value={userData.phone}
               onChange={handleInputChange}
-              className="w-full px-3 py-3 rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition"
+              className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition"
               placeholder="(11) 99999-9999"
             />
           </div>
 
           <div>
-            <label className="block text-cyan-200 mb-1">
+            <label className="block text-cyan-200 mb-0.5 text-sm">
               Senha
             </label>
             <input
@@ -202,14 +224,14 @@ const SignUpWithPlans = () => {
               name="password"
               value={userData.password}
               onChange={handleInputChange}
-              className="w-full px-3 py-3 rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition"
+              className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition"
               placeholder="Mínimo 6 caracteres"
               required
             />
           </div>
 
           <div>
-            <label className="block text-cyan-200 mb-1">
+            <label className="block text-cyan-200 mb-0.5 text-sm">
               Confirmar Senha
             </label>
             <input
@@ -217,7 +239,7 @@ const SignUpWithPlans = () => {
               name="confirmPassword"
               value={userData.confirmPassword}
               onChange={handleInputChange}
-              className="w-full px-3 py-3 rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition"
+              className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition"
               placeholder="Confirme sua senha"
               required
             />
@@ -272,22 +294,24 @@ const SignUpWithPlans = () => {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 animate-gradient-move overflow-hidden">
-      <NeuralNetworkBackground />
-      <div className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    <>
+      <LandingNavbar />
+      <div className="relative h-screen flex items-center justify-center bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 animate-gradient-move overflow-hidden pt-20 pb-4">
+        <NeuralNetworkBackground />
+      <div className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         {renderStepIndicator()}
         
-        <div className="mb-8">
+        <div className="mb-4">
           {renderStepContent()}
         </div>
 
         {/* Navigation buttons */}
         {currentStep < 3 && (
-          <div className="flex justify-center space-x-4">
+          <div className="flex justify-center space-x-4 mb-4">
             {currentStep > 1 && (
               <button
                 onClick={handlePrevStep}
-                className="flex items-center px-6 py-2 border border-cyan-400/30 rounded-lg text-cyan-200 hover:bg-cyan-900/30 transition-colors"
+                className="flex items-center px-4 py-2 text-sm border border-cyan-400/30 rounded-lg text-cyan-200 hover:bg-cyan-900/30 transition-colors"
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Voltar
@@ -297,7 +321,7 @@ const SignUpWithPlans = () => {
             <button
               onClick={handleNextStep}
               disabled={loading}
-              className="flex items-center px-6 py-2 bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 text-white rounded-lg hover:from-cyan-800 hover:via-cyan-600 hover:to-blue-700 transition border border-cyan-400/30 drop-shadow-neon disabled:opacity-50"
+              className="flex items-center px-4 py-2 text-sm bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 text-white rounded-lg hover:from-cyan-800 hover:via-cyan-600 hover:to-blue-700 transition border border-cyan-400/30 drop-shadow-neon disabled:opacity-50"
             >
               Continuar
               <ArrowRight className="w-4 h-4 ml-2" />
@@ -306,8 +330,8 @@ const SignUpWithPlans = () => {
         )}
 
         {/* Footer info */}
-        <div className="text-center mt-12">
-          <p className="text-cyan-200 text-sm">
+        <div className="text-center">
+          <p className="text-cyan-200 text-xs">
             Já tem uma conta?{' '}
             <a href="/login" className="text-cyan-300 hover:underline font-semibold">
               Faça login aqui
@@ -315,7 +339,8 @@ const SignUpWithPlans = () => {
           </p>
         </div>
       </div>
-    </div>
+      </div>
+    </>
   );
 };
 

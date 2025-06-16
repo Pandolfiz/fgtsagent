@@ -1,10 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { FaRobot, FaChartLine, FaHandHoldingUsd, FaUsers, FaShieldAlt, FaChartPie } from 'react-icons/fa';
+import { FaRobot, FaChartLine, FaHandHoldingUsd, FaUsers, FaShieldAlt, FaChartPie, FaCheck, FaWhatsapp, FaEnvelope, FaChartBar } from 'react-icons/fa';
 import { Link } from 'react-router-dom';
-import { Particles } from '@tsparticles/react';
 import { motion, AnimatePresence } from 'framer-motion';
-import Tilt from 'react-parallax-tilt';
 import NeuralNetworkBackground from '../NeuralNetworkBackground.jsx';
+
+// Dados sincronizados com os produtos e preços do Stripe
+// Produtos no Stripe:
+// - prod_STalRE6RzVNTUu: FGTS Agent - Plano Básico (R$ 99,99/mês)
+// - prod_STalhjSBTyHza7: FGTS Agent - Plano Pro (R$ 199,99/mês)  
+// - prod_STalNWvSe9GqRs: FGTS Agent - Plano Premium (R$ 499,99/mês)
 
 const features = [
   { icon: <FaRobot size={40} />, title: 'Automação 24/7', text: 'Nosso agente atende leads a qualquer hora, sem falhas.' },
@@ -15,35 +19,68 @@ const features = [
   { icon: <FaChartPie size={40} />, title: 'Analytics em Tempo Real', text: 'Dashboards que mostram desempenho de leads, propostas e conversão.' }
 ];
 
-const particlesOptions = {
-  fullScreen: { enable: false },
-  background: { color: 'transparent' },
-  particles: {
-    number: { value: 90, density: { enable: true, value_area: 900 } },
-    color: { value: ['#232946', '#0e223a', '#00bcd4', '#232946'] },
-    shape: { type: 'circle' },
-    opacity: { value: 0.18, random: true },
-    size: { value: 3.5, random: { enable: true, minimumValue: 1.5 } },
-    move: { enable: true, speed: 1.2, out_mode: 'out', direction: 'none', random: true, straight: false, attract: { enable: false } },
-    links: { enable: true, distance: 120, color: '#00bcd4', opacity: 0.12, width: 1.2 },
-    shadow: { enable: false },
+// Dados dos planos baseados no Stripe
+const plans = [
+  {
+    name: 'FGTS Agent - Plano Básico',
+    price: 'R$ 99,99',
+    period: '/mês',
+    description: 'Plano básico com operações limitadas de saldo FGTS e dashboard',
+    stripeProductId: 'prod_STalRE6RzVNTUu',
+    stripePriceId: 'price_1RYdaBRrfRhcM17zE4rOKO9U',
+    features: [
+      'Consultas limitadas de saldo FGTS',
+      'Dashboard básico',
+      'Integração WhatsApp',
+      'Relatórios simples',
+      'Suporte por email'
+    ],
+    icon: <FaWhatsapp size={32} />,
+    popular: false,
+    buttonText: 'Começar Agora'
   },
-  interactivity: {
-    events: {
-      onhover: { enable: true, mode: ['grab', 'repulse'] },
-      onclick: { enable: true, mode: 'explode' },
-      resize: true
-    },
-    modes: {
-      grab: { distance: 160, line_linked: { opacity: 0.25 } },
-      repulse: { distance: 120, duration: 0.4 },
-      explode: { particles_nb: 12 },
-      push: { quantity: 4 }
-    }
+  {
+    name: 'FGTS Agent - Plano Pro',
+    price: 'R$ 199,99',
+    period: '/mês',
+    description: 'Plano profissional com consultas ilimitadas, notificações em tempo real e relatórios avançados',
+    stripeProductId: 'prod_STalhjSBTyHza7',
+    stripePriceId: 'price_1RYdaFRrfRhcM17zecmj0hhT',
+    features: [
+      'Consultas ilimitadas de FGTS',
+      'Notificações em tempo real',
+      'WhatsApp + Email + Web',
+      'Relatórios avançados',
+      'Simulador de propostas',
+      'Suporte prioritário',
+      'Integrações personalizadas'
+    ],
+    icon: <FaChartBar size={32} />,
+    popular: true,
+    buttonText: 'Mais Popular'
   },
-  retina_detect: true,
-  detectRetina: true
-};
+  {
+    name: 'FGTS Agent - Plano Premium',
+    price: 'R$ 499,99',
+    period: '/mês',
+    description: 'Plano premium com todas as funcionalidades, API dedicada e suporte prioritário',
+    stripeProductId: 'prod_STalNWvSe9GqRs',
+    stripePriceId: 'price_1RYdaJRrfRhcM17zJsOCBmmi',
+    features: [
+      'Todas as funcionalidades',
+      'API dedicada',
+      'Múltiplos agentes IA',
+      'Dashboard executivo',
+      'Suporte prioritário 24/7',
+      'Gerente de conta dedicado',
+      'White-label disponível',
+      'SLA garantido'
+    ],
+    icon: <FaUsers size={32} />,
+    popular: false,
+    buttonText: 'Contatar Vendas'
+  }
+];
 
 export default function Home({ isLoggedIn }) {
   useEffect(() => {
@@ -75,6 +112,7 @@ export default function Home({ isLoggedIn }) {
           {/* Menu desktop */}
           <div className="hidden md:flex gap-6 items-center">
             <a href="#features" className="text-cyan-100 hover:text-cyan-300 transition font-semibold">Funcionalidades</a>
+            <a href="#planos" className="text-cyan-100 hover:text-cyan-300 transition font-semibold">Planos</a>
             <a href="#clientes" className="text-cyan-100 hover:text-cyan-300 transition font-semibold">Clientes</a>
             <a href="#parceiro" className="text-cyan-100 hover:text-cyan-300 transition font-semibold">Parceiro</a>
             {!isLoggedIn ? (
@@ -122,14 +160,15 @@ export default function Home({ isLoggedIn }) {
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               >
                 <motion.a href="#features" className="text-cyan-100 hover:text-cyan-300 transition font-semibold" onClick={() => setMenuOpen(false)} initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}>Funcionalidades</motion.a>
-                <motion.a href="#clientes" className="text-cyan-100 hover:text-cyan-300 transition font-semibold" onClick={() => setMenuOpen(false)} initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>Clientes</motion.a>
-                <motion.a href="#parceiro" className="text-cyan-100 hover:text-cyan-300 transition font-semibold" onClick={() => setMenuOpen(false)} initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}>Parceiro</motion.a>
+                <motion.a href="#planos" className="text-cyan-100 hover:text-cyan-300 transition font-semibold" onClick={() => setMenuOpen(false)} initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>Planos</motion.a>
+                <motion.a href="#clientes" className="text-cyan-100 hover:text-cyan-300 transition font-semibold" onClick={() => setMenuOpen(false)} initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}>Clientes</motion.a>
+                <motion.a href="#parceiro" className="text-cyan-100 hover:text-cyan-300 transition font-semibold" onClick={() => setMenuOpen(false)} initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}>Parceiro</motion.a>
                 {!isLoggedIn ? (
-                  <motion.div initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}>
+                  <motion.div initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 }}>
                     <Link to="/login" className="mt-2 px-5 py-2 rounded-full bg-cyan-400 text-white font-bold shadow-lg hover:bg-cyan-300 transition border-2 border-cyan-300/40 block text-center" onClick={() => setMenuOpen(false)}>Entrar</Link>
                   </motion.div>
                 ) : (
-                  <motion.div initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}>
+                  <motion.div initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 }}>
                     <Link to="/dashboard" className="mt-2 px-5 py-2 rounded-full bg-cyan-400 text-white font-bold shadow-lg hover:bg-cyan-300 transition border-2 border-cyan-300/40 block text-center" onClick={() => setMenuOpen(false)}>Dashboard</Link>
                   </motion.div>
                 )}
@@ -196,31 +235,127 @@ export default function Home({ isLoggedIn }) {
           }}
         >
           {features.map((f, i) => (
-            <Tilt
+            <motion.div
               key={i}
-              glareEnable={true}
-              glareMaxOpacity={0.35}
-              glareColor="#00fff7"
-              glarePosition="all"
-              tiltMaxAngleX={18}
-              tiltMaxAngleY={18}
-              scale={1.06}
-              transitionSpeed={1800}
-              className="rounded-2xl overflow-hidden w-full h-full"
+              className="bg-white/10 rounded-2xl p-8 text-center shadow-xl hover:scale-105 transition backdrop-blur-lg border border-cyan-400/40 drop-shadow-neon card-futuristic w-full h-full"
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.7, delay: i * 0.1 }}
             >
-              <motion.div
-                className="bg-white/10 rounded-2xl p-8 text-center shadow-xl hover:scale-105 transition backdrop-blur-lg border border-cyan-400/40 drop-shadow-neon card-futuristic w-full h-full"
-                initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.7, delay: i * 0.1 }}
-              >
-                <div className="mb-4 text-cyan-300 flex justify-center animate-pulse-slow">{f.icon}</div>
-                <h5 className="font-bold text-lg text-white mb-2 drop-shadow animate-fade-in">{f.title}</h5>
-                <p className="text-white/80 animate-fade-in-delay">{f.text}</p>
-              </motion.div>
-            </Tilt>
+              <div className="mb-4 text-cyan-300 flex justify-center">{f.icon}</div>
+              <h5 className="font-bold text-lg text-white mb-2 drop-shadow">{f.title}</h5>
+              <p className="text-white/80">{f.text}</p>
+            </motion.div>
           ))}
+        </motion.div>
+      </section>
+
+      {/* Planos de Assinatura */}
+      <section id="planos" className="relative z-10 py-20">
+        <motion.h2
+          className="text-3xl md:text-4xl font-bold text-center mb-6 bg-gradient-to-r from-cyan-400 via-emerald-400 to-blue-500 text-transparent bg-clip-text drop-shadow-neon leading-tight pb-4"
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.8 }}
+        >
+          Escolha seu Plano
+        </motion.h2>
+        <motion.p
+          className="text-center text-white/80 text-lg mb-12 max-w-2xl mx-auto px-4"
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.8, delay: 0.2 }}
+        >
+          Transforme seu negócio de FGTS com nossos planos flexíveis
+        </motion.p>
+        
+        <motion.div
+          className="container mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 px-4"
+          initial="hidden"
+          whileInView="visible"
+          viewport={{ once: true }}
+          variants={{
+            hidden: {},
+            visible: { transition: { staggerChildren: 0.2 } }
+          }}
+        >
+          {plans.map((plan, i) => (
+            <motion.div
+              key={i}
+              className={`bg-white/10 rounded-2xl p-8 text-center shadow-xl transition backdrop-blur-lg border drop-shadow-neon card-futuristic relative ${
+                plan.popular 
+                  ? 'border-emerald-400/60 scale-105 bg-gradient-to-b from-emerald-900/20 to-cyan-900/20' 
+                  : 'border-cyan-400/40 hover:scale-105'
+              }`}
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.7, delay: i * 0.1 }}
+            >
+              {plan.popular && (
+                <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
+                  <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 text-black px-6 py-2 rounded-full text-sm font-bold shadow-lg">
+                    MAIS POPULAR
+                  </span>
+                </div>
+              )}
+              
+              <div className="mb-6">
+                <div className={`mb-4 flex justify-center ${plan.popular ? 'text-emerald-300' : 'text-cyan-300'}`}>
+                  {plan.icon}
+                </div>
+                <h3 className="text-2xl font-bold text-white mb-2">{plan.name}</h3>
+                <p className="text-white/70 text-sm mb-4">{plan.description}</p>
+                
+                <div className="mb-6">
+                  <span className={`text-4xl font-extrabold ${plan.popular ? 'text-emerald-300' : 'text-cyan-300'}`}>
+                    {plan.price}
+                  </span>
+                  <span className="text-white/60 text-lg">{plan.period}</span>
+                </div>
+              </div>
+              
+              <div className="mb-8 text-left">
+                {plan.features.map((feature, idx) => (
+                  <div key={idx} className="flex items-center mb-3">
+                    <FaCheck className={`mr-3 ${plan.popular ? 'text-emerald-400' : 'text-cyan-400'} flex-shrink-0`} size={16} />
+                    <span className="text-white/90 text-sm">{feature}</span>
+                  </div>
+                ))}
+              </div>
+              
+                             <Link
+                 to={`/signup?plan=${plan.stripePriceId}`}
+                 className={`w-full py-3 px-6 rounded-lg font-bold shadow-lg transition border-2 ${
+                   plan.popular
+                     ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white border-emerald-400/50 hover:from-emerald-400 hover:to-cyan-400'
+                     : 'bg-transparent text-cyan-300 border-cyan-400/50 hover:bg-cyan-900/50'
+                 } drop-shadow-neon block text-center`}
+                 data-price-id={plan.stripePriceId}
+                 data-product-id={plan.stripeProductId}
+               >
+                 {plan.buttonText}
+               </Link>
+            </motion.div>
+          ))}
+        </motion.div>
+        
+        <motion.div
+          className="text-center mt-12"
+          initial={{ opacity: 0, y: 30 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.7, delay: 0.5 }}
+        >
+          <p className="text-white/70 mb-4">
+            Todos os planos incluem 14 dias de teste grátis
+          </p>
+          <p className="text-cyan-300 text-sm">
+            Precisa de algo personalizado? <span className="underline cursor-pointer hover:text-cyan-200">Entre em contato</span>
+          </p>
         </motion.div>
       </section>
 
@@ -296,45 +431,33 @@ export default function Home({ isLoggedIn }) {
             company: '',
             avatar: '/img/testimonials/man2-new.jpg'
           }].map((d, i) => (
-            <Tilt
+            <motion.div
               key={i}
-              glareEnable={true}
-              glareMaxOpacity={0.35}
-              glareColor="#00fff7"
-              glarePosition="all"
-              tiltMaxAngleX={18}
-              tiltMaxAngleY={18}
-              scale={1.06}
-              transitionSpeed={1800}
-              className="rounded-2xl"
+              className="bg-white/10 rounded-2xl p-6 sm:p-8 text-center shadow-xl hover:scale-105 transition backdrop-blur-lg border border-cyan-400/40 drop-shadow-neon card-futuristic flex flex-col items-center h-full justify-between"
+              initial={{ opacity: 0, y: 40 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ duration: 0.7, delay: i * 0.1 }}
             >
-              <motion.div
-                className="bg-white/10 rounded-2xl p-6 sm:p-8 text-center shadow-xl hover:scale-105 transition backdrop-blur-lg border border-cyan-400/40 drop-shadow-neon card-futuristic flex flex-col items-center h-full justify-between"
-                initial={{ opacity: 0, y: 40 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ duration: 0.7, delay: i * 0.1 }}
-              >
-                <div className="flex flex-col items-center">
-                  <img 
-                    src={d.avatar} 
-                    alt={`Foto de ${d.name}`} 
-                    loading="lazy"
-                    className="w-16 h-16 rounded-full mb-4 border-4 border-cyan-400 shadow-lg animate-fade-in object-cover" 
-                    style={{ objectPosition: 'center top' }}
-                    onError={(e) => {
-                      e.target.onerror = null;
-                      e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(d.name)}&background=00bcd4&color=fff&size=256`;
-                    }}
-                  />
-                  <p className="text-white/90 italic mb-4 animate-fade-in-delay">"{d.text}"</p>
-                </div>
-                <div>
-                  <span className="font-bold text-cyan-300 animate-fade-in block">{d.name}</span>
-                  <span className="text-cyan-100 text-sm animate-fade-in-delay">{d.company}</span>
-                </div>
-              </motion.div>
-            </Tilt>
+              <div className="flex flex-col items-center">
+                <img 
+                  src={d.avatar} 
+                  alt={`Foto de ${d.name}`} 
+                  loading="lazy"
+                  className="w-16 h-16 rounded-full mb-4 border-4 border-cyan-400 shadow-lg object-cover" 
+                  style={{ objectPosition: 'center top' }}
+                  onError={(e) => {
+                    e.target.onerror = null;
+                    e.target.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(d.name)}&background=00bcd4&color=fff&size=256`;
+                  }}
+                />
+                <p className="text-white/90 italic mb-4">"{d.text}"</p>
+              </div>
+              <div>
+                <span className="font-bold text-cyan-300 block">{d.name}</span>
+                <span className="text-cyan-100 text-sm">{d.company}</span>
+              </div>
+            </motion.div>
           ))}
         </motion.div>
       </section>
