@@ -54,7 +54,7 @@ exports.createUserApiKey = async (req, res) => {
     }
     
     // Verificar limitação de dias
-    const daysLimit = parseInt(expiresInDays) || 365;
+    const daysLimit = parseInt(expiresInDays, 10) || 365;
     if (daysLimit < 1 || daysLimit > 3650) {
       return res.status(400).json({
         success: false,

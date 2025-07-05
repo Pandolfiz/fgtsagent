@@ -77,14 +77,95 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc: ["'self'", "'unsafe-inline'", "'unsafe-eval'", 'cdn.jsdelivr.net', 'code.jquery.com'],
-      styleSrc: ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com'],
-      fontSrc: ["'self'", 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com'],
-      imgSrc: ["'self'", 'data:'],
-      connectSrc: ["'self'"]
+      scriptSrc: [
+        "'self'",
+        "'nonce-${res.locals.nonce}'", // Usar nonce para scripts inline
+        "cdn.jsdelivr.net",
+        "*.googleapis.com",
+        "*.supabase.co",
+        // Remover unsafe-inline e unsafe-eval
+      ],
+      styleSrc: [
+        "'self'",
+        "'nonce-${res.locals.nonce}'", // Usar nonce para estilos inline
+        "cdn.jsdelivr.net",
+        "fonts.googleapis.com",
+        "*.googleapis.com"
+      ],
+      fontSrc: [
+        "'self'",
+        "fonts.gstatic.com",
+        "cdn.jsdelivr.net",
+        "*.googleapis.com"
+      ],
+      imgSrc: [
+        "'self'",
+        "data:",
+        "blob:",
+        "*.supabase.co",
+        "ui-avatars.com",
+        "placehold.co",
+        "*.googleapis.com"
+      ],
+      connectSrc: [
+        "'self'",
+        "*.supabase.co",
+        "wss:",
+        "*.evolution-api.com",
+        "*.v8sistema.com",
+        "*.googleapis.com"
+      ],
+      mediaSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+      frameAncestors: ["'none'"], // Prevenir incorporação em iframes
+      upgradeInsecureRequests: [], // Forçar HTTPS em produção
     }
-  }
+  },
+  // Configurações adicionais de segurança
+  crossOriginEmbedderPolicy: false, // Permitir incorporação de recursos externos
+  crossOriginOpenerPolicy: { policy: "same-origin" },
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  dnsPrefetchControl: true,
+  frameguard: { action: 'deny' },
+  hidePoweredBy: true,
+  hsts: {
+    maxAge: 31536000, // 1 ano
+    includeSubDomains: true,
+    preload: true
+  },
+  ieNoOpen: true,
+  noSniff: true,
+  originAgentCluster: true,
+  permittedCrossDomainPolicies: false,
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
+  xssFilter: true
 }));
+
+// Middleware para gerar nonce para CSP
+app.use((req, res, next) => {
+  // Gerar nonce único para cada requisição
+  res.locals.nonce = require('crypto').randomBytes(16).toString('base64');
+  
+  // Atualizar CSP com o nonce gerado
+  res.setHeader('Content-Security-Policy',
+    `default-src 'self'; ` +
+    `script-src 'self' 'nonce-${res.locals.nonce}' cdn.jsdelivr.net *.googleapis.com *.supabase.co; ` +
+    `style-src 'self' 'nonce-${res.locals.nonce}' cdn.jsdelivr.net fonts.googleapis.com *.googleapis.com; ` +
+    `font-src 'self' fonts.gstatic.com cdn.jsdelivr.net *.googleapis.com; ` +
+    `img-src 'self' data: blob: *.supabase.co ui-avatars.com placehold.co *.googleapis.com; ` +
+    `connect-src 'self' *.supabase.co wss: *.evolution-api.com *.v8sistema.com *.googleapis.com; ` +
+    `media-src 'self'; ` +
+    `object-src 'none'; ` +
+    `base-uri 'self'; ` +
+    `form-action 'self'; ` +
+    `frame-ancestors 'none'; ` +
+    `upgrade-insecure-requests;`
+  );
+  
+  next();
+});
 
 // Configurar CORS para permitir requisições do frontend
 app.use(cors({
@@ -132,11 +213,10 @@ app.use(requestLogger);
 app.use(sanitizeInput);
 app.use(sanitizeRequest(['body', 'query', 'params']));
 
-// Servir arquivos estáticos - primeiro as assets do backend
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Servir arquivos estáticos do frontend (build)
-app.use(express.static(path.join(__dirname, '../frontend/dist')));
+// REMOVIDO: Backend não deve servir arquivos estáticos
+// Isso é responsabilidade do nginx
+// app.use(express.static(path.join(__dirname, 'public')));
+// app.use(express.static(path.join(__dirname, '../frontend/dist')));
 
 // Configurar engine de templates
 app.set('view engine', 'ejs');
@@ -153,13 +233,17 @@ app.use((req, res, next) => {
 });
 
 // Configurar middleware de sessão
+const { getSecureJwtSecret } = require('./utils/jwtSecurity');
 app.use(session({
-  secret: process.env.SESSION_SECRET || 'sua-chave-secreta-aqui',
+  secret: process.env.SESSION_SECRET || getSecureJwtSecret(),
   resave: false,
   saveUninitialized: false,
+  name: 'sessionId', // Nome customizado para o cookie de sessão (security by obscurity)
   cookie: {
     secure: process.env.NODE_ENV === 'production',
-    maxAge: 24 * 60 * 60 * 1000 // 24 horas
+    httpOnly: true, // Prevenir acesso via JavaScript
+    maxAge: 24 * 60 * 60 * 1000, // 24 horas
+    sameSite: 'lax' // Proteção CSRF
   }
 }));
 
@@ -221,51 +305,41 @@ app.get('/auth/google/callback', (req, res, next) => {
   return authRoutes(req, res, next);
 });
 
-// Rotas de callback OAuth que devem ser tratadas pelo frontend
-app.get(['/auth/callback', '/auth/callback/'], (req, res) => {
-  console.log('Redirecionando para App React: callback de autenticação', req.url);
-  
-  // Verificar se temos um código na URL
-  if (req.query.code) {
-    console.log('Código OAuth detectado:', req.query.code.substring(0, 10) + '...');
-  }
-  
-  // Servir o HTML principal do React para que o frontend possa processar o código
-  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
-});
+// REMOVIDO: Rotas de callback OAuth devem ser tratadas pelo nginx/frontend
+// app.get(['/auth/callback', '/auth/callback/'], (req, res) => {
+//   console.log('Redirecionando para App React: callback de autenticação', req.url);
+//   res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+// });
 
-// Rota genérica para qualquer outro padrão de callback OAuth
-app.get('*/callback*', (req, res, next) => {
-  // Verificar se é um callback específico do backend
-  if (req.path === '/auth/google/callback') {
-    return next();
-  }
-  
-  console.log('Detectado padrão de callback OAuth genérico:', req.path);
-  res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
-});
+// REMOVIDO: Callback OAuth genérico deve ser tratado pelo nginx/frontend  
+// app.get('*/callback*', (req, res, next) => {
+//   if (req.path === '/auth/google/callback') {
+//     return next();
+//   }
+//   console.log('Detectado padrão de callback OAuth genérico:', req.path);
+//   res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
+// });
 
-// Rota de fallback para SPA React (deve ser a última)
+// REMOVIDO: Backend não deve servir o frontend
+// Isso é responsabilidade do nginx
+// Rota 404 para qualquer coisa que não seja API
 app.get('*', (req, res) => {
-  // Verificar se o arquivo existe antes de tentar servir
-  const indexPath = path.join(__dirname, '../frontend/dist/index.html');
-  
-  // Se o arquivo não existir, retornar um fallback simples
-  if (!require('fs').existsSync(indexPath)) {
-    console.log('Arquivo index.html não encontrado, retornando fallback para:', req.path);
-    return res.status(200).json({
-      message: 'FgtsAgent API está rodando',
-      timestamp: new Date().toISOString(),
-      path: req.path,
-      note: 'Frontend build não encontrado - execute o build do frontend'
+  // Se for uma requisição de API
+  if (req.path.startsWith('/api/')) {
+    return res.status(404).json({
+      success: false,
+      message: 'Rota da API não encontrada'
     });
   }
   
-  // Log para depuração
-  console.log('Servindo App React para:', req.path);
-  
-  // Servir o HTML principal do React para qualquer outra rota
-  res.sendFile(indexPath);
+  // Para outras requisições, informar que nginx deve tratar
+  console.log('Requisição não-API recebida pelo backend:', req.path);
+  res.status(404).json({
+    message: 'Backend API - Esta rota deve ser tratada pelo nginx',
+    timestamp: new Date().toISOString(),
+    path: req.path,
+    note: 'Frontend deve ser servido pelo nginx, não pelo backend'
+  });
 });
 
 // Middleware para tratamento de erros

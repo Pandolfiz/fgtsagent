@@ -55,6 +55,28 @@
 
   <script>
     (function() {
+      // Array para controlar timeouts ativos
+      let activeTimeouts = [];
+
+      // Função para criar timeout controlado
+      function createControlledTimeout(callback, delay) {
+        const timeoutId = setTimeout(() => {
+          // Remover da lista quando executar
+          activeTimeouts = activeTimeouts.filter(id => id !== timeoutId);
+          callback();
+        }, delay);
+        
+        // Adicionar à lista de timeouts ativos
+        activeTimeouts.push(timeoutId);
+        return timeoutId;
+      }
+
+      // Função para limpar todos os timeouts
+      function clearAllTimeouts() {
+        activeTimeouts.forEach(id => clearTimeout(id));
+        activeTimeouts = [];
+      }
+
       // Função para atualizar o status na página
       function updateStatus(message) {
         document.getElementById('status').textContent = message;
@@ -84,6 +106,13 @@
 
       // Função para redirecionar para o app principal com o código
       function redirectToMainApp(code) {
+        // Sanitizar URL para prevenir open redirect
+        if (!code || typeof code !== 'string' || code.length < 10) {
+          console.error('Código inválido para redirecionamento');
+          showError('Código de autenticação inválido');
+          return;
+        }
+        
         window.location.href = `/auth/callback?code=${encodeURIComponent(code)}`;
       }
 
@@ -100,7 +129,7 @@
           // Verificar se há erro
           if (error) {
             showError(`Erro retornado pelo provedor de autenticação: ${error}`);
-            setTimeout(() => {
+            createControlledTimeout(() => {
               window.location.href = '/login?error=' + encodeURIComponent(error);
             }, 3000);
             return;
@@ -109,7 +138,7 @@
           // Verificar se existe um código
           if (!code) {
             showError('Código de autenticação não encontrado na URL');
-            setTimeout(() => {
+            createControlledTimeout(() => {
               window.location.href = '/login?error=' + encodeURIComponent('Código de autenticação ausente');
             }, 3000);
             return;
@@ -118,15 +147,18 @@
           // Redirecionar para o callback do app principal
           updateStatus('Código encontrado. Redirecionando...');
           console.log('Código OAuth recebido:', code.substring(0, 10) + '...');
-          setTimeout(() => redirectToMainApp(code), 500);
+          createControlledTimeout(() => redirectToMainApp(code), 500);
         } catch (err) {
           showError(`Erro inesperado: ${err.message}`);
           console.error('Erro ao processar autenticação:', err);
-          setTimeout(() => {
+          createControlledTimeout(() => {
             window.location.href = '/login?error=' + encodeURIComponent('Erro inesperado durante a autenticação');
           }, 3000);
         }
       }
+
+      // Limpar timeouts quando a página for descarregada
+      window.addEventListener('beforeunload', clearAllTimeouts);
 
       // Executar o handler quando a página carregar
       window.onload = handleOAuth;

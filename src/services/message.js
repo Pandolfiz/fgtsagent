@@ -872,8 +872,14 @@ class MessageService {
     let result = template;
     
     for (const [key, value] of Object.entries(variables)) {
-      const pattern = new RegExp(`{{\\s*${key}\\s*}}`, 'g');
-      result = result.replace(pattern, value);
+      // Sanitizar a chave para evitar regex injection
+      const safeKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const pattern = new RegExp(`{{\\s*${safeKey}\\s*}}`, 'g');
+      
+      // Converter valor para string e escapar caracteres especiais para substituição
+      const safeValue = String(value || '').replace(/\$/g, '$$$$');
+      
+      result = result.replace(pattern, safeValue);
     }
     
     return result;

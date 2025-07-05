@@ -35,7 +35,13 @@ router.get('/:id/qrcode', evolutionCredentialController.fetchQrCode);
 // Webhook para receber mensagens enviadas do n8n
 router.post('/webhook/receivedWhatsApp', requireAuth, async (req, res) => {
   try {
-    console.log('[Webhook] Mensagem recebida do n8n', req.body);
+    // Removido log de req.body para evitar vazamento de dados sensíveis
+  logger.info('[Webhook] Mensagem recebida do n8n', { 
+    type: req.body?.type,
+    instanceName: req.body?.instanceName,
+    event: req.body?.event,
+    timestamp: new Date().toISOString()
+  });
     logger.info(`[Webhook WhatsApp] Payload recebido: ${JSON.stringify(req.body)}`);
     
     const userId = req.user?.id || req.body?.userId;

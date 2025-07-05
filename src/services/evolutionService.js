@@ -124,7 +124,7 @@ class EvolutionService {
         integration: 'EVOLUTION',
         webhook:{
           enabled: true,
-          url: 'https://n8n-n8n.8cgx4t.easypanel.host/webhook/fgtsAgent',
+          url: process.env.N8N_WEBHOOK_URL || 'https://n8n-n8n.8cgx4t.easypanel.host/webhook/fgtsAgent',
           byEvents: false,
           events: ['MESSAGES_SET', 'MESSAGES_UPSERT', 'CONTACTS_UPDATE'],
           base64: true},

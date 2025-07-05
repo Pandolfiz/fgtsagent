@@ -5,10 +5,15 @@ const qs = require('querystring');
 const partnerCredentialsService = require('../services/partnerCredentialsService');
 const { supabaseAdmin } = require('../config/supabase');
 
-// Configurar interceptors do Axios para log completo de requests/responses
+// Configurar interceptors do Axios para log sem dados sensíveis
+const { sanitizeHeaders } = require('../utils/logSanitizer');
+
 axios.interceptors.request.use(
   config => {
-    logger.info(`[Axios Request] ${config.method.toUpperCase()} ${config.url}`, { headers: config.headers, data: config.data });
+    logger.info(`[Axios Request] ${config.method.toUpperCase()} ${config.url}`, { 
+      headers: sanitizeHeaders(config.headers), 
+      data: config.data 
+    });
     return config;
   },
   error => {
@@ -18,11 +23,19 @@ axios.interceptors.request.use(
 );
 axios.interceptors.response.use(
   response => {
-    logger.info(`[Axios Response] ${response.status} ${response.config.method.toUpperCase()} ${response.config.url}`, { data: response.data, headers: response.headers });
+    logger.info(`[Axios Response] ${response.status} ${response.config.method.toUpperCase()} ${response.config.url}`, { 
+      data: response.data, 
+      headers: sanitizeHeaders(response.headers) 
+    });
     return response;
   },
   error => {
-    logger.error('[Axios Response Error]', { status: error.response?.status, data: error.response?.data, headers: error.response?.headers, message: error.message });
+    logger.error('[Axios Response Error]', { 
+      status: error.response?.status, 
+      data: error.response?.data, 
+      headers: sanitizeHeaders(error.response?.headers), 
+      message: error.message 
+    });
     return Promise.reject(error);
   }
 );
@@ -50,11 +63,28 @@ async function getV8AccessToken(userId) {
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
         try {
+          // Validar dados antes de fazer parse
+          if (!data || typeof data !== 'string') {
+            return reject(new Error('Resposta inválida do servidor de autenticação'));
+          }
+          
           const parsed = JSON.parse(data);
-          if (parsed.access_token) return resolve(parsed.access_token);
-          return reject(new Error('Access token não retornado'));  
+          
+          // Validar estrutura da resposta
+          if (!parsed || typeof parsed !== 'object') {
+            return reject(new Error('Formato de resposta inválido do servidor de autenticação'));
+          }
+          
+          if (parsed.access_token) {
+            return resolve(parsed.access_token);
+          }
+          
+          // Se não tem access_token, verificar se há mensagem de erro
+          const errorMessage = parsed.error_description || parsed.error || 'Access token não retornado';
+          return reject(new Error(errorMessage));
         } catch (e) {
-          return reject(e);
+          logger.error('Erro ao fazer parse da resposta de autenticação:', e.message);
+          return reject(new Error('Erro ao processar resposta do servidor de autenticação'));
         }
       });
     }).on('error', reject);
@@ -65,19 +95,32 @@ async function getV8AccessToken(userId) {
 
 // Função para cancelar proposta na V8
 async function cancelProposalV8(proposalId, accessToken) {
-  const url = `https://bff.v8sistema.com/fgts/proposal/${proposalId}/cancel`;
+      const url = `${process.env.V8_SISTEMA_API_URL || 'https://bff.v8sistema.com'}/fgts/proposal/${proposalId}/cancel`;
   const payload = { reason: 'invalid_data:invalid_name' };
   const headers = {
     'Authorization': `Bearer ${accessToken}`,
     'Content-Type': 'application/json',
     'Accept': 'application/json'
   };
-  // Log request details
+  // Log request details (sem dados sensíveis)
   logger.info('[V8 Request] URL:', url);
-  logger.info('[V8 Request] Headers:', headers);
+  logger.info('[V8 Request] Headers:', { 
+    'Content-Type': headers['Content-Type'],
+    'Accept': headers['Accept'],
+    'Authorization': '[HIDDEN]'
+  });
   logger.info('[V8 Request] Payload:', payload);
-  // Log axios config completo
-  logger.info('[V8 Axios Config]', { method: 'patch', url, headers, data: payload });
+  // Log axios config completo (sem dados sensíveis)
+  logger.info('[V8 Axios Config]', { 
+    method: 'patch', 
+    url, 
+    headers: { 
+      'Content-Type': headers['Content-Type'],
+      'Accept': headers['Accept'],
+      'Authorization': '[HIDDEN]'
+    }, 
+    data: payload 
+  });
   try {
     const response = await axios.patch(url, payload, { headers });
     // Log success response
@@ -88,20 +131,20 @@ async function cancelProposalV8(proposalId, accessToken) {
     logger.error('[V8 Error] Message:', err.message);
     logger.error('[V8 Error] Name:', err.name);
     
-    // Informações da configuração da requisição (só dados básicos)
+    // Informações da configuração da requisição (só dados básicos, sem dados sensíveis)
     if (err.config) {
       logger.error('[V8 Error] Request config:', { 
         url: err.config.url,
         method: err.config.method,
         baseURL: err.config.baseURL,
-        headers: err.config.headers
+        headers: sanitizeHeaders(err.config.headers)
       });
     }
     
     // Informações da resposta, se disponível
     if (err.response) {
       logger.error('[V8 Error] Response status:', err.response.status);
-      logger.error('[V8 Error] Response headers:', err.response.headers);
+      logger.error('[V8 Error] Response headers:', sanitizeHeaders(err.response.headers));
       logger.error('[V8 Error] Response data:', err.response.data);
     }
     
@@ -140,7 +183,10 @@ exports.cancelProposal = async (req, res) => {
     }
     // 1. Obter token de acesso da V8
     const accessToken = await getV8AccessToken(req.user.id);
-    logger.info('[V8 DEBUG] accessToken:', accessToken);
+    logger.info('[V8 DEBUG] accessToken obtido com sucesso', { 
+      tokenLength: accessToken?.length,
+      tokenPrefix: accessToken?.substring(0, 10)
+    });
     // 2. Cancelar na V8 usando proposal_id
     await cancelProposalV8(proposal_id, accessToken);
     // 3. Atualizar localmente no Supabase
@@ -176,7 +222,10 @@ exports.deleteProposal = async (req, res) => {
     let v8CancelSuccess = false;
     try {
       const token = await getV8AccessToken(req.user.id);
-      logger.info('[V8 DEBUG] accessToken:', token);
+      logger.info('[V8 DEBUG] accessToken obtido com sucesso', { 
+        tokenLength: token?.length,
+        tokenPrefix: token?.substring(0, 10)
+      });
       logger.info('[V8 DEBUG] Chamando cancelProposalV8 com proposal_id:', proposal_id);
       await cancelProposalV8(proposal_id, token);
       logger.info(`Proposta ${proposal_id} cancelada no V8.`);

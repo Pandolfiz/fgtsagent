@@ -66,7 +66,9 @@ const extractToken = (req) => {
   // 3. Verificar no cookie header manual (caso não tenha sido parseado pelo cookie-parser)
   if (req.headers.cookie) {
     for (const name of cookieNames) {
-      const match = new RegExp(`${name}=([^;]+)`).exec(req.headers.cookie);
+      // Sanitizar o nome do cookie para evitar regex injection
+      const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const match = new RegExp(`${safeName}=([^;]+)`).exec(req.headers.cookie);
       if (match) {
         token = match[1];
         logger.info(`Token encontrado no cookie header para ${name}`);

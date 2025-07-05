@@ -116,30 +116,51 @@ exports.sendMessage = async (req, res) => {
     }
     const instanceName = cred.instance_name;
     logger.info(`Enviando para n8n: instância=${instanceName}, usuário=${senderId}`);
+    
     const n8nUrl = (process.env.N8N_API_URL || (config.n8n && config.n8n.apiUrl) || 'http://localhost:5678') + '/webhook/sendMessageEvolution';
-    const n8nRes = await fetch(n8nUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ 
-        to, 
-        message, 
-        instanceId, 
-        instanceName,
-        role,
-        userId: senderId
-      })
-    });
-    if (!n8nRes.ok) {
-      let errorMsg = `Erro ao enviar mensagem para o n8n (status: ${n8nRes.status})`;
-      let responseText = '';
-      try {
-        responseText = await n8nRes.text();
-        errorMsg += `\nResposta do n8n: ${responseText}`;
-        try { const errJson = JSON.parse(responseText); errorMsg = errJson.error || errorMsg; } catch {}
-      } catch {}
-      console.error('[n8n webhook erro]', errorMsg);
-      throw new AppError(errorMsg, 500);
+    
+    // Criar AbortController para timeout de 30 segundos
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    
+    try {
+      const n8nRes = await fetch(n8nUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({ 
+          to, 
+          message, 
+          instanceId, 
+          instanceName,
+          role,
+          userId: senderId
+        })
+      });
+      
+      clearTimeout(timeoutId);
+      
+      if (!n8nRes.ok) {
+        let errorMsg = `Erro ao enviar mensagem para o n8n (status: ${n8nRes.status})`;
+        let responseText = '';
+        try {
+          responseText = await n8nRes.text();
+          errorMsg += `\nResposta do n8n: ${responseText}`;
+          try { const errJson = JSON.parse(responseText); errorMsg = errJson.error || errorMsg; } catch {}
+        } catch {}
+        console.error('[n8n webhook erro]', errorMsg);
+        throw new AppError(errorMsg, 500);
+      }
+    } catch (error) {
+      clearTimeout(timeoutId);
+      
+      if (error.name === 'AbortError') {
+        throw new AppError('Timeout ao enviar mensagem para n8n (30s)', 500);
+      }
+      
+      throw error;
     }
+
     const saved = await chatService.handleOutgoing({
       to,
       content: message,

@@ -3,7 +3,8 @@
  */
 const { supabaseAdmin } = require('../config/supabase');
 const logger = require('../utils/logger');
-const fs = require('fs');
+const fs = require('fs').promises;
+const fsSync = require('fs');
 const path = require('path');
 
 /**
@@ -11,8 +12,12 @@ const path = require('path');
  */
 exports.getSystemHealth = async (req, res) => {
   try {
-    // Verificar conexão com Supabase
-    const { data, error } = await supabaseAdmin.from('organizations').select('count', { count: 'exact' });
+    // Verificar conexão com Supabase com timeout
+    const { data, error } = await withTimeout(
+      supabaseAdmin.from('organizations').select('count', { count: 'exact' }),
+      10000, // 10 segundos timeout para health check
+      'Health check - organizations count'
+    );
     
     if (error) {
       throw new Error(`Erro ao conectar com Supabase: ${error.message}`);
@@ -42,11 +47,11 @@ exports.fixDatabasePolicies = async (req, res) => {
     // Ler arquivo SQL com correções
     const sqlFilePath = path.join(__dirname, '..', 'sql', 'fix-org-members-policies.sql');
     
-    if (!fs.existsSync(sqlFilePath)) {
+    if (!fsSync.existsSync(sqlFilePath)) {
       throw new Error('Arquivo SQL de correção não encontrado');
     }
     
-    const sqlContent = fs.readFileSync(sqlFilePath, 'utf8');
+    const sqlContent = await fs.readFile(sqlFilePath, 'utf8');
     
     // Executar SQL via função RPC
     const { data, error } = await supabaseAdmin.rpc('exec_sql', { 
