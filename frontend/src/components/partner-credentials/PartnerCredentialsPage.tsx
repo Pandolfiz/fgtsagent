@@ -651,7 +651,7 @@ export function PartnerCredentialsPage() {
         }
         
         // Alt+1, Alt+2, etc para navegar entre páginas
-        const pageNum = parseInt(event.key);
+        const pageNum = parseInt(event.key, 10);
         if (!isNaN(pageNum) && pageNum > 0 && pageNum <= totalPages) {
           event.preventDefault();
           handlePageChange(pageNum);

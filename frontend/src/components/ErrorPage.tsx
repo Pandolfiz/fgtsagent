@@ -23,7 +23,7 @@ export const ErrorPage: React.FC<ErrorPageProps> = ({
   // Prioriza props passadas para o componente, depois query params
   const displayTitle = title || queryTitle || 'Erro';
   const displayMessage = message || queryMessage || 'Ocorreu um erro inesperado';
-  const displayStatusCode = statusCode || (queryStatusCode ? parseInt(queryStatusCode) : 500);
+  const displayStatusCode = statusCode || (queryStatusCode ? parseInt(queryStatusCode, 10) : 500);
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-100">

@@ -13,3 +13,48 @@
 2025-06-10 12:59:14 error: Erro ao tentar reiniciar instância: Request failed with status code 404
 2025-06-10 13:00:15 error: Erro ao tentar reiniciar instância: Request failed with status code 404
 2025-06-10 13:00:18 error: Erro ao tentar reiniciar instância: Request failed with status code 404
+2025-07-05 15:38:49 error: Erro ao executar SQL direto: supabaseAdmin.sql is not a function
+2025-07-05 15:38:49 error: Erro ao criar tabela via RPC: Invalid API key
+2025-07-05 15:38:49 error: Erro grave ao criar tabela: supabaseAdmin.sql is not a function
+2025-07-05 15:38:49 error: Não foi possível criar a tabela. Você precisa executar o script src/apply-utility-functions.js primeiro para instalar as funções utilitárias.
+2025-07-05 15:38:49 error: Erro ao verificar perfil: Invalid API key
+2025-07-05 15:38:49 error: Erro ao criar perfil: Invalid API key
+2025-07-05 15:38:49 error: Erro ao executar SQL direto: supabaseAdmin.sql is not a function
+2025-07-05 15:38:49 error: Erro ao criar tabela via RPC: Invalid API key
+2025-07-05 15:38:49 error: Erro grave ao criar tabela: supabaseAdmin.sql is not a function
+2025-07-05 15:38:49 error: Não foi possível criar a tabela. Você precisa executar o script src/apply-utility-functions.js primeiro para instalar as funções utilitárias.
+2025-07-05 15:42:14 error: Erro ao executar SQL direto: supabaseAdmin.sql is not a function
+2025-07-05 15:42:14 error: Erro ao criar tabela via RPC: Invalid API key
+2025-07-05 15:42:14 error: Erro grave ao criar tabela: supabaseAdmin.sql is not a function
+2025-07-05 15:42:14 error: Não foi possível criar a tabela. Você precisa executar o script src/apply-utility-functions.js primeiro para instalar as funções utilitárias.
+2025-07-05 15:42:14 error: Erro ao verificar perfil: Invalid API key
+2025-07-05 15:42:14 error: Erro ao criar perfil: Invalid API key
+2025-07-05 15:42:14 error: Erro ao executar SQL direto: supabaseAdmin.sql is not a function
+2025-07-05 15:42:14 error: Erro ao criar tabela via RPC: Invalid API key
+2025-07-05 15:42:14 error: Erro grave ao criar tabela: supabaseAdmin.sql is not a function
+2025-07-05 15:42:14 error: Não foi possível criar a tabela. Você precisa executar o script src/apply-utility-functions.js primeiro para instalar as funções utilitárias.
+2025-07-05 15:42:48 error: Erro ao executar SQL direto: supabaseAdmin.sql is not a function
+2025-07-05 15:42:48 error: Erro ao criar tabela via RPC: Invalid API key
+2025-07-05 15:42:48 error: Erro grave ao criar tabela: supabaseAdmin.sql is not a function
+2025-07-05 15:42:48 error: Não foi possível criar a tabela. Você precisa executar o script src/apply-utility-functions.js primeiro para instalar as funções utilitárias.
+2025-07-05 15:42:48 error: Erro ao verificar perfil: Invalid API key
+2025-07-05 15:42:48 error: Erro ao criar perfil: Invalid API key
+2025-07-05 15:42:48 error: Erro ao executar SQL direto: supabaseAdmin.sql is not a function
+2025-07-05 15:42:48 error: Erro ao criar tabela via RPC: Invalid API key
+2025-07-05 15:42:48 error: Erro grave ao criar tabela: supabaseAdmin.sql is not a function
+2025-07-05 15:42:48 error: Não foi possível criar a tabela. Você precisa executar o script src/apply-utility-functions.js primeiro para instalar as funções utilitárias.
+2025-07-05 15:52:28 error: Erro ao criar tabela via RPC: Invalid API key
+2025-07-05 15:52:28 error: Para resolver este problema, você precisa:
+2025-07-05 15:52:28 error: 1. Acessar o painel do Supabase (https://supabase.com/dashboard)
+2025-07-05 15:52:28 error: 2. Ir na seção 'SQL Editor'
+2025-07-05 15:52:28 error: 3. Executar o SQL de criação da tabela user_profiles manualmente
+2025-07-05 15:52:28 error: 4. Ou usar uma migração apropriada através do CLI do Supabase
+2025-07-05 15:52:28 error: Erro ao verificar perfil: Invalid API key
+2025-07-05 15:52:28 error: Erro ao criar perfil: Invalid API key
+2025-07-05 15:52:28 error: Erro ao criar tabela via RPC: Invalid API key
+2025-07-05 15:52:28 error: Para resolver este problema, você precisa:
+2025-07-05 15:52:28 error: 1. Acessar o painel do Supabase (https://supabase.com/dashboard)
+2025-07-05 15:52:28 error: 2. Ir na seção 'SQL Editor'
+2025-07-05 15:52:28 error: 3. Executar o SQL de criação da tabela user_profiles manualmente
+2025-07-05 15:52:28 error: 4. Ou usar uma migração apropriada através do CLI do Supabase
+2025-07-05 17:47:37 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function

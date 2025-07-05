@@ -6,37 +6,122 @@ const crypto = require('crypto');
  * Registra informações detalhadas sobre cada requisição de forma segura
  */
 
-// Cache para detectar ataques de força bruta
+// Cache para detectar ataques de força bruta com controle de memória
 const requestCache = new Map();
 const SUSPICIOUS_THRESHOLD = 50; // requisições por minuto
-const CACHE_CLEANUP_INTERVAL = 60000; // 1 minuto
+const CACHE_CLEANUP_INTERVAL = 30000; // 30 segundos
+const MAX_CACHE_SIZE = 10000; // Máximo 10k entradas no cache
+const CACHE_ENTRY_TTL = 300000; // 5 minutos TTL por entrada
 
-// Limpeza automática do cache
-setInterval(() => {
-  const now = Date.now();
-  for (const [key, data] of requestCache.entries()) {
-    if (now - data.lastSeen > CACHE_CLEANUP_INTERVAL) {
+// Limpeza automática do cache com controle de memória
+let cleanupInterval;
+const startCacheCleanup = () => {
+  cleanupInterval = setInterval(() => {
+    const now = Date.now();
+    const entriesToDelete = [];
+    
+    // Identificar entradas para remoção
+    for (const [key, data] of requestCache.entries()) {
+      if (now - data.lastSeen > CACHE_ENTRY_TTL) {
+        entriesToDelete.push(key);
+      }
+    }
+    
+    // Remover entradas expiradas
+    for (const key of entriesToDelete) {
       requestCache.delete(key);
     }
+    
+    // Se ainda há muitas entradas, remover as mais antigas
+    if (requestCache.size > MAX_CACHE_SIZE) {
+      const sortedEntries = Array.from(requestCache.entries())
+        .sort((a, b) => a[1].lastSeen - b[1].lastSeen);
+      
+      const toRemove = sortedEntries.slice(0, requestCache.size - MAX_CACHE_SIZE);
+      for (const [key] of toRemove) {
+        requestCache.delete(key);
+      }
+      
+      logger.warn('Cache de requisições atingiu limite máximo', {
+        maxSize: MAX_CACHE_SIZE,
+        currentSize: requestCache.size,
+        removedEntries: toRemove.length
+      });
+    }
+    
+    // Log de estatísticas do cache periodicamente
+    if (requestCache.size > 0) {
+      logger.debug('Estatísticas do cache de requisições', {
+        size: requestCache.size,
+        cleanedEntries: entriesToDelete.length,
+        memoryUsage: process.memoryUsage()
+      });
+    }
+  }, CACHE_CLEANUP_INTERVAL);
+};
+
+const stopCacheCleanup = () => {
+  if (cleanupInterval) {
+    clearInterval(cleanupInterval);
+    cleanupInterval = null;
   }
-}, CACHE_CLEANUP_INTERVAL);
+};
+
+// Limpeza completa do cache
+const clearCache = () => {
+  requestCache.clear();
+  logger.info('Cache de requisições limpo completamente');
+};
+
+// Iniciar limpeza automática
+startCacheCleanup();
+
+// Limpeza no shutdown da aplicação
+process.on('SIGINT', () => {
+  stopCacheCleanup();
+  clearCache();
+});
+
+process.on('SIGTERM', () => {
+  stopCacheCleanup();
+  clearCache();
+});
 
 /**
- * Detecta padrões suspeitos de requisições
+ * Detecta padrões suspeitos de requisições com controle de memória
  */
 function detectSuspiciousActivity(ip, userAgent, url) {
+  // Prevenir crescimento descontrolado do cache
+  if (requestCache.size >= MAX_CACHE_SIZE) {
+    logger.warn('Cache de requisições cheio, não rastreando nova atividade', {
+      ip,
+      currentCacheSize: requestCache.size
+    });
+    return false;
+  }
+  
   const key = `${ip}:${crypto.createHash('md5').update(userAgent || '').digest('hex')}`;
   const now = Date.now();
   
   if (!requestCache.has(key)) {
-    requestCache.set(key, { count: 1, firstSeen: now, lastSeen: now, urls: new Set([url]) });
+    requestCache.set(key, { 
+      count: 1, 
+      firstSeen: now, 
+      lastSeen: now, 
+      urls: new Set([url]),
+      createdAt: now
+    });
     return false;
   }
   
   const data = requestCache.get(key);
   data.count++;
   data.lastSeen = now;
-  data.urls.add(url);
+  
+  // Limitar o tamanho do conjunto de URLs para prevenir vazamentos
+  if (data.urls.size < 100) {
+    data.urls.add(url);
+  }
   
   // Se muitas requisições em pouco tempo
   const timeWindow = now - data.firstSeen;
@@ -48,7 +133,8 @@ function detectSuspiciousActivity(ip, userAgent, url) {
       userAgent: userAgent ? userAgent.substring(0, 100) + '...' : 'undefined',
       requestsPerMinute: Math.round(requestsPerMinute),
       urlsAccessed: data.urls.size,
-      timeWindow: Math.round(timeWindow / 1000) + 's'
+      timeWindow: Math.round(timeWindow / 1000) + 's',
+      totalRequests: data.count
     });
     return true;
   }
@@ -258,5 +344,6 @@ module.exports = {
   requestLogger,
   errorLogger,
   detectSuspiciousActivity,
-  sanitizeForLogging
+  sanitizeForLogging,
+  stopCacheCleanup
 }; 

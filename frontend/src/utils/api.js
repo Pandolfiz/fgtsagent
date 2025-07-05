@@ -5,28 +5,12 @@ const getApiBaseUrl = () => {
   // Em desenvolvimento (Vite dev server)
   if (import.meta.env.DEV) {
     // O proxy do Vite já cuida do redirecionamento /api -> http://localhost:3000
-    return '';
+    return '/api';
   }
   
-  // Em produção
-  const hostname = window.location.hostname;
-  
-  // Se estiver no mesmo domínio/servidor (produção)
-  if (hostname === 'fgtsagent.com.br' || 
-      hostname.includes('fgtsagent') ||
-      hostname === 'localhost' ||
-      hostname === '127.0.0.1' ||
-      // Para builds de produção testados localmente
-      hostname.includes('preview') ||
-      // Para deploy em subdomínios
-      hostname.includes('.vercel.app') ||
-      hostname.includes('.netlify.app') ||
-      hostname.includes('.herokuapp.com')) {
-    return ''; // API no mesmo servidor/domínio
-  }
-  
-  // Fallback para servidor de desenvolvimento/staging
-  return 'http://localhost:3000';
+  // Em produção - sempre usar /api como prefixo
+  // O nginx vai fazer o proxy para o backend
+  return '/api';
 };
 
 // Criar instância do axios com configuração

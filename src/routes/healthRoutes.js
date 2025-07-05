@@ -3,16 +3,17 @@ const router = express.Router();
 const logger = require('../utils/logger');
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
+const { withTimeout } = require('../utils/supabaseTimeout');
 
 // Cache dos últimos status de health check
 let lastHealthCheck = {
-  timestamp: null,
+  timestamp: new Date(),
   status: 'unknown',
-  details: {}
+  details: null
 };
 
 /**
- * Verifica conectividade com Supabase
+ * Verifica saúde do Supabase com timeout
  */
 async function checkSupabaseHealth() {
   try {
@@ -22,18 +23,24 @@ async function checkSupabaseHealth() {
     );
     
     const startTime = Date.now();
-    const { data, error } = await supabase
-      .from('user_profiles')
-      .select('count')
-      .limit(1);
+    
+    // Usar withTimeout para garantir que a operação não fique pendente indefinidamente
+    const result = await withTimeout(
+      supabase
+        .from('user_profiles')
+        .select('count')
+        .limit(1),
+      10000, // 10 segundos timeout para health check
+      'Health check Supabase'
+    );
     
     const responseTime = Date.now() - startTime;
     
-    if (error) {
+    if (result.error) {
       return {
         status: 'unhealthy',
         responseTime,
-        error: error.message
+        error: result.error.message
       };
     }
     
@@ -51,7 +58,7 @@ async function checkSupabaseHealth() {
 }
 
 /**
- * Verifica saúde dos serviços externos
+ * Verifica serviços externos
  */
 async function checkExternalServices() {
   const services = {};
@@ -59,10 +66,17 @@ async function checkExternalServices() {
   // Verificar Evolution API (se configurado)
   if (process.env.EVOLUTION_API_URL) {
     try {
+      // Criar AbortController para timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
       const response = await fetch(`${process.env.EVOLUTION_API_URL}/health`, {
         method: 'GET',
-        timeout: 5000
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
+      
       services.evolutionApi = {
         status: response.ok ? 'healthy' : 'unhealthy',
         url: process.env.EVOLUTION_API_URL
@@ -70,7 +84,7 @@ async function checkExternalServices() {
     } catch (error) {
       services.evolutionApi = {
         status: 'unhealthy',
-        error: error.message
+        error: error.name === 'AbortError' ? 'Timeout' : error.message
       };
     }
   }
@@ -78,10 +92,17 @@ async function checkExternalServices() {
   // Verificar N8N (se configurado)
   if (process.env.N8N_API_URL) {
     try {
+      // Criar AbortController para timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
       const response = await fetch(`${process.env.N8N_API_URL}/healthz`, {
         method: 'GET',
-        timeout: 5000
+        signal: controller.signal
       });
+      
+      clearTimeout(timeoutId);
+      
       services.n8n = {
         status: response.ok ? 'healthy' : 'unhealthy',
         url: process.env.N8N_API_URL
@@ -89,7 +110,7 @@ async function checkExternalServices() {
     } catch (error) {
       services.n8n = {
         status: 'unhealthy',
-        error: error.message
+        error: error.name === 'AbortError' ? 'Timeout' : error.message
       };
     }
   }
@@ -230,16 +251,21 @@ router.get('/health/detailed', async (req, res) => {
     }
     
   } catch (error) {
+    // Bug 47: Não expor stack traces em produção
+    const isProduction = process.env.NODE_ENV === 'production';
+    
     logger.error('Erro no health check detalhado', {
       error: error.message,
-      stack: error.stack
+      // Só incluir stack trace em desenvolvimento
+      ...(isProduction ? {} : { stack: error.stack })
     });
     
     res.status(500).json({
       status: 'unhealthy',
       timestamp: new Date().toISOString(),
       error: 'Health check failed',
-      message: error.message
+      // Só incluir detalhes do erro em desenvolvimento
+      ...(isProduction ? {} : { message: error.message })
     });
   }
 });

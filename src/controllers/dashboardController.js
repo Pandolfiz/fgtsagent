@@ -19,6 +19,32 @@ async function getDashboardStats(req, userId, period = 'daily') {
       return date;
     }
 
+    // Função auxiliar para validar e criar datas seguras
+    function createSafeDate(dateString, context = 'unknown') {
+      if (!dateString) {
+        logger.warn(`[DATE-WARNING] Data vazia encontrada no contexto: ${context}`);
+        return new Date(0);
+      }
+      const date = new Date(dateString);
+      if (isNaN(date.getTime())) {
+        logger.warn(`[DATE-WARNING] Data inválida encontrada: ${dateString} no contexto: ${context}`);
+        return new Date(0);
+      }
+      return date;
+    }
+
+    // Função auxiliar para comparar datas de forma segura
+    function safeCompareDate(dateStringA, dateStringB, context = 'unknown') {
+      try {
+        const dateA = createSafeDate(dateStringA, context + ' - A');
+        const dateB = createSafeDate(dateStringB, context + ' - B');
+        return dateA > dateB;
+      } catch (error) {
+        logger.error(`[DATE-COMPARE-ERROR] Erro ao comparar datas no contexto ${context}: ${error.message}`);
+        return false;
+      }
+    }
+
     // Definir limites de data consistentes para o período selecionado
     let periodStart, periodEnd;
 
@@ -144,8 +170,19 @@ async function getDashboardStats(req, userId, period = 'daily') {
 
     // Filtrar balanceData pelo período
     const filteredBalanceData = (balanceData || []).filter(b => {
-      // Sempre convertemos para objeto Date para compararmos
+      // Sempre convertemos para objeto Date para compararmos, com validação
+      if (!b.updated_at) {
+        logger.warn(`[BALANCE-WARNING] Registro de balance sem updated_at encontrado: ${b.id}`);
+        return false;
+      }
+      
       const balanceDate = new Date(b.updated_at);
+      
+      // Verificar se a data é válida
+      if (isNaN(balanceDate.getTime())) {
+        logger.warn(`[BALANCE-WARNING] Data inválida em balance: ${b.updated_at} (ID: ${b.id})`);
+        return false;
+      }
       
       // Log para depuração (apenas para algumas entradas para não sobrecarregar o log)
       if (balanceData && balanceData.length > 0 && balanceData.indexOf(b) < 3) {
@@ -175,8 +212,21 @@ async function getDashboardStats(req, userId, period = 'daily') {
     const latestBalanceByLead = {};
     (filteredBalanceData || []).forEach(b => {
       if (!b.lead_id) return;
-      if (!latestBalanceByLead[b.lead_id] || new Date(b.updated_at) > new Date(latestBalanceByLead[b.lead_id].updated_at)) {
+      
+      // Validar datas antes de comparar
+      const currentDate = new Date(b.updated_at);
+      if (isNaN(currentDate.getTime())) {
+        logger.warn(`[BALANCE-WARNING] Data inválida ao mapear balance mais recente: ${b.updated_at} (ID: ${b.id})`);
+        return;
+      }
+      
+      if (!latestBalanceByLead[b.lead_id]) {
         latestBalanceByLead[b.lead_id] = b;
+      } else {
+        const existingDate = new Date(latestBalanceByLead[b.lead_id].updated_at);
+        if (!isNaN(existingDate.getTime()) && currentDate > existingDate) {
+          latestBalanceByLead[b.lead_id] = b;
+        }
       }
     });
 
@@ -396,7 +446,7 @@ async function getDashboardStats(req, userId, period = 'daily') {
           const target = new Date(date.getTime());
           const dayNum = (date.getUTCDay() + 6) % 7; // Ajusta para que a semana comece na segunda-feira
           target.setUTCDate(target.getUTCDate() - dayNum + 3); // Ajusta para a quinta-feira da semana
-          const firstThursday = target.getUTCTime();
+          const firstThursday = target.getTime();
           target.setUTCMonth(0, 1); // Janeiro 1
           if (target.getUTCDay() !== 4) { // Quinta-feira
             target.setUTCMonth(0, 1 + ((4 - target.getUTCDay()) + 7) % 7);
@@ -557,15 +607,15 @@ async function getDashboardStats(req, userId, period = 'daily') {
           const hourEnd = createSaoPauloDate(periodStart.getUTCFullYear(), periodStart.getUTCMonth(), periodStart.getUTCDate(), h, 59, 59, 999);
           
           filteredBalanceData.forEach(b => {
-            const balanceDate = new Date(b.updated_at);
+            const balanceDate = createSafeDate(b.updated_at, 'chart-hourly');
             if (balanceDate >= hourStart && balanceDate <= hourEnd) {
               if (b.balance != null && b.balance !== '') {
-                if (!saldoPorLead[b.lead_id] || new Date(b.updated_at) > new Date(saldoPorLead[b.lead_id].updated_at)) {
+                if (!saldoPorLead[b.lead_id] || safeCompareDate(b.updated_at, saldoPorLead[b.lead_id].updated_at, 'chart-hourly-balance')) {
                   saldoPorLead[b.lead_id] = b;
                 }
               }
               if (b.simulation != null && b.simulation !== '') {
-                if (!simulacaoPorLead[b.lead_id] || new Date(b.updated_at) > new Date(simulacaoPorLead[b.lead_id].updated_at)) {
+                if (!simulacaoPorLead[b.lead_id] || safeCompareDate(b.updated_at, simulacaoPorLead[b.lead_id].updated_at, 'chart-hourly-simulation')) {
                   simulacaoPorLead[b.lead_id] = b;
                 }
               }
@@ -590,15 +640,15 @@ async function getDashboardStats(req, userId, period = 'daily') {
           const simulacaoPorLead = {};
           
           filteredBalanceData.forEach(b => {
-            const balanceDate = new Date(b.updated_at);
+            const balanceDate = createSafeDate(b.updated_at, 'chart-weekly');
             if (balanceDate >= dayStart && balanceDate <= dayEnd) {
               if (b.balance != null && b.balance !== '') {
-                if (!saldoPorLead[b.lead_id] || new Date(b.updated_at) > new Date(saldoPorLead[b.lead_id].updated_at)) {
+                if (!saldoPorLead[b.lead_id] || safeCompareDate(b.updated_at, saldoPorLead[b.lead_id].updated_at, 'chart-weekly-balance')) {
                   saldoPorLead[b.lead_id] = b;
                 }
               }
               if (b.simulation != null && b.simulation !== '') {
-                if (!simulacaoPorLead[b.lead_id] || new Date(b.updated_at) > new Date(simulacaoPorLead[b.lead_id].updated_at)) {
+                if (!simulacaoPorLead[b.lead_id] || safeCompareDate(b.updated_at, simulacaoPorLead[b.lead_id].updated_at, 'chart-weekly-simulation')) {
                   simulacaoPorLead[b.lead_id] = b;
                 }
               }
@@ -797,20 +847,37 @@ async function getDashboardStats(req, userId, period = 'daily') {
       leadsList = leadsWithBalance.map(l => {
         const bal = latestBalanceByLead[l.id];
         logger.info(`[DASHBOARD-DEBUG] Lead: ${l.name} (${l.cpf}) | Balance: ${bal && bal.balance} | Simulation: ${bal && bal.simulation}`);
+        
+        const safeDate = createSafeDate(bal && bal.updated_at, 'leadsList');
+        
         return {
           name: l.name || '-',
           cpf: l.cpf || '-',
           saldo: bal && bal.balance != null && bal.balance !== '' ? `R$ ${Number(bal.balance).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '',
           simulado: bal && bal.simulation != null && bal.simulation !== '' ? `R$ ${Number(bal.simulation).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '',
-          updated_at: bal && bal.updated_at ? new Date(bal.updated_at).toLocaleString('pt-BR') : '',
-          raw_date: bal && bal.updated_at ? new Date(bal.updated_at) : new Date(0), // Adicionando data não formatada para ordenação
+          updated_at: bal && bal.updated_at && !isNaN(safeDate.getTime()) ? safeDate.toLocaleString('pt-BR') : '',
+          raw_date: safeDate, // Data segura para ordenação
           erro: bal && bal.error_reason ? bal.error_reason : ''
         };
-      }).sort((a, b) => b.raw_date - a.raw_date) // Ordenando do mais recente para o mais antigo
-        .map(lead => {
-          // Remover o campo raw_date antes de enviar para o frontend
-          const { raw_date, ...leadWithoutRawDate } = lead;
-          return leadWithoutRawDate;
+      }).sort((a, b) => {
+        // Ordenação segura com validação de tipo
+        try {
+          const dateA = a.raw_date instanceof Date ? a.raw_date : new Date(0);
+          const dateB = b.raw_date instanceof Date ? b.raw_date : new Date(0);
+          
+          // Verificar se as datas são válidas antes de comparar
+          const timeA = isNaN(dateA.getTime()) ? 0 : dateA.getTime();
+          const timeB = isNaN(dateB.getTime()) ? 0 : dateB.getTime();
+          
+          return timeB - timeA; // Ordenando do mais recente para o mais antigo
+        } catch (error) {
+          logger.error(`[DASHBOARD-SORT-ERROR] Erro na ordenação: ${error.message}`);
+          return 0; // Manter ordem original em caso de erro
+        }
+      }).map(lead => {
+        // Remover o campo raw_date antes de enviar para o frontend
+        const { raw_date, ...leadWithoutRawDate } = lead;
+        return leadWithoutRawDate;
       });
     }
 

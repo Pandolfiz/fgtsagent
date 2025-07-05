@@ -41,12 +41,16 @@ services:
     build: 
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=http://localhost:${HTTP_PORT:-80}
+        - NODE_ENV=${NODE_ENV:-production}
     restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_healthy
+    volumes:
+      - frontend-dist:/usr/share/nginx/html
     networks:
       - app-network
+    depends_on:
+      - api
     deploy:
       resources:
         limits:
@@ -72,7 +76,7 @@ services:
       - ./data/certbot/conf:/etc/letsencrypt:ro
       - certbot-var:/var/lib/letsencrypt:ro
       - ./data/certbot/www:/var/www/certbot:ro
-      - ./frontend/dist:/usr/share/nginx/html:ro
+      - frontend-dist:/usr/share/nginx/html:ro
       - nginx-cache:/var/cache/nginx
     depends_on:
       api:
@@ -134,6 +138,8 @@ volumes:
   certbot-var:
     driver: local
   nginx-cache:
+    driver: local
+  frontend-dist:
     driver: local
 
 networks:

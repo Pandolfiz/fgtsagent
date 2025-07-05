@@ -16,6 +16,7 @@ const path = require('path');
 const { execFile } = require('child_process');
 const contactController = require('../controllers/contactController');
 const agentsController = require('../controllers/agentsController');
+const rateLimit = require('express-rate-limit');
 
 // Função para criar um controlador mock
 const createMockController = (name) => {
@@ -613,7 +614,7 @@ router.post('/auth/refresh-token', async (req, res) => {
               exp: Math.floor(expiryDate.getTime() / 1000),
               iat: Math.floor(Date.now() / 1000)
             },
-            process.env.JWT_SECRET || 'your-secret-key'
+            getSecureJwtSecret()
           );
           
           // Definir novo token no cookie
@@ -677,7 +678,7 @@ router.post('/auth/refresh-token', async (req, res) => {
               exp: Math.floor(expiryDate.getTime() / 1000),
               iat: Math.floor(Date.now() / 1000)
             },
-            process.env.JWT_SECRET || 'your-secret-key'
+            getSecureJwtSecret()
           );
           
           // Definir novo token no cookie
@@ -725,7 +726,7 @@ router.post('/auth/refresh-token', async (req, res) => {
           iat: Math.floor(Date.now() / 1000),
           temp: true
         },
-        process.env.JWT_SECRET || 'your-secret-key'
+        getSecureJwtSecret()
       );
       
       // Configurar o cookie com um tempo de vida muito curto
@@ -853,59 +854,196 @@ router.post('/agent/save-name', requireAuth, async (req, res) => {
   }
 });
 
-const upload = multer({ dest: 'uploads/' }); // pasta temporária para uploads
+// Configuração segura do multer com validação MIME
+const upload = multer({ 
+  dest: 'uploads/',
+  limits: {
+    fileSize: 50 * 1024 * 1024, // 50MB max
+    files: 10 // máximo 10 arquivos por upload
+  },
+  fileFilter: (req, file, cb) => {
+    // Lista de tipos MIME permitidos
+    const allowedMimeTypes = [
+      'text/plain',
+      'application/pdf',
+      'application/msword',
+      'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'application/vnd.ms-excel',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'text/csv',
+      'application/xml',
+      'text/xml',
+      'image/jpeg',
+      'image/jpg',
+      'image/png',
+      'image/gif',
+      'image/webp'
+    ];
+    
+    // Verificar extensão do arquivo também
+    const allowedExtensions = ['.txt', '.pdf', '.doc', '.docx', '.xls', '.xlsx', '.csv', '.xml', '.jpg', '.jpeg', '.png', '.gif', '.webp'];
+    const fileExtension = path.extname(file.originalname).toLowerCase();
+    
+    // Verificar MIME type e extensão
+    if (allowedMimeTypes.includes(file.mimetype) && allowedExtensions.includes(fileExtension)) {
+      // Verificar se o nome do arquivo não contém caracteres perigosos
+      const safeName = /^[a-zA-Z0-9._-]+$/.test(file.originalname);
+      if (!safeName) {
+        return cb(new Error('Nome de arquivo contém caracteres inválidos'), false);
+      }
+      return cb(null, true);
+    } else {
+      return cb(new Error(`Tipo de arquivo não permitido: ${file.mimetype} (${fileExtension})`), false);
+    }
+  }
+});
+
+// Rate limiting específico para uploads
+const uploadRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  max: 5, // máximo 5 uploads por IP a cada 15 minutos
+  message: {
+    success: false,
+    message: 'Muitos uploads. Tente novamente em 15 minutos.'
+  },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => {
+    // Usar tanto IP quanto user ID para o rate limit
+    return `upload_${req.ip}_${req.user?.id || 'anonymous'}`;
+  }
+});
 
 const N8N_API_URL = process.env.N8N_API_URL;
 
 function convertToMarkdownWithDocling(filePath) {
   return new Promise((resolve, reject) => {
-    execFile('python', ['scripts/docling_convert.py', filePath], { maxBuffer: 20 * 1024 * 1024 }, (error, stdout, stderr) => {
+    // Timeout para evitar travamento na conversão
+    const timeoutId = setTimeout(() => {
+      reject(new Error('Timeout na conversão do documento'));
+    }, 120000); // 2 minutos timeout
+    
+    execFile('python', ['scripts/docling_convert.py', filePath], { 
+      maxBuffer: 20 * 1024 * 1024,
+      timeout: 120000 // 2 minutos timeout também no execFile
+    }, (error, stdout, stderr) => {
+      clearTimeout(timeoutId);
       if (error) return reject(stderr || error);
       resolve(stdout);
     });
   });
 }
 
-router.post('/agent/upload-kb', requireAuth, upload.array('kbFiles'), async (req, res) => {
+// Função para limpeza segura de arquivos
+async function cleanupFile(filePath) {
+  try {
+    if (filePath && typeof filePath === 'string') {
+      await fs.promises.unlink(filePath);
+      logger.info(`Arquivo temporário removido: ${filePath}`);
+    }
+  } catch (err) {
+    logger.warn(`Erro ao remover arquivo temporário ${filePath}: ${err.message}`);
+  }
+}
+
+router.post('/agent/upload-kb', requireAuth, uploadRateLimit, upload.array('kbFiles'), async (req, res) => {
+  const uploadedFiles = [];
+  
   try {
     const files = req.files;
     const userId = req.user.id;
     const agentName = req.body.agentName;
-    console.log('[UPLOAD] Recebido:', files.map(f => f.originalname));
+    
+    // Validar se o agentName foi fornecido
+    if (!agentName || typeof agentName !== 'string' || agentName.trim().length === 0) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Nome do agente é obrigatório' 
+      });
+    }
+    
+    logger.info(`[UPLOAD] Upload iniciado por usuário ${userId}, ${files?.length || 0} arquivos`);
+    
     if (!files || files.length === 0) {
-      console.log('[UPLOAD] Nenhum arquivo enviado.');
+      logger.warn('[UPLOAD] Nenhum arquivo enviado.');
       return res.status(400).json({ success: false, message: 'Nenhum arquivo enviado.' });
     }
+    
+    // Armazenar caminhos dos arquivos para cleanup
+    uploadedFiles.push(...files.map(f => f.path));
+    
+    const processedFiles = [];
+    const errors = [];
+    
     for (const file of files) {
       let markdown = '';
+      
       try {
-        console.log(`[DOCILING] Iniciando conversão: ${file.path}`);
+        logger.info(`[DOCLING] Convertendo: ${file.originalname} (${file.mimetype})`);
         markdown = await convertToMarkdownWithDocling(file.path);
-        console.log(`[DOCILING] Markdown gerado (${file.originalname}):`, markdown.slice(0, 200));
+        logger.info(`[DOCLING] Conversão concluída: ${file.originalname}, ${markdown.length} caracteres`);
       } catch (err) {
-        console.error(`[DOCILING] Erro ao converter ${file.originalname}:`, err);
-        markdown = '';
+        logger.error(`[DOCLING] Erro ao converter ${file.originalname}:`, err.message);
+        errors.push(`Erro ao processar ${file.originalname}: ${err.message}`);
+        continue; // Pular este arquivo e continuar com os outros
       }
+      
       try {
-        console.log(`[N8N] Enviando para n8n: ${N8N_API_URL}/webhook/uploadKb`);
+        if (!N8N_API_URL) {
+          throw new Error('N8N_API_URL não configurado');
+        }
+        
+        logger.info(`[N8N] Enviando para n8n: ${file.originalname}`);
         await axios.post(`${N8N_API_URL}/webhook/uploadKb`, {
-          agentName,
+          agentName: agentName.trim(),
           userId,
           originalName: file.originalname,
           mimetype: file.mimetype,
           markdown
+        }, {
+          timeout: 30000, // 30 segundos timeout
+          headers: {
+            'Content-Type': 'application/json'
+          }
         });
-        console.log(`[N8N] Enviado com sucesso: ${file.originalname}`);
+        
+        logger.info(`[N8N] Enviado com sucesso: ${file.originalname}`);
+        processedFiles.push(file.originalname);
       } catch (err) {
-        console.error(`[N8N] Erro ao enviar para n8n (${file.originalname}):`, err);
+        logger.error(`[N8N] Erro ao enviar ${file.originalname} para n8n:`, err.message);
+        errors.push(`Erro ao enviar ${file.originalname} para processamento: ${err.message}`);
       }
-      fs.unlink(file.path, () => {});
     }
-    console.log('[UPLOAD] Todos os arquivos processados.');
-    res.json({ success: true, message: 'Documentos enviados e processados!' });
+    
+    // Resposta com informações detalhadas
+    const response = {
+      success: processedFiles.length > 0,
+      message: processedFiles.length > 0 
+        ? `${processedFiles.length} documento(s) processado(s) com sucesso`
+        : 'Nenhum documento foi processado com sucesso',
+      processedFiles,
+      errors: errors.length > 0 ? errors : undefined
+    };
+    
+    logger.info(`[UPLOAD] Processamento concluído: ${processedFiles.length} sucessos, ${errors.length} erros`);
+    
+    if (processedFiles.length === 0) {
+      return res.status(400).json(response);
+    }
+    
+    res.json(response);
   } catch (err) {
-    console.error('[UPLOAD] Erro geral:', err);
-    res.status(500).json({ success: false, message: 'Erro ao processar documentos.' });
+    logger.error('[UPLOAD] Erro geral:', err.message);
+    res.status(500).json({ 
+      success: false, 
+      message: 'Erro interno ao processar documentos.',
+      error: process.env.NODE_ENV === 'development' ? err.message : undefined
+    });
+  } finally {
+    // Cleanup de todos os arquivos temporários
+    for (const filePath of uploadedFiles) {
+      await cleanupFile(filePath);
+    }
   }
 });
 

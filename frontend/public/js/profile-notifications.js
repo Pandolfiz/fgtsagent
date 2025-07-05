@@ -118,13 +118,38 @@ function setupFormHandling(form) {
       },
       body: JSON.stringify(notificationSettings)
     })
-    .then(response => response.json())
+    .then(response => {
+      if (!response.ok) {
+        throw new Error(`Erro HTTP: ${response.status} - ${response.statusText}`);
+      }
+      return response.json();
+    })
     .then(data => {
-      showAlert(data.success, data.message);
+      if (data && typeof data.success !== 'undefined') {
+        showAlert(data.success, data.message || 'Configurações salvas com sucesso');
+      } else {
+        throw new Error('Resposta inválida do servidor');
+      }
     })
     .catch(error => {
       console.error('Erro ao salvar configurações de notificações:', error);
-      showAlert(false, 'Erro ao salvar configurações de notificações. Tente novamente mais tarde.');
+      
+      // Mensagem de erro mais específica baseada no tipo de erro
+      let errorMessage = 'Erro ao salvar configurações de notificações. Tente novamente mais tarde.';
+      
+      if (error.message.includes('HTTP: 401')) {
+        errorMessage = 'Sessão expirada. Faça login novamente.';
+      } else if (error.message.includes('HTTP: 403')) {
+        errorMessage = 'Você não tem permissão para realizar esta ação.';
+      } else if (error.message.includes('HTTP: 400')) {
+        errorMessage = 'Dados inválidos. Verifique as configurações e tente novamente.';
+      } else if (error.message.includes('HTTP: 500')) {
+        errorMessage = 'Erro interno do servidor. Tente novamente em alguns minutos.';
+      } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        errorMessage = 'Erro de conexão. Verifique sua internet e tente novamente.';
+      }
+      
+      showAlert(false, errorMessage);
     });
   });
 }

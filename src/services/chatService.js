@@ -17,7 +17,7 @@ async function handleWebhookEvent(body) {
   } else if (event === 'messages.set') {
     messagesList = Array.isArray(body.data) ? body.data : [body.data];
   } else {
-    console.warn(`Evento de webhook ignorado: ${event}`);
+          logger.warn(`Evento de webhook ignorado: ${event}`);
     return;
   }
   for (const msg of messagesList) {
@@ -45,7 +45,13 @@ async function handleWebhookEvent(body) {
       : new Date();
     const metadata = msg;
     const role = msg.role || (fromMe ? 'ME' : 'USER');
-    console.log(`Processando mensagem do webhook: fromMe=${fromMe}, content=${content.substring(0, 30)}..., role=${role}, sender_id=${sender_id}, recipient_id=${recipient_id}`);
+    logger.debug('Processando mensagem do webhook', { 
+      fromMe, 
+      contentPreview: content ? content.substring(0, 30) + '...' : null, 
+      role, 
+      hasSenderId: !!sender_id, 
+      hasRecipientId: !!recipient_id 
+    });
     const saved = await messageRepository.saveMessage({
       id,
       conversation_id,
@@ -78,7 +84,7 @@ async function handleOutgoing({ to, content, conversationId, senderId, instanceI
   if (error) throw error;
   const cred = creds && creds[0];
   // Logar credencial para debug
-  console.log('[DEBUG] Credencial carregada:', cred);
+      logger.debug('Credencial carregada', { credentialId: cred?.id, hasAccessToken: !!cred?.access_token });
   // NOVA VALIDAÇÃO: garantir que o Nome do Agente é válido
   if (!cred.instance_name || cred.instance_name === 'chat') {
     throw new AppError(`Nome do Agente inválido: '${cred.instance_name}'. Selecione uma instância válida nas credenciais Evolution.`, 400);

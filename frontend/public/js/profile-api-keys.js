@@ -291,7 +291,7 @@ document.addEventListener('DOMContentLoaded', function() {
         },
         body: JSON.stringify({
           name,
-          expiresInDays: parseInt(expiresInDays)
+          expiresInDays: parseInt(expiresInDays, 10)
         })
       });
       

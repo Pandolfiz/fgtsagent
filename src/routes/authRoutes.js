@@ -11,8 +11,8 @@ const authService = require('../services/auth');
 // Verificar se todas as funções necessárias existem no controller
 const ensureFunctionExists = (controller, fnName, defaultFn) => {
   if (typeof controller[fnName] !== 'function') {
-    console.log(`AVISO: Função ${fnName} não encontrada no controller de autenticação. Usando implementação padrão.`);
-    controller[fnName] = defaultFn;
+      logger.warn(`Função ${fnName} não encontrada no controller de autenticação. Usando implementação padrão.`);
+  controller[fnName] = defaultFn;
   }
 };
 
@@ -804,13 +804,13 @@ router.post('/exchange-code', async (req, res) => {
       });
     }
     
-    console.log('Recebendo solicitação para trocar código por sessão:', code.substring(0, 10) + '...');
+    logger.info('Recebendo solicitação para trocar código por sessão');
     
     // Trocar o código por sessão através do Supabase
     const { data, error } = await supabase.auth.exchangeCodeForSession(code);
     
     if (error) {
-      console.error('Erro ao trocar código por sessão:', error.message);
+      logger.error('Erro ao trocar código por sessão:', error.message);
       return res.status(400).json({
         success: false,
         message: 'Erro ao trocar código: ' + error.message
@@ -824,7 +824,7 @@ router.post('/exchange-code', async (req, res) => {
       });
     }
     
-    console.log('Código trocado por sessão com sucesso. Usuário:', data.user?.email);
+    logger.info('Código trocado por sessão com sucesso', { userEmail: data.user?.email });
     
     // Configurar cookie com token de autenticação
     res.cookie('supabase-auth-token', data.session.access_token, {
@@ -850,7 +850,7 @@ router.post('/exchange-code', async (req, res) => {
       }
     });
   } catch (err) {
-    console.error('Erro no endpoint exchange-code:', err);
+    logger.error('Erro no endpoint exchange-code:', err);
     return res.status(500).json({
       success: false,
       message: 'Erro interno do servidor: ' + err.message

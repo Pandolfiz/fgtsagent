@@ -2,23 +2,28 @@
 const { createClient } = require('@supabase/supabase-js');
 const config = require('./index');
 const logger = require('../utils/logger');
+const { withTimeout } = require('../utils/supabaseTimeout');
 
 // Obter credenciais da configuração centralizada
 const supabaseUrl = config.supabase.url;
 const supabaseKey = config.supabase.anonKey;
 const supabaseServiceKey = config.supabase.serviceKey;
 
-// Verificar se todas as credenciais necessárias estão disponíveis
-if (!supabaseUrl) {
-  logger.error('URL do Supabase não configurada. Verifique SUPABASE_URL ou SUPABASE_PROJECT_ID no arquivo .env');
+// Usar validador centralizado
+const { validateSupabaseEnvironment } = require('../utils/supabaseValidator');
+
+// Validar configuração do ambiente
+const validation = validateSupabaseEnvironment();
+
+if (!validation.isValid) {
+  logger.error('ERROS DE CONFIGURAÇÃO DO SUPABASE:');
+  validation.errors.forEach(error => logger.error(`- ${error}`));
+  logger.error('O sistema não funcionará corretamente até que estes problemas sejam resolvidos.');
 }
 
-if (!supabaseKey) {
-  logger.error('Chave anônima do Supabase não configurada. Verifique SUPABASE_ANON_KEY no arquivo .env');
-}
-
-if (!supabaseServiceKey) {
-  logger.error('Chave de serviço do Supabase não configurada. Verifique SUPABASE_SERVICE_KEY no arquivo .env');
+if (validation.warnings.length > 0) {
+  logger.warn('AVISOS DE CONFIGURAÇÃO DO SUPABASE:');
+  validation.warnings.forEach(warning => logger.warn(`- ${warning}`));
 }
 
 // Registrar a configuração do Supabase
@@ -50,28 +55,30 @@ const supabaseOptions = {
 };
 
 // Criar cliente Supabase
-let supabase;
-let supabaseAdmin;
+let supabase = null;
+let supabaseAdmin = null;
 
-try {
-  if (!supabaseUrl || !supabaseKey) {
-    throw new Error('Credenciais do Supabase incompletas');
+// Só criar clientes se as configurações estão válidas
+if (validation.isValid && supabaseUrl && supabaseKey) {
+  try {
+    supabase = createClient(supabaseUrl, supabaseKey, supabaseOptions);
+    logger.info('Cliente Supabase criado com sucesso');
+    
+    if (supabaseServiceKey) {
+      supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, supabaseOptions);
+      logger.info('Cliente Supabase Admin criado com sucesso');
+    } else {
+      logger.warn('Cliente Supabase Admin não criado devido à falta da chave de serviço');
+    }
+  } catch (error) {
+    logger.error(`Erro ao criar cliente Supabase: ${error.message}`);
+    // Não criar clientes vazios - deixar como null para indicar falha
+    supabase = null;
+    supabaseAdmin = null;
   }
-  
-  supabase = createClient(supabaseUrl, supabaseKey, supabaseOptions);
-  logger.info('Cliente Supabase criado com sucesso');
-  
-  if (supabaseServiceKey) {
-    supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, supabaseOptions);
-    logger.info('Cliente Supabase Admin criado com sucesso');
-  } else {
-    logger.warn('Cliente Supabase Admin não criado devido à falta da chave de serviço');
-  }
-} catch (error) {
-  logger.error(`Erro ao criar cliente Supabase: ${error.message}`);
-  // Criar clientes vazios para evitar erros de referência nula
-  supabase = { supabaseUrl: null, supabaseKey: null };
-  supabaseAdmin = { supabaseUrl: null, supabaseKey: null };
+} else {
+  logger.error('Clientes Supabase não criados devido a erros de configuração');
+  logger.error('Corrija as configurações acima antes de reiniciar o servidor');
 }
 
 // Função para verificar a conexão com o Supabase
@@ -81,9 +88,13 @@ const checkSupabaseConnection = async () => {
       throw new Error('Credenciais do Supabase não configuradas corretamente');
     }
     
-    // Teste simples de conexão
+    // Teste simples de conexão com timeout
     logger.info('Testando conexão com o Supabase...');
-    const { data, error } = await supabase.from('whatsapp_credentials').select('count').limit(1);
+    const { data, error } = await withTimeout(
+      supabase.from('whatsapp_credentials').select('count').limit(1),
+      10000, // 10 segundos timeout para conexão inicial
+      'Supabase connection test'
+    );
     
     if (error) {
       throw new Error(error.message);

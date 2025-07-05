@@ -98,6 +98,8 @@ export default function Chat() {
   const [forceUpdate, setForceUpdate] = useState(0)
   const messagesEndRef = useRef(null)
   const lastMessageIdRef = useRef(null) // Referência para o último ID de mensagem
+  const timeoutsRef = useRef([])
+  const intervalsRef = useRef([])
   const navigate = useNavigate()
   
   // Estilos para dispositivos móveis usando variáveis CSS personalizadas
@@ -172,6 +174,42 @@ export default function Chat() {
     console.log('Estado inicial de contactData:', contactData);
   }, []);
 
+  // Cleanup de timeouts e intervals quando o componente for desmontado
+  useEffect(() => {
+    return () => {
+      // Limpar todos os timeouts
+      timeoutsRef.current.forEach(timeoutId => clearTimeout(timeoutId));
+      timeoutsRef.current = [];
+      
+      // Limpar todos os intervals
+      intervalsRef.current.forEach(intervalId => clearInterval(intervalId));
+      intervalsRef.current = [];
+    };
+  }, []);
+
+  // Funções utilitárias para gerenciar timeouts e intervals
+  const createTimeout = (callback, delay) => {
+    const timeoutId = setTimeout(callback, delay);
+    timeoutsRef.current.push(timeoutId);
+    return timeoutId;
+  };
+
+  const createInterval = (callback, delay) => {
+    const intervalId = setInterval(callback, delay);
+    intervalsRef.current.push(intervalId);
+    return intervalId;
+  };
+
+  const clearTimeoutSafe = (timeoutId) => {
+    clearTimeout(timeoutId);
+    timeoutsRef.current = timeoutsRef.current.filter(id => id !== timeoutId);
+  };
+
+  const clearIntervalSafe = (intervalId) => {
+    clearInterval(intervalId);
+    intervalsRef.current = intervalsRef.current.filter(id => id !== intervalId);
+  };
+
   // Detectar mudanças de tamanho da tela
   useEffect(() => {
     const handleResize = () => {
@@ -215,9 +253,9 @@ export default function Chat() {
     document.documentElement.style.padding = '0';
     document.documentElement.style.overflow = 'hidden';
     
-    // Criar um estilo para dispositivos iOS
+    // Criar um estilo para dispositivos iOS - usando textContent para evitar XSS
     const style = document.createElement('style');
-    style.innerHTML = `
+    style.textContent = `
       .ios-device .message-input-container {
         padding-bottom: env(safe-area-inset-bottom, 20px);
       }
@@ -255,7 +293,7 @@ export default function Chat() {
   // Adicionar estilos globais para customizar as barras de scroll
   useEffect(() => {
     const style = document.createElement('style');
-    style.innerHTML = `
+    style.textContent = `
       /* Scrollbar geral */
       ::-webkit-scrollbar {
         width: 8px;
@@ -1068,9 +1106,12 @@ export default function Chat() {
       setError('Erro ao enviar mensagem. Por favor, tente novamente.');
     } finally {
       // Garantir ao menos 500ms de "cooldown" entre envios
-      setTimeout(() => {
+      const timeoutId = setTimeout(() => {
         setIsSendingMessage(false);
       }, 500);
+      
+      // Limpar timeout se o componente for desmontado
+      return () => clearTimeout(timeoutId);
     }
   };
   

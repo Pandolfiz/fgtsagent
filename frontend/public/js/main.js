@@ -2,6 +2,23 @@
  * JavaScript principal do Sistema de Gerenciamento de Agentes IA
  */
 
+// Objeto global para armazenar intervalos ativos
+window.activeIntervals = {
+    tokenRefresh: null,
+    sessionCheck: null,
+    tokenRefreshInterval: null
+};
+
+// Função para limpar todos os intervalos
+function clearAllIntervals() {
+    Object.keys(window.activeIntervals).forEach(key => {
+        if (window.activeIntervals[key]) {
+            clearInterval(window.activeIntervals[key]);
+            window.activeIntervals[key] = null;
+        }
+    });
+}
+
 // Esperar o documento estar totalmente carregado
 document.addEventListener('DOMContentLoaded', function() {
     initializeToastify();
@@ -322,10 +339,15 @@ function setupTokenRefresh() {
             showWarningToast('Você está usando um token temporário. Por favor, faça login novamente em breve para evitar perda de dados.');
             
             // Renovar a cada minuto para tokens temporários
-            const refreshInterval = setInterval(() => {
+            if (window.activeIntervals.tokenRefresh) {
+                clearInterval(window.activeIntervals.tokenRefresh);
+            }
+            
+            window.activeIntervals.tokenRefresh = setInterval(() => {
                 refreshToken().catch(err => {
                     console.error('Falha ao renovar token temporário:', err);
-                    clearInterval(refreshInterval);
+                    clearInterval(window.activeIntervals.tokenRefresh);
+                    window.activeIntervals.tokenRefresh = null;
                     if (!isPublicPath(window.location.pathname)) {
                         redirectToLogin('Sessão expirada. Por favor, faça login novamente.', true);
                     }
@@ -406,7 +428,11 @@ function setupTokenRefresh() {
         setTimeout(checkSessionStatus, 5 * 60 * 1000);
         
         // Verificações subsequentes a cada 5 minutos
-        setInterval(checkSessionStatus, 5 * 60 * 1000);
+        if (window.activeIntervals.sessionCheck) {
+            clearInterval(window.activeIntervals.sessionCheck);
+        }
+        
+        window.activeIntervals.sessionCheck = setInterval(checkSessionStatus, 5 * 60 * 1000);
     } catch (error) {
         console.error('Erro ao configurar renovação do token:', error);
     }
@@ -781,7 +807,11 @@ function setupTokenRefreshInterval() {
   const REFRESH_INTERVAL = 300000; // 5 minutos
   
   // Iniciar o intervalo
-  const intervalId = setInterval(async () => {
+  if (window.activeIntervals.tokenRefreshInterval) {
+    clearInterval(window.activeIntervals.tokenRefreshInterval);
+  }
+  
+  window.activeIntervals.tokenRefreshInterval = setInterval(async () => {
     console.log('Verificação periódica do token...');
     try {
       const result = await refreshToken();
@@ -793,7 +823,8 @@ function setupTokenRefreshInterval() {
         const token = getAuthToken();
         if (!token) {
           console.warn('Token não encontrado após tentativa de renovação, redirecionando...');
-          clearInterval(intervalId);
+          clearInterval(window.activeIntervals.tokenRefreshInterval);
+          window.activeIntervals.tokenRefreshInterval = null;
           window.location.href = `/auth/login?redirect=${encodeURIComponent(window.location.pathname)}&message=Sua sessão expirou. Faça login novamente.`;
         }
       }
@@ -1016,3 +1047,21 @@ async function fetchWithRetry(url, options = {}, retries = 1) {
     return fetchWithRetry(url, options, retries - 1);
   }
 } 
+
+// Cleanup ao sair da página
+window.addEventListener('beforeunload', () => {
+    console.log('Página sendo fechada...');
+    clearAllIntervals();
+});
+
+// Cleanup adicional para visibilidade da página
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') {
+        console.log('Página perdeu o foco - limpando intervalos desnecessários');
+        // Manter apenas o intervalo de verificação de sessão para não perder a autenticação
+        if (window.activeIntervals.tokenRefresh) {
+            clearInterval(window.activeIntervals.tokenRefresh);
+            window.activeIntervals.tokenRefresh = null;
+        }
+    }
+});

@@ -41,6 +41,9 @@ const commonSchemas = {
     Joi.number().integer().positive()
   ).required(),
 
+  // Validação específica de UUID
+  uuid: Joi.string().uuid({ version: ['uuidv4'] }),
+
   // Validação de email
   email: Joi.string()
     .email({ tlds: { allow: false } })
@@ -369,11 +372,250 @@ function validateRateLimit(maxRequests = 100, windowMs = 15 * 60 * 1000) {
   };
 }
 
+/**
+ * Middleware para validar parâmetros de URL (req.params)
+ */
+function validateParams(schema) {
+  return (req, res, next) => {
+    // Primeiro, sanitizar os parâmetros
+    const sanitizedParams = {};
+    for (const [key, value] of Object.entries(req.params || {})) {
+      if (typeof value === 'string') {
+        // Sanitizar XSS e normalizar
+        sanitizedParams[key] = xss(value.trim(), xssOptions);
+      } else {
+        sanitizedParams[key] = value;
+      }
+    }
+    
+    const { error, value } = schema.validate(sanitizedParams, {
+      abortEarly: false,
+      stripUnknown: true,
+      allowUnknown: false
+    });
+
+    if (error) {
+      const errors = error.details.map(detail => ({
+        field: detail.path.join('.'),
+        message: detail.message,
+        value: detail.context?.value
+      }));
+
+      logger.warn('Erro de validação de parâmetros', {
+        requestId: req.requestId,
+        url: req.url,
+        method: req.method,
+        errors,
+        ip: req.ip,
+        userAgent: req.get('User-Agent')
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: 'Parâmetros da URL inválidos',
+        errors
+      });
+    }
+
+    // Substituir parâmetros originais pelos validados e sanitizados
+    req.params = value;
+    next();
+  };
+}
+
+/**
+ * Middleware para validar query parameters
+ */
+function validateQuery(schema) {
+  return (req, res, next) => {
+    // Primeiro, sanitizar os query parameters
+    const sanitizedQuery = {};
+    for (const [key, value] of Object.entries(req.query || {})) {
+      if (typeof value === 'string') {
+        // Sanitizar XSS e normalizar
+        sanitizedQuery[key] = xss(value.trim(), xssOptions);
+      } else if (Array.isArray(value)) {
+        // Sanitizar arrays de strings
+        sanitizedQuery[key] = value.map(v => 
+          typeof v === 'string' ? xss(v.trim(), xssOptions) : v
+        );
+      } else {
+        sanitizedQuery[key] = value;
+      }
+    }
+    
+    const { error, value } = schema.validate(sanitizedQuery, {
+      abortEarly: false,
+      stripUnknown: true,
+      allowUnknown: false
+    });
+
+    if (error) {
+      const errors = error.details.map(detail => ({
+        field: detail.path.join('.'),
+        message: detail.message,
+        value: detail.context?.value
+      }));
+
+      logger.warn('Erro de validação de query parameters', {
+        requestId: req.requestId,
+        url: req.url,
+        method: req.method,
+        errors,
+        ip: req.ip,
+        userAgent: req.get('User-Agent')
+      });
+
+      return res.status(400).json({
+        success: false,
+        message: 'Parâmetros de consulta inválidos',
+        errors
+      });
+    }
+
+    // Substituir query originais pelos validados e sanitizados
+    req.query = value;
+    next();
+  };
+}
+
+/**
+ * Schemas de validação para parâmetros comuns
+ */
+const paramSchemas = {
+  // ID numérico obrigatório
+  id: Joi.object({
+    id: commonSchemas.id.required()
+  }),
+  
+  // UUID obrigatório
+  uuid: Joi.object({
+    id: commonSchemas.uuid.required()
+  }),
+  
+  // Remote JID para WhatsApp
+  remoteJid: Joi.object({
+    remoteJid: Joi.string()
+      .pattern(/^[0-9]+@[a-z\.]+$/)
+      .min(10)
+      .max(50)
+      .required()
+      .messages({
+        'string.pattern.base': 'Remote JID deve ter formato válido (número@domínio)'
+      })
+  }),
+  
+  // Slug alfanumérico
+  slug: Joi.object({
+    slug: Joi.string()
+      .alphanum()
+      .min(1)
+      .max(100)
+      .required()
+  }),
+  
+  // Nome de arquivo seguro
+  filename: Joi.object({
+    filename: Joi.string()
+      .pattern(/^[a-zA-Z0-9._-]+$/)
+      .min(1)
+      .max(255)
+      .required()
+      .messages({
+        'string.pattern.base': 'Nome de arquivo contém caracteres inválidos'
+      })
+  }),
+  
+  // Data no formato YYYY-MM-DD
+  date: Joi.object({
+    date: Joi.string()
+      .pattern(/^\d{4}-\d{2}-\d{2}$/)
+      .required()
+      .messages({
+        'string.pattern.base': 'Data deve estar no formato YYYY-MM-DD'
+      })
+  })
+};
+
+/**
+ * Schemas de validação para query parameters comuns
+ */
+const querySchemas = {
+  // Paginação básica
+  pagination: Joi.object({
+    page: Joi.number().integer().min(1).max(10000).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(10),
+    sortBy: Joi.string().alphanum().max(50).optional(),
+    sortOrder: Joi.string().valid('asc', 'desc').default('asc')
+  }),
+  
+  // Busca com filtros
+  search: Joi.object({
+    q: Joi.string().max(500).optional(),
+    status: Joi.string().valid('active', 'inactive', 'pending', 'completed').optional(),
+    category: Joi.string().alphanum().max(50).optional(),
+    startDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    endDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    tags: Joi.array().items(Joi.string().alphanum().max(50)).max(10).optional()
+  }),
+  
+  // Filtros de dashboard
+  dashboard: Joi.object({
+    period: Joi.string().valid('today', 'week', 'month', 'quarter', 'year', 'custom').default('month'),
+    startDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    endDate: Joi.string().pattern(/^\d{4}-\d{2}-\d{2}$/).optional(),
+    groupBy: Joi.string().valid('day', 'week', 'month').optional(),
+    metrics: Joi.array().items(Joi.string().alphanum().max(50)).max(10).optional()
+  }),
+  
+  // Redirect URL (para OAuth e autenticação)
+  redirect: Joi.object({
+    redirect: Joi.string()
+      .uri({ allowRelative: true })
+      .max(2048)
+      .optional()
+      .custom((value, helpers) => {
+        // Validar se não é um open redirect perigoso
+        if (value) {
+          // Verificar se é URL relativa ou do mesmo domínio
+          try {
+            const url = new URL(value, 'https://example.com');
+            const allowedDomains = [
+              'localhost',
+              '127.0.0.1',
+              'fgtsagent.com.br',
+              'www.fgtsagent.com.br',
+              process.env.FRONTEND_URL ? new URL(process.env.FRONTEND_URL).hostname : null
+            ].filter(Boolean);
+            
+            const isRelative = value.startsWith('/') && !value.startsWith('//');
+            const isDomainAllowed = allowedDomains.includes(url.hostname);
+            
+            if (!isRelative && !isDomainAllowed) {
+              return helpers.error('custom.invalidDomain');
+            }
+          } catch (err) {
+            return helpers.error('custom.invalidUrl');
+          }
+        }
+        return value;
+      })
+      .messages({
+        'custom.invalidDomain': 'URL de redirecionamento não permitida',
+        'custom.invalidUrl': 'URL de redirecionamento inválida'
+      })
+  })
+};
+
 module.exports = {
   validate,
   schemas,
   commonSchemas,
   sanitizeInput,
   validateRateLimit,
-  isValidCPF
+  isValidCPF,
+  validateParams,
+  validateQuery,
+  paramSchemas,
+  querySchemas
 }; 

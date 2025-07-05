@@ -89,8 +89,8 @@ export default function Login() {
         localStorage.setItem('authToken', supabaseData.session.access_token);
         
         // Definir o token em cookies para que o backend tenha acesso
-        document.cookie = `supabase-auth-token=${supabaseData.session.access_token}; path=/; max-age=86400; SameSite=Lax`;
-        document.cookie = `js-auth-token=${supabaseData.session.access_token}; path=/; max-age=86400; SameSite=Lax`;
+                  document.cookie = `supabase-auth-token=${supabaseData.session.access_token}; path=/; max-age=86400; SameSite=Strict; Secure`;
+          document.cookie = `js-auth-token=${supabaseData.session.access_token}; path=/; max-age=86400; SameSite=Strict; Secure`;
         
         // Verificar se a sessão está funcionando fazendo uma requisição de teste
         try {
@@ -151,8 +151,8 @@ export default function Login() {
       // Se o login via API foi bem-sucedido, armazenar o token retornado
       if (data.data?.token) {
         localStorage.setItem('authToken', data.data.token);
-        document.cookie = `supabase-auth-token=${data.data.token}; path=/; max-age=86400; SameSite=Lax`;
-        document.cookie = `js-auth-token=${data.data.token}; path=/; max-age=86400; SameSite=Lax`;
+                  document.cookie = `supabase-auth-token=${data.data.token}; path=/; max-age=86400; SameSite=Strict; Secure`;
+          document.cookie = `js-auth-token=${data.data.token}; path=/; max-age=86400; SameSite=Strict; Secure`;
       }
       
       setSuccess('Login bem-sucedido! Redirecionando...');

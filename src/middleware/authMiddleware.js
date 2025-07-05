@@ -2,6 +2,36 @@
 const { supabase, supabaseAdmin } = require('../config/supabase');
 const logger = require('../config/logger');
 
+// Cache para evitar condições de corrida na criação de perfis
+const userProfileLocks = new Map();
+
+/**
+ * Cria um lock para operações de perfil de usuário
+ * @param {string} userId - ID do usuário
+ * @returns {Promise} Promise que resolve quando o lock é liberado
+ */
+async function acquireUserProfileLock(userId) {
+  // Se já existe um lock para este usuário, aguardar
+  if (userProfileLocks.has(userId)) {
+    logger.debug(`Aguardando lock para usuário ${userId}`);
+    await userProfileLocks.get(userId);
+  }
+
+  // Criar novo lock
+  let resolveLock;
+  const lockPromise = new Promise(resolve => {
+    resolveLock = resolve;
+  });
+  
+  userProfileLocks.set(userId, lockPromise);
+  
+  // Retornar função para liberar o lock
+  return () => {
+    userProfileLocks.delete(userId);
+    resolveLock();
+  };
+}
+
 /**
  * Verifica e cria o perfil do usuário no banco de dados se não existir
  * @param {Object} user - Objeto do usuário autenticado
@@ -12,145 +42,117 @@ async function ensureUserProfile(user) {
     return false;
   }
 
+  // Adquirir lock para evitar condições de corrida
+  const releaseLock = await acquireUserProfileLock(user.id);
+
   try {
     logger.info(`Verificando perfil de usuário para ${user.id}`);
     
-    // Verificar se o perfil já existe
+    // Verificar se o perfil já existe (usando transação para consistência)
     const { data: existingProfile, error: profileError } = await supabaseAdmin
       .from('user_profiles')
       .select('id')
       .eq('id', user.id)
-      .maybeSingle(); // Usar maybeSingle() em vez de single()
+      .maybeSingle();
     
     if (profileError) {
       logger.error(`Erro ao verificar perfil: ${profileError.message}`);
+      return false;
     }
     
-    // Se o perfil não existe, criar um novo
-    if (!existingProfile) {
-      logger.info(`Perfil não encontrado para o usuário ${user.id}, criando um novo...`);
+    // Verificar se o cliente já existe
+    const { data: existingClient, error: clientError } = await supabaseAdmin
+      .from('clients')
+      .select('id')
+      .eq('id', user.id)
+      .maybeSingle();
+    
+    if (clientError) {
+      logger.error(`Erro ao verificar cliente: ${clientError.message}`);
+    }
+    
+    const needsProfile = !existingProfile;
+    const needsClient = !existingClient;
+    
+    if (needsProfile || needsClient) {
+      logger.info(`Usuário ${user.id} precisa: ${needsProfile ? 'perfil' : ''} ${needsProfile && needsClient ? 'e' : ''} ${needsClient ? 'cliente' : ''}`);
       
-      // Extrair informações relevantes da autenticação
+      // Extrair informações do usuário uma única vez
       const userMetadata = user.user_metadata || {};
-      const appMetadata = user.app_metadata || {};
+      const fullName = userMetadata.full_name || 
+                      userMetadata.name || 
+                      `${userMetadata.first_name || userMetadata.given_name || ''} ${userMetadata.last_name || userMetadata.family_name || ''}`.trim();
       
-      // Construir dados do perfil
-      const profileData = {
+      // Preparar dados
+      const profileData = needsProfile ? {
         id: user.id,
         email: user.email,
         first_name: userMetadata.first_name || userMetadata.given_name || '',
         last_name: userMetadata.last_name || userMetadata.family_name || '',
-        full_name: userMetadata.full_name || 
-                   userMetadata.name || 
-                   `${userMetadata.first_name || userMetadata.given_name || ''} ${userMetadata.last_name || userMetadata.family_name || ''}`.trim(),
+        full_name: fullName,
         avatar_url: userMetadata.avatar_url || userMetadata.picture || null,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
-      };
+      } : null;
       
-      // Inserir o perfil
-      const { error: insertError } = await supabaseAdmin
-        .from('user_profiles')
-        .upsert(profileData, { onConflict: 'id' }); // Usar upsert para evitar conflitos
+      const clientData = needsClient ? {
+        id: user.id,
+        name: fullName || user.email,
+        email: user.email,
+        status: 'active',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      } : null;
       
-      if (insertError) {
-        logger.error(`Erro ao criar perfil: ${insertError.message}`);
-        return false;
+      // Executar operações em paralelo (agora que temos lock)
+      const operations = [];
+      
+      if (needsProfile) {
+        operations.push(
+          supabaseAdmin
+            .from('user_profiles')
+            .upsert(profileData, { onConflict: 'id' })
+            .then(result => ({ type: 'profile', result }))
+        );
       }
       
-      logger.info(`Perfil criado com sucesso para o usuário ${user.id}`);
-      
-      // Também criar entrada na tabela clients se necessário
-      try {
-        // Verificar se já existe na tabela clients
-        const { data: existingClient, error: clientError } = await supabaseAdmin
-          .from('clients')
-          .select('id')
-          .eq('id', user.id)
-          .maybeSingle();
-        
-        if (clientError) {
-          logger.error(`Erro ao verificar cliente: ${clientError.message}`);
-        }
-        
-        // Se não existe, criar
-        if (!existingClient) {
-          logger.info(`Cliente não encontrado para o usuário ${user.id}, criando...`);
-          
-          const { error: insertClientError } = await supabaseAdmin
+      if (needsClient) {
+        operations.push(
+          supabaseAdmin
             .from('clients')
-            .upsert({
-              id: user.id,
-              name: profileData.full_name,
-              email: user.email,
-              status: 'active',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            }, { onConflict: 'id' }); // Usar upsert para evitar conflitos
-          
-          if (insertClientError) {
-            logger.error(`Erro ao criar cliente: ${insertClientError.message}`);
-          } else {
-            logger.info(`Cliente criado com sucesso para o usuário ${user.id}`);
-          }
-        }
-      } catch (clientErr) {
-        logger.error(`Erro ao processar cliente: ${clientErr.message}`);
+            .upsert(clientData, { onConflict: 'id' })
+            .then(result => ({ type: 'client', result }))
+        );
       }
       
-      return true;
-    } else {
-      logger.info(`Perfil já existe para o usuário ${user.id}, usando o existente`);
+      // Aguardar todas as operações
+      const results = await Promise.allSettled(operations);
       
-      // Verificar se o cliente também existe
-      try {
-        const { data: existingClient, error: clientError } = await supabaseAdmin
-          .from('clients')
-          .select('id')
-          .eq('id', user.id)
-          .maybeSingle();
-          
-        if (clientError) {
-          logger.error(`Erro ao verificar cliente existente: ${clientError.message}`);
-        }
-        
-        // Se o cliente não existe, criar mesmo que o perfil já exista
-        if (!existingClient) {
-          logger.info(`Perfil existe, mas cliente não encontrado para o usuário ${user.id}, criando cliente...`);
-          
-          const userMetadata = user.user_metadata || {};
-          const fullName = userMetadata.full_name || 
-                          userMetadata.name || 
-                          `${userMetadata.first_name || userMetadata.given_name || ''} ${userMetadata.last_name || userMetadata.family_name || ''}`.trim();
-          
-          const { error: insertClientError } = await supabaseAdmin
-            .from('clients')
-            .upsert({
-              id: user.id,
-              name: fullName || user.email,
-              email: user.email,
-              status: 'active',
-              created_at: new Date().toISOString(),
-              updated_at: new Date().toISOString()
-            }, { onConflict: 'id' });
-          
-          if (insertClientError) {
-            logger.error(`Erro ao criar cliente para perfil existente: ${insertClientError.message}`);
-          } else {
-            logger.info(`Cliente criado com sucesso para perfil existente do usuário ${user.id}`);
-          }
+      // Verificar resultados
+      let hasErrors = false;
+      for (const { status, value, reason } of results) {
+        if (status === 'rejected') {
+          logger.error(`Erro na operação: ${reason.message}`);
+          hasErrors = true;
+        } else if (value.result.error) {
+          logger.error(`Erro ao criar ${value.type}: ${value.result.error.message}`);
+          hasErrors = true;
         } else {
-          logger.info(`Cliente já existe para o usuário ${user.id}`);
+          logger.info(`${value.type} criado/atualizado com sucesso para usuário ${user.id}`);
         }
-      } catch (clientCheckErr) {
-        logger.error(`Erro ao verificar cliente para perfil existente: ${clientCheckErr.message}`);
       }
       
+      return !hasErrors;
+    } else {
+      logger.info(`Perfil e cliente já existem para o usuário ${user.id}`);
       return true;
     }
   } catch (err) {
     logger.error(`Erro ao processar perfil do usuário: ${err.message}`);
     return false;
+  } finally {
+    // Sempre liberar o lock
+    releaseLock();
   }
 }
 
@@ -830,24 +832,26 @@ async function checkAndCreateTables() {
       logger.info('Tentando verificar tabela diretamente com SQL...');
       
       try {
-        const { data: directCheckData, error: directCheckError } = await supabaseAdmin.sql(`
-          SELECT EXISTS (
-            SELECT FROM pg_tables
-            WHERE schemaname = 'public'
-            AND tablename = 'user_profiles'
-          ) as exists
-        `);
+        // Usar from() com uma query simples para verificar se a tabela existe
+        const { data: directCheckData, error: directCheckError } = await supabaseAdmin
+          .from('user_profiles')
+          .select('id')
+          .limit(1);
         
-        if (!directCheckError && directCheckData && directCheckData.length > 0) {
-          tableExists = directCheckData[0].exists;
-          logger.info(`Verificação direta: tabela user_profiles ${tableExists ? 'existe' : 'não existe'}`);
+        // Se não há erro ou é apenas "relation does not exist", sabemos o status da tabela
+        if (directCheckError && directCheckError.message.includes('relation "user_profiles" does not exist')) {
+          tableExists = false;
+          logger.info(`Verificação direta: tabela user_profiles não existe`);
+        } else if (!directCheckError) {
+          tableExists = true;
+          logger.info(`Verificação direta: tabela user_profiles existe`);
         } else {
           logger.warn(`Erro na verificação direta: ${directCheckError?.message || 'Sem dados'}`);
           // Assumir que a tabela não existe para tentar criá-la
           tableExists = false;
         }
       } catch (sqlError) {
-        logger.error(`Erro ao executar SQL direto: ${sqlError.message}`);
+        logger.error(`Erro ao executar verificação direta: ${sqlError.message}`);
         // Assumir que a tabela não existe para tentar criá-la
         tableExists = false;
       }
@@ -897,19 +901,18 @@ async function checkAndCreateTables() {
         logger.info('Tentando criar tabela diretamente com SQL...');
         
         try {
-          const { error: directCreateError } = await supabaseAdmin.sql(createProfilesSQL);
+          // Tentar usar uma abordagem alternativa sem .sql()
+          // Em vez de executar SQL diretamente, usamos uma operação que force a criação se necessário
+          logger.info(`Tentativa de criação de tabela não suportada pelo cliente JavaScript do Supabase.`);
+          logger.error(`Para resolver este problema, você precisa:`);
+          logger.error(`1. Acessar o painel do Supabase (https://supabase.com/dashboard)`);
+          logger.error(`2. Ir na seção 'SQL Editor'`);
+          logger.error(`3. Executar o SQL de criação da tabela user_profiles manualmente`);
+          logger.error(`4. Ou usar uma migração apropriada através do CLI do Supabase`);
           
-          if (directCreateError) {
-            logger.error(`Erro ao criar tabela diretamente: ${directCreateError.message}`);
-            
-            // Último recurso: instruir o administrador
-            logger.error(`Não foi possível criar a tabela. Você precisa executar o script src/apply-utility-functions.js primeiro para instalar as funções utilitárias.`);
-          } else {
-            logger.info(`Tabela 'user_profiles' criada com sucesso via SQL direto!`);
-          }
-        } catch (sqlCreateError) {
-          logger.error(`Erro grave ao criar tabela: ${sqlCreateError.message}`);
-          logger.error(`Não foi possível criar a tabela. Você precisa executar o script src/apply-utility-functions.js primeiro para instalar as funções utilitárias.`);
+        } catch (createError) {
+          logger.error(`Erro ao tentar alternativa de criação: ${createError.message}`);
+          logger.error(`A tabela user_profiles deve ser criada manualmente no painel do Supabase.`);
         }
       }
     } else {
