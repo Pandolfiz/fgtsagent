@@ -25,7 +25,6 @@ FgtsAgent é uma plataforma SaaS robusta que permite:
 ### **Backend**
 - 🚀 **Node.js** + **Express**
 - 🗄️ **Supabase** (PostgreSQL)
-- 🔄 **Redis** (cache)
 - 🔐 **JWT** + **OAuth2**
 - 💳 **Stripe** (pagamentos)
 - 📱 **Evolution API** (WhatsApp)
