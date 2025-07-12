@@ -213,10 +213,18 @@ app.use(requestLogger);
 app.use(sanitizeInput);
 app.use(sanitizeRequest(['body', 'query', 'params']));
 
-// REMOVIDO: Backend não deve servir arquivos estáticos
-// Isso é responsabilidade do nginx
-// app.use(express.static(path.join(__dirname, 'public')));
-// app.use(express.static(path.join(__dirname, '../frontend/dist')));
+// Servir arquivos estáticos do build do frontend
+const frontendDistPath = path.join(__dirname, '../frontend/dist');
+app.use(express.static(frontendDistPath));
+
+// Fallback: para qualquer rota que não seja API, servir index.html do React
+app.get('*', (req, res, next) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+  } else {
+    next();
+  }
+});
 
 // Configurar engine de templates
 app.set('view engine', 'ejs');
