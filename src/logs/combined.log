@@ -7664,3 +7664,20 @@
 2025-07-12 19:43:15 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
 2025-07-12 19:43:15 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
 2025-07-12 19:43:15 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-07-12 20:33:33 info: Verificando tabelas do sistema...
+2025-07-12 20:33:33 info: Verificação via RPC: tabela user_profiles existe
+2025-07-12 20:33:33 info: Tabela 'user_profiles' verificada e está disponível.
+2025-07-12 20:33:33 info: Token do cookie: encontrado
+2025-07-12 20:33:33 info: Token prestes a expirar, renovando cookie por mais 1 dia
+2025-07-12 20:33:33 info: DEBUG: ID do usuário: "06987548-fc75-4434-b8f0-ca6370e3bf56"
+2025-07-12 20:33:33 info: Verificando perfil de usuário para 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-07-12 20:33:33 info: Perfil e cliente já existem para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56
+2025-07-12 20:33:33 info: Resultado da verificação/criação de perfil: sucesso
+2025-07-12 20:33:33 info: Perfil não encontrado para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, tentando criar...
+2025-07-12 20:33:33 info: Verificando tabelas do sistema...
+2025-07-12 20:33:33 info: Verificação via RPC: tabela user_profiles existe
+2025-07-12 20:33:33 info: Tabela 'user_profiles' verificada e está disponível.
+2025-07-12 20:33:33 info: Perfil já existe para o usuário 06987548-fc75-4434-b8f0-ca6370e3bf56, usando o existente
+2025-07-12 20:33:33 info: Usando full_name dos metadados para displayName: luiz carlos Fiorim
+2025-07-12 20:33:33 info: Usuário final: ID=06987548-fc75-4434-b8f0-ca6370e3bf56, Email=luizfiorimr@gmail.com, DisplayName="luiz carlos Fiorim"
+2025-07-12 20:33:33 info: Usuário autenticado: luizfiorimr@gmail.com, ID: 06987548-fc75-4434-b8f0-ca6370e3bf56

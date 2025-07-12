@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>FgtsAgent - Antecipação de Saque-Aniversário</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css" />
+    <!-- Script para interceptar códigos de autenticação antes do carregamento do React -->
+    <script>
+      (function() {
+        // Verificar se estamos na raiz do site com um código de autenticação
+        if (window.location.pathname === '/' || window.location.pathname === '') {
+          const urlParams = new URLSearchParams(window.location.search);
+          const code = urlParams.get('code');
+          
+          if (code) {
+            console.log('[Auth Interceptor] Código detectado na raiz, redirecionando...');
+            // Redirecionar para o callback correto, mantendo todos os parâmetros
+            window.location.replace('/auth/callback' + window.location.search + window.location.hash);
+          }
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-MZ7rJ5cB.js"></script>
+    <link rel="modulepreload" crossorigin href="/assets/vendor-BQK9_sJn.js">
+    <link rel="modulepreload" crossorigin href="/assets/router-BWA-QEKv.js">
+    <link rel="modulepreload" crossorigin href="/assets/animations-_F6GJBG0.js">
+    <link rel="modulepreload" crossorigin href="/assets/ui-Czmf3zj_.js">
+    <link rel="modulepreload" crossorigin href="/assets/icons-CD7EkmS4.js">
+    <link rel="modulepreload" crossorigin href="/assets/supabase-BCemsDfU.js">
+    <link rel="modulepreload" crossorigin href="/assets/utils-72LYvOqv.js">
+    <link rel="modulepreload" crossorigin href="/assets/charts-OwFjb5o1.js">
+    <link rel="stylesheet" crossorigin href="/assets/index-CmQ4wE_5.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
