@@ -424,7 +424,28 @@ export default function Dashboard() {
 
       const fetchData = async () => {
         try {
-          const res = await fetch(url, { credentials: 'include' });
+          // Recuperar o token de autenticação do localStorage
+          let authToken = localStorage.getItem('authToken');
+          if (!authToken) {
+            // Tentar obter do supabase.auth.token
+            const storedTokens = localStorage.getItem('supabase.auth.token');
+            if (storedTokens) {
+              try {
+                const tokens = JSON.parse(storedTokens);
+                if (tokens?.currentSession?.access_token) {
+                  authToken = tokens.currentSession.access_token;
+                  localStorage.setItem('authToken', authToken);
+                }
+              } catch (e) {
+                // ignora
+              }
+            }
+          }
+          const headers = { 'Content-Type': 'application/json' };
+          if (authToken) {
+            headers['Authorization'] = `Bearer ${authToken}`;
+          }
+          const res = await fetch(url, { credentials: 'include', headers });
           
           // Verificar se o token expirou (status 401)
           if (res.status === 401) {
