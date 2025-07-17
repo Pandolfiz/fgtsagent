@@ -231,14 +231,30 @@ router.post('/', requireAuth, async (req, res) => {
       receiver_id: data[0].recipient_id,
       created_at: data[0].timestamp,
       is_read: false,
-      role: data[0].role || validRole
+      role: data[0].role || validRole,
+      status: data[0].status || 'pending'
     };
-    
+
     logger.info(`Mensagem processada: ${data[0].id}`);
-    
-    return res.status(201).json({
-      success: true,
-      message: formattedMessage
+
+    // Verificar status final para feedback
+    let feedbackMsg = '';
+    let httpStatus = 201;
+    if (formattedMessage.status === 'sent') {
+      feedbackMsg = 'Mensagem enviada com sucesso.';
+      httpStatus = 201;
+    } else if (formattedMessage.status === 'failed') {
+      feedbackMsg = 'Mensagem não pôde ser enviada. Tente novamente ou contate o suporte.';
+      httpStatus = 202;
+    } else {
+      feedbackMsg = 'Mensagem recebida, mas ainda não foi enviada. O sistema tentará reenviar automaticamente.';
+      httpStatus = 202;
+    }
+
+    return res.status(httpStatus).json({
+      success: formattedMessage.status === 'sent',
+      message: formattedMessage,
+      feedback: feedbackMsg
     });
   } catch (error) {
     logger.error('Erro ao processar envio de mensagem:', error);
