@@ -151,6 +151,7 @@ router.post('/', requireAuth, async (req, res) => {
     // Mensagens com role 'USER' são mensagens recebidas e não precisam ser enviadas
     if (validRole === 'ME' || validRole === 'AI') {
       const recipientPhone = recipientId || contactData.phone;
+      let messageMetadata = {};
       try {
         // Verificar se temos um userId válido
         if (!userId) {
@@ -177,15 +178,18 @@ router.post('/', requireAuth, async (req, res) => {
         logger.info(`Payload para WhatsApp: phone=${formattedPhone}, content=${content}, clientId=${clientId}`);
         const whatsappResponse = await whatsappService.sendTextMessage(formattedPhone, content, clientId);
         logger.info(`Resposta da API WhatsApp: ${JSON.stringify(whatsappResponse)}`);
-        // Atualizar o status da mensagem com base na resposta da API
-        const messageStatus = whatsappResponse.success ? 'sent' : 'failed';
-        let messageMetadata = {};
         if (whatsappResponse.success) {
           logger.info(`Mensagem enviada com sucesso. ID: ${whatsappResponse.data.messages[0].id}`);
           messageMetadata = {
             whatsapp_message_id: whatsappResponse.data.messages[0].id,
             response_data: whatsappResponse.data
           };
+          // Atualizar status para sent
+          await supabase
+            .from('messages')
+            .update({ status: 'sent', metadata: messageMetadata })
+            .eq('conversation_id', conversationId)
+            .eq('timestamp', msgTimestamp);
         } else {
           const errorMessage = whatsappResponse.error || 'Erro desconhecido';
           logger.error(`Erro ao enviar mensagem para WhatsApp: ${errorMessage}`);
