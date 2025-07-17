@@ -151,6 +151,7 @@ router.post('/', requireAuth, async (req, res) => {
     // Mensagens com role 'USER' são mensagens recebidas e não precisam ser enviadas
     if (validRole === 'ME' || validRole === 'AI') {
       const recipientPhone = recipientId || contactData.phone;
+      let messageMetadata = {};
       try {
         // Verificar se temos um userId válido
         if (!userId) {
@@ -177,15 +178,18 @@ router.post('/', requireAuth, async (req, res) => {
         logger.info(`Payload para WhatsApp: phone=${formattedPhone}, content=${content}, clientId=${clientId}`);
         const whatsappResponse = await whatsappService.sendTextMessage(formattedPhone, content, clientId);
         logger.info(`Resposta da API WhatsApp: ${JSON.stringify(whatsappResponse)}`);
-        // Atualizar o status da mensagem com base na resposta da API
-        const messageStatus = whatsappResponse.success ? 'sent' : 'failed';
-        let messageMetadata = {};
         if (whatsappResponse.success) {
           logger.info(`Mensagem enviada com sucesso. ID: ${whatsappResponse.data.messages[0].id}`);
           messageMetadata = {
             whatsapp_message_id: whatsappResponse.data.messages[0].id,
             response_data: whatsappResponse.data
           };
+          // Atualizar status para sent
+          await supabase
+            .from('messages')
+            .update({ status: 'sent', metadata: messageMetadata })
+            .eq('conversation_id', conversationId)
+            .eq('timestamp', msgTimestamp);
         } else {
           const errorMessage = whatsappResponse.error || 'Erro desconhecido';
           logger.error(`Erro ao enviar mensagem para WhatsApp: ${errorMessage}`);
@@ -227,14 +231,30 @@ router.post('/', requireAuth, async (req, res) => {
       receiver_id: data[0].recipient_id,
       created_at: data[0].timestamp,
       is_read: false,
-      role: data[0].role || validRole
+      role: data[0].role || validRole,
+      status: data[0].status || 'pending'
     };
-    
+
     logger.info(`Mensagem processada: ${data[0].id}`);
-    
-    return res.status(201).json({
-      success: true,
-      message: formattedMessage
+
+    // Verificar status final para feedback
+    let feedbackMsg = '';
+    let httpStatus = 201;
+    if (formattedMessage.status === 'sent') {
+      feedbackMsg = 'Mensagem enviada com sucesso.';
+      httpStatus = 201;
+    } else if (formattedMessage.status === 'failed') {
+      feedbackMsg = 'Mensagem não pôde ser enviada. Tente novamente ou contate o suporte.';
+      httpStatus = 202;
+    } else {
+      feedbackMsg = 'Mensagem recebida, mas ainda não foi enviada. O sistema tentará reenviar automaticamente.';
+      httpStatus = 202;
+    }
+
+    return res.status(httpStatus).json({
+      success: formattedMessage.status === 'sent',
+      message: formattedMessage,
+      feedback: feedbackMsg
     });
   } catch (error) {
     logger.error('Erro ao processar envio de mensagem:', error);
