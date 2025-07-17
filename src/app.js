@@ -42,13 +42,13 @@ app.set('trust proxy', 1);
 // Configurar limites de requisição
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 300 // Máximo de 300 requisições por janela de tempo
+  max: 1000 // Máximo de 1000 requisições por janela de tempo
 });
 
 // Limiter mais restritivo para rotas de API
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 200 // Máximo de 200 requisições por janela de tempo
+  max: 1000 // Máximo de 1000 requisições por janela de tempo
 });
 
 // Limiter ainda mais restritivo para rotas de autenticação

@@ -858,7 +858,7 @@ router.post('/agent/save-name', requireAuth, async (req, res) => {
 const upload = multer({ 
   dest: 'uploads/',
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB max
+    fileSize: 500 * 1024 * 1024, // 500MB max
     files: 10 // máximo 10 arquivos por upload
   },
   fileFilter: (req, file, cb) => {
