@@ -93,6 +93,7 @@ router.post('/', requireAuth, async (req, res) => {
       });
     }
     
+    logger.info(`DEBUG: Role recebido do frontend: ${role}`);
     // Garantir que role seja um dos valores aceitos
     let validRole = role;
     if (!validRole || !['ME', 'AI', 'USER'].includes(validRole)) {
@@ -129,14 +130,16 @@ router.post('/', requireAuth, async (req, res) => {
       contact: contactData.phone,
       role: validRole
     };
-    
-    logger.info(`Enviando nova mensagem para conversa ${conversationId}`);
-    
+
+    // Log após inserir a mensagem no banco
+    logger.info('DEBUG: Inserindo mensagem no banco', newMsg);
+    logger.info('DEBUG: Antes do insert no banco');
     // Inserir a mensagem no banco de dados
     const { data, error } = await supabase
       .from('messages')
       .insert(newMsg)
       .select();
+    logger.info('DEBUG: Mensagem inserida no banco, retorno:', data);
     
     if (error) {
       logger.error(`Erro ao inserir mensagem no banco: ${error.message}`, { error });
@@ -146,7 +149,9 @@ router.post('/', requireAuth, async (req, res) => {
         error: error.message
       });
     }
-    
+
+    // Log antes do bloco de envio WhatsApp
+    logger.info(`DEBUG: Antes do bloco de envio WhatsApp. validRole=${validRole}`);
     // Apenas enviar pelo WhatsApp se for uma mensagem do usuário ou do assistente
     // Mensagens com role 'USER' são mensagens recebidas e não precisam ser enviadas
     if (validRole === 'ME' || validRole === 'AI') {
@@ -217,6 +222,8 @@ router.post('/', requireAuth, async (req, res) => {
           error: err.message
         });
       }
+    } else {
+      logger.info(`DEBUG: Bloco de envio WhatsApp NÃO executado. validRole=${validRole}`);
     }
     
     // Formatar para retornar ao cliente
