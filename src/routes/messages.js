@@ -5,6 +5,8 @@ const { requireAuth } = require('../middleware/auth');
 const logger = require('../utils/logger');
 const whatsappService = require('../services/whatsappService');
 
+// console.log('DEBUG: Arquivo src/routes/messages.js carregado');
+
 /**
  * @route GET /api/messages/:conversationId
  * @desc Obter mensagens de uma conversa específica
@@ -82,6 +84,7 @@ router.get('/:conversationId', requireAuth, async (req, res) => {
  * @access Private
  */
 router.post('/', requireAuth, async (req, res) => {
+  // console.log('[HANDLER LOG] Entrou no handler POST /api/messages', { body: req.body });
   try {
     const userId = req.user.id;
     const { conversationId, content, recipientId, role } = req.body;
