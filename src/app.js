@@ -192,7 +192,11 @@ app.use(cors({
     ].filter(Boolean); // Remove valores nulos ou undefined
     
     // Verificar se a origem da requisição está na lista
-    if (allowedOrigins.includes(origin) || origin.includes('localhost')) {
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.includes('localhost') ||
+      (origin && (origin.includes('.ngrok-free.app') || origin.includes('.ngrok.io')))
+    ) {
       callback(null, true);
     } else {
       callback(new Error('Origem não permitida pelo CORS'), false);
@@ -205,6 +209,12 @@ app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 app.use(cookieParser());
+
+// Middleware global para logar todas as requisições recebidas
+// app.use((req, res, next) => {
+//   console.log(`[GLOBAL LOG] ${req.method} ${req.originalUrl}`);
+//   next();
+// });
 
 // Aplicar logging avançado (deve vir antes de outras rotas)
 app.use(requestLogger);
@@ -288,7 +298,11 @@ app.get('/api/health', (req, res) => {
 // Rota do webhook (deve vir antes das rotas autenticadas)
 app.use('/api/webhooks/evolution', webhookAuth, chatWebhookRoutes);
 
-// Rotas API - estas devem vir antes da rota catch-all para o React
+// Rotas específicas de mensagens e contatos - devem vir ANTES de app.use('/api', apiRoutes)
+app.use('/api/messages', requireAuth, messagesRoutes);
+app.use('/api/contacts', requireAuth, contactsRoutes);
+
+// Rotas API - estas devem vir depois das rotas específicas
 app.use('/api', apiRoutes);
 app.use('/auth', authLimiter, authRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
@@ -300,8 +314,8 @@ app.use('/api/chat', requireAuth, chatRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Novas rotas para gerenciamento de contatos e mensagens
-app.use('/api/contacts', requireAuth, contactsRoutes);
-app.use('/api/messages', requireAuth, messagesRoutes);
+// app.use('/api/contacts', requireAuth, contactsRoutes); // Moved up
+// app.use('/api/messages', requireAuth, messagesRoutes); // Moved up
 
 // Rotas específicas do backend com renderização de template
 app.use('/admin', webRoutes.router);

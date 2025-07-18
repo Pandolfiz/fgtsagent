@@ -179,6 +179,7 @@ function getReactLoginUrl(req, redirectPath, message) {
  * Middleware para verificar se o usuário está autenticado
  */
 const requireAuth = async (req, res, next) => {
+  console.log(`[AUTH LOG] requireAuth chamado para ${req.method} ${req.originalUrl}`);
   try {
     // Inicializar/Limpar dados de usuário para evitar contaminação entre requisições
     req.user = null;
