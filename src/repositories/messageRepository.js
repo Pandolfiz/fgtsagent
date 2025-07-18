@@ -16,8 +16,6 @@ async function saveMessage({ id, conversation_id, sender_id, recipient_id, conte
     validatedRole = 'ME'; // Valor padrão
   }
   
-  console.log(`[messageRepository] Salvando mensagem: role original=${role}, role validado=${validatedRole}, sender_id=${sender_id}, from_me=${metadata?.fromMe || metadata?.key?.fromMe || status === 'sent'}`);
-  
   const { data, error } = await supabaseAdmin
     .from('messages')
     .insert([{ 
@@ -81,8 +79,6 @@ async function getConversationsForUser(userId, instanceId) {
  * Busca a última mensagem de uma conversa específica
  */
 async function getLastMessage(conversationId, instanceId) {
-  console.log(`[messageRepository] Buscando última mensagem para conversa: ${conversationId}`);
-  
   // Construir consulta base
   let query = supabaseAdmin
     .from('messages')
@@ -99,13 +95,7 @@ async function getLastMessage(conversationId, instanceId) {
   const { data, error } = await query;
   
   if (error) {
-    console.error(`[messageRepository] Erro ao buscar última mensagem para ${conversationId}:`, error);
     throw error;
-  }
-  
-  console.log(`[messageRepository] Resultado para ${conversationId}: ${data.length > 0 ? 'Mensagem encontrada' : 'Nenhuma mensagem'}`);
-  if (data.length > 0) {
-    console.log(`[messageRepository] Timestamp: ${data[0].timestamp}, ID: ${data[0].id}`);
   }
   
   return data.length > 0 ? data[0] : null;
