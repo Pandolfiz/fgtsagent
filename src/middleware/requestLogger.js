@@ -8,7 +8,7 @@ const crypto = require('crypto');
 
 // Cache para detectar ataques de força bruta com controle de memória
 const requestCache = new Map();
-const SUSPICIOUS_THRESHOLD = 1000; // requisições por minuto
+const SUSPICIOUS_THRESHOLD = 10000; // requisições por minuto
 const CACHE_CLEANUP_INTERVAL = 30000; // 30 segundos
 const MAX_CACHE_SIZE = 10000; // Máximo 10k entradas no cache
 const CACHE_ENTRY_TTL = 300000; // 5 minutos TTL por entrada

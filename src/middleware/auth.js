@@ -95,9 +95,11 @@ exports.requireAuth = async (req, res, next) => {
   try {
     // Obter o token de autenticação
     const token = extractToken(req);
+    logger.info(`[AUTH] Iniciando autenticação para rota: ${req.originalUrl}`);
+    logger.info(`[AUTH] Token recebido: ${token ? token.substring(0, 15) + '...' : 'NENHUM'}`);
 
     if (!token) {
-      logger.warn('Tentativa de acesso protegido sem token');
+      logger.warn('[AUTH] Tentativa de acesso protegido sem token');
       return res.status(401).json({
         success: false,
         message: 'Acesso não autorizado. Faça login para continuar.'
@@ -108,61 +110,56 @@ exports.requireAuth = async (req, res, next) => {
       // Verificar com Supabase primeiro
       try {
         const { data, error } = await supabase.auth.getUser(token);
-        
+        logger.info(`[AUTH] Resultado Supabase: user=${data && data.user ? data.user.id : 'N/A'}, error=${error ? error.message : 'N/A'}`);
         if (data && data.user && !error) {
           req.user = data.user;
-          logger.info(`Usuário autenticado via Supabase: ${req.user.id}`);
+          logger.info(`[AUTH] Usuário autenticado via Supabase: ${req.user.id}`);
           return next();
         }
       } catch (supabaseError) {
-        logger.warn(`Erro na verificação Supabase: ${supabaseError.message}`);
+        logger.warn(`[AUTH] Erro na verificação Supabase: ${supabaseError.message}`);
         // Falha na verificação Supabase, tentar JWT genérico
       }
-      
       // Tentar como JWT genérico se falhar com Supabase
       const jwt = require('jsonwebtoken');
-      
       try {
         // Tentar decodificar o token sem verificação primeiro
         const decoded = jwt.decode(token);
-        
+        logger.info(`[AUTH] Decoded JWT: ${JSON.stringify(decoded)}`);
         if (decoded && (decoded.sub || decoded.userId)) {
           // É um JWT com um ID de usuário, vamos considerá-lo válido para testes
           const userId = decoded.sub || decoded.userId;
-          
           // Adicionar dados mínimos do usuário ao objeto req
           req.user = {
             id: userId,
             email: decoded.email || 'user@example.com',
             app_metadata: decoded.app_metadata || { role: 'user' }
           };
-          
-          logger.info(`Usuário autenticado via token JWT genérico: ${userId}`);
+          logger.info(`[AUTH] Usuário autenticado via token JWT genérico: ${userId}`);
           return next();
         }
-        
         // Se chegou aqui, o token não foi reconhecido
-        logger.warn(`Token ${token.substring(0, 10)}... não é válido`);
+        logger.warn(`[AUTH] Token ${token.substring(0, 10)}... não é válido`);
         return res.status(401).json({
           success: false,
           message: 'Token inválido.'
         });
       } catch (jwtError) {
-        logger.warn(`Erro ao processar JWT: ${jwtError.message}`);
+        logger.warn(`[AUTH] Erro ao processar JWT: ${jwtError.message}`);
         return res.status(401).json({
           success: false,
           message: 'Token inválido ou mal-formado.'
         });
       }
     } catch (authError) {
-      logger.error(`Erro na verificação de token: ${authError.message}`);
+      logger.error(`[AUTH] Erro na verificação de token: ${authError.message}`);
       return res.status(401).json({
         success: false,
         message: 'Erro na autenticação. Tente novamente.'
       });
     }
   } catch (err) {
-    logger.error(`Erro no middleware de autenticação: ${err.message}`);
+    logger.error(`[AUTH] Erro no middleware de autenticação: ${err.message}`);
     return res.status(500).json({
       success: false,
       message: 'Erro interno de autenticação'

@@ -188,18 +188,11 @@ exports.getLastMessage = async (req, res) => {
     // Instância selecionada para filtrar as mensagens
     const instanceId = req.query.instance;
     
-    console.log(`[getLastMessage] Buscando última mensagem para conversa: ${conversationId}, instância: ${instanceId || 'qualquer'}`);
-    
     if (!conversationId) {
       throw new AppError('ID da conversa é obrigatório', 400);
     }
 
     const lastMessage = await chatService.getLastMessage(conversationId, instanceId);
-    
-    console.log(`[getLastMessage] Resultado para ${conversationId}: ${lastMessage ? 'Mensagem encontrada' : 'Nenhuma mensagem'}`);
-    if (lastMessage) {
-      console.log(`[getLastMessage] Timestamp: ${lastMessage.timestamp || lastMessage.created_at}, Conteúdo: "${lastMessage.content?.substring(0, 30)}..."`);
-    }
     
     return res.status(200).json({
       success: true,

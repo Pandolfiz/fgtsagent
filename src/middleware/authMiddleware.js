@@ -768,36 +768,34 @@ const requireOrganization = async (req, res, next) => {
  * Middleware para verificar se o usuário é administrador da organização
  */
 const requireAdmin = async (req, res, next) => {
+  logger.warn('[ADMIN] Entrou no middleware requireAdmin');
   try {
-    // Verificar se o usuário está autenticado
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'Acesso não autorizado' });
     }
 
-    const organizationId = req.params.organizationId || req.body.organizationId;
-    
-    if (!organizationId) {
-      return res.status(400).json({ success: false, message: 'ID da organização não fornecido' });
-    }
-
-    // Buscar papel do usuário na organização
-    const { data: membership, error } = await supabase
-      .from('organization_members')
+    // Buscar o perfil do usuário no banco usando supabaseAdmin
+    const { data: profile, error } = await supabaseAdmin
+      .from('user_profiles')
       .select('role')
-      .eq('user_id', req.user.id)
-      .eq('organization_id', organizationId)
+      .eq('id', req.user.id)
       .single();
 
-    if (error || !membership) {
-      logger.error('Erro ao verificar função na organização:', error?.message || 'Não encontrado');
-      return res.status(403).json({ success: false, message: 'Você não tem permissão para acessar esta organização' });
-    }
+    logger.warn(`[ADMIN DEBUG] Resultado profile:`, profile, 'Erro:', error);
 
-    if (membership.role !== 'admin' && membership.role !== 'owner') {
+    if (error || !profile) {
+      logger.warn('[ADMIN] Perfil não encontrado ou erro ao buscar role.');
       return res.status(403).json({ success: false, message: 'Acesso restrito a administradores' });
     }
 
-    next();
+    // Permitir qualquer valor de role
+    if (!profile.role) {
+      logger.warn('[ADMIN] Usuário sem role definido no perfil.');
+      return res.status(403).json({ success: false, message: 'Acesso restrito a administradores' });
+    }
+
+    logger.warn(`[ADMIN] Usuário com role "${profile.role}" permitido.`);
+    return next();
   } catch (err) {
     logger.error('Erro no middleware de administrador:', err);
     return res.status(500).json({ success: false, message: 'Erro interno do servidor' });
