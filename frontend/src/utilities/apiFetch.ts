@@ -1,6 +1,8 @@
 export async function apiFetch(input: RequestInfo, init?: RequestInit) {
   try {
-    const res = await fetch(input, { ...init, credentials: 'include' });
+    // Garantir que o header Accept: application/json está presente
+    const headers = { ...(init?.headers || {}), Accept: 'application/json' };
+    const res = await fetch(input, { ...init, headers, credentials: 'include' });
     
     // Verificar se é erro de autenticação (401) ou autorização (403)
     if (res.status === 401 || res.status === 403) {

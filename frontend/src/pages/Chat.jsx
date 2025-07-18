@@ -3,6 +3,7 @@ import Navbar from '../components/Navbar'
 import { FaSearch, FaEllipsisV, FaPaperclip, FaMicrophone, FaSmile, FaPhone, FaVideo, FaPlus, FaArrowLeft, FaSpinner, FaExclamationTriangle, FaWallet, FaCalculator, FaFileAlt, FaTimesCircle, FaCheckCircle, FaInfoCircle, FaIdCard, FaRegCopy } from 'react-icons/fa'
 import { IoSend } from 'react-icons/io5'
 import { useNavigate } from 'react-router-dom'
+import { apiFetch } from '../utilities/apiFetch';
 
 // Função auxiliar para gerar IDs de mensagem únicos
 function generateMessageId() {
@@ -101,6 +102,7 @@ export default function Chat() {
   const timeoutsRef = useRef([])
   const intervalsRef = useRef([])
   const navigate = useNavigate()
+  const [agentMode, setAgentMode] = useState('full');
   
   // Estilos para dispositivos móveis usando variáveis CSS personalizadas
   const mobileStyles = {
@@ -444,10 +446,26 @@ export default function Chat() {
     getCurrentUser();
   }, [navigate]);
 
-  // Função para verificar se o agente está ativado para um contato
-  const isAgentEnabled = (contact) => {
+  // Buscar o modo do agente ao montar o componente
+  useEffect(() => {
+    async function fetchAgentMode() {
+      try {
+        const res = await apiFetch('/api/agents/mode');
+        if (!res) return;
+        const json = await res.json();
+        if (json.success && json.data?.mode) {
+          setAgentMode(json.data.mode);
+        }
+      } catch (err) {
+        console.error('Erro ao buscar modo do agente:', err);
+      }
+    }
+    fetchAgentMode();
+  }, []);
+
+  // Função para determinar se o botão AI deve estar ligado para cada contato
+  const isAgentAiActive = (contact) => {
     if (!contact) return false;
-    // Certifica-se de que o undefined/null também seja tratado como 'human' (desligado)
     return contact.agent_state === 'ai';
   };
 
@@ -2403,11 +2421,11 @@ export default function Chat() {
                               key={`ai-button-${contact.id || contact.remote_jid}-${forceUpdate}`}
                               onClick={(e) => toggleAutoResponse(contact.id || contact.remote_jid, e)}
                               className={`ml-2 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-md transition-all ${
-                                isAgentEnabled(contact)
+                                isAgentAiActive(contact)
                                   ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' 
                                   : 'bg-gray-600/50 text-gray-300'
                               }`}
-                              title={isAgentEnabled(contact) ? "Desativar resposta automática" : "Ativar resposta automática"}
+                              title={isAgentAiActive(contact) ? "Desativar resposta automática" : "Ativar resposta automática"}
                             >
                               AI
                             </button>
