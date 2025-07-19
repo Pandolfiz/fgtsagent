@@ -310,11 +310,13 @@ app.use('/api/webhooks/evolution', webhookAuth, chatWebhookRoutes);
 app.use('/api/messages', requireAuth, messagesRoutes);
 app.use('/api/contacts', requireAuth, contactsRoutes);
 
+// Rotas específicas do Stripe (deve vir ANTES da rota genérica /api)
+app.use('/api/stripe', stripeRoutes);
+
 // Rotas API - estas devem vir depois das rotas específicas
 app.use('/api', apiRoutes);
 app.use('/auth', authLimiter, authRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
-app.use('/api/stripe', stripeRoutes);
 app.use('/api/whatsapp-credentials', requireAuth, evolutionCredentialRoutes);
 app.use('/api/credentials', credentialsRoutes);
 app.use('/api', credentialsRoutes);

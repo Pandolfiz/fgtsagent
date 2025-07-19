@@ -1,15 +1,20 @@
 name: CI Node.js
 
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "main", "develop" ]
+  push:
+    branches: [ "main", "develop" ]
+
+env:
+  NODE_VERSION: '18.x'
 
 jobs:
-  build:
+  # Validação do Frontend
+  frontend:
+    name: Frontend (React + Vite)
     runs-on: ubuntu-latest
-
+    
     steps:
     - name: Checkout código
       uses: actions/checkout@v4
@@ -17,20 +22,235 @@ jobs:
     - name: Configurar Node.js
       uses: actions/setup-node@v4
       with:
-        node-version: '18.x'
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
 
-    - name: Instalar dependências
-      run: npm install
+    - name: Cache dependências do frontend
+      uses: actions/cache@v4
+      with:
+        path: frontend/node_modules
+        key: ${{ runner.os }}-frontend-${{ hashFiles('frontend/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-frontend-
 
-    - name: Rodar testes automatizados
-      run: npm test
+    - name: Instalar dependências do frontend
+      run: |
+        cd frontend
+        npm ci
+
+    - name: Lint do frontend
+      run: |
+        cd frontend
+        npm run lint
+      continue-on-error: true
+
+    - name: Build do frontend
+      run: |
+        cd frontend
+        npm run build
+
+    - name: Upload build do frontend
+      uses: actions/upload-artifact@v4
+      with:
+        name: frontend-build
+        path: frontend/dist/
+        retention-days: 7
+
+  # Validação do Backend
+  backend:
+    name: Backend (Node.js + Express)
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout código
+      uses: actions/checkout@v4
+
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+        cache: 'npm'
+
+    - name: Cache dependências do backend
+      uses: actions/cache@v4
+      with:
+        path: src/node_modules
+        key: ${{ runner.os }}-backend-${{ hashFiles('src/package-lock.json') }}
+        restore-keys: |
+          ${{ runner.os }}-backend-
+
+    - name: Instalar dependências do backend
+      run: |
+        cd src
+        npm ci
+
+    - name: Testes do backend
+      run: |
+        cd src
+        npm test
       env:
         CI: true
+        NODE_ENV: test
 
-    - name: Upload de relatório de cobertura
+    - name: Upload relatório de cobertura
       if: ${{ always() }}
+      uses: codecov/codecov-action@v4
+      with:
+        file: ./src/coverage/lcov.info
+        flags: backend
+        name: backend-coverage
+        fail_ci_if_error: false
+
+  # Análise de Segurança
+  security:
+    name: Segurança
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout código
+      uses: actions/checkout@v4
+
+    - name: Configurar Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ env.NODE_VERSION }}
+
+    - name: Instalar dependências (frontend)
       run: |
-        if [ -f coverage/lcov.info ]; then
-          echo "Upload de relatório de cobertura"
-          curl -s https://codecov.io/bash | bash
-        fi 
+        cd frontend
+        npm ci
+
+    - name: Instalar dependências (backend)
+      run: |
+        cd src
+        npm ci
+
+    - name: Auditoria de segurança (frontend)
+      run: |
+        cd frontend
+        npm audit --audit-level=moderate
+      continue-on-error: true
+
+    - name: Auditoria de segurança (backend)
+      run: |
+        cd src
+        npm audit --audit-level=moderate
+      continue-on-error: true
+
+    - name: Verificar dependências desatualizadas
+      run: |
+        echo "=== Frontend ==="
+        cd frontend && npm outdated || true
+        echo "=== Backend ==="
+        cd src && npm outdated || true
+      continue-on-error: true
+
+  # Validação Geral
+  validation:
+    name: Validação Geral
+    runs-on: ubuntu-latest
+    needs: [frontend, backend, security]
+    
+    steps:
+    - name: Checkout código
+      uses: actions/checkout@v4
+
+    - name: Verificar estrutura do projeto
+      run: |
+        echo "📁 Verificando estrutura do projeto..."
+        ls -la
+        echo "�� Frontend:"
+        ls -la frontend/
+        echo "📁 Backend:"
+        ls -la src/
+        echo "✅ Estrutura válida"
+
+    - name: Verificar arquivos de configuração
+      run: |
+        echo "🔧 Verificando configurações..."
+        test -f frontend/package.json && echo "✅ frontend/package.json"
+        test -f src/package.json && echo "✅ src/package.json"
+        test -f frontend/vite.config.js && echo "✅ frontend/vite.config.js"
+        test -f src/server.js && echo "✅ src/server.js"
+
+    - name: Download e verificar builds
+      uses: actions/download-artifact@v4
+      with:
+        name: frontend-build
+        path: frontend-build/
+
+    - name: Verificar build do frontend
+      run: |
+        echo "🔍 Verificando build do frontend..."
+        ls -la frontend-build/
+        test -d frontend-build/ && echo "✅ Build do frontend válido"
+
+  # Notificação de Status
+  notify:
+    name: Status do PR
+    runs-on: ubuntu-latest
+    needs: [frontend, backend, security, validation]
+    if: always()
+    
+    steps:
+    - name: Resumo do status
+      run: |
+        echo "## 📊 Status do Pull Request" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### ✅ Jobs executados:" >> $GITHUB_STEP_SUMMARY
+        echo "- Frontend: ${{ needs.frontend.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Backend: ${{ needs.backend.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Segurança: ${{ needs.security.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "- Validação: ${{ needs.validation.result }}" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        
+        if [[ "${{ needs.frontend.result }}" == "success" && "${{ needs.backend.result }}" == "success" && "${{ needs.security.result }}" == "success" && "${{ needs.validation.result }}" == "success" ]]; then
+          echo "🎉 **Todos os checks passaram!** O PR está pronto para review." >> $GITHUB_STEP_SUMMARY
+        else
+          echo "⚠️ **Alguns checks falharam.** Por favor, corrija os problemas antes do merge." >> $GITHUB_STEP_SUMMARY
+        fi
+
+    - name: Comentário no PR
+      if: github.event_name == 'pull_request'
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const { data: comments } = await github.rest.issues.listComments({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            issue_number: context.issue.number,
+          });
+          
+          const botComment = comments.find(comment => 
+            comment.user.type === 'Bot' && 
+            comment.body.includes('Status do Pull Request')
+          );
+          
+          const summary = `## 📊 Status do Pull Request
+          
+          ### ✅ Jobs executados:
+          - Frontend: ${context.job}
+          - Backend: ${context.job}
+          - Segurança: ${context.job}
+          - Validação: ${context.job}
+          
+          ${context.job === 'success' ? '🎉 **Todos os checks passaram!** O PR está pronto para review.' : '⚠️ **Alguns checks falharam.** Por favor, corrija os problemas antes do merge.'}
+          
+          ---
+          *Atualizado automaticamente pelo GitHub Actions*`;
+          
+          if (botComment) {
+            await github.rest.issues.updateComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              comment_id: botComment.id,
+              body: summary
+            });
+          } else {
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              body: summary
+            });
+          }

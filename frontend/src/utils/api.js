@@ -4,7 +4,8 @@ import axios from 'axios';
 const getApiBaseUrl = () => {
   // Em desenvolvimento (Vite dev server)
   if (import.meta.env.DEV) {
-    // O proxy do Vite já cuida do redirecionamento /api -> http://localhost:3000
+    // O proxy do Vite redireciona /api -> http://localhost:3000/api
+    // Usar /api como base URL para que o proxy funcione corretamente
     return '/api';
   }
   
