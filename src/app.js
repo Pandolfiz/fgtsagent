@@ -83,20 +83,27 @@ app.use(helmet({
         "cdn.jsdelivr.net",
         "*.googleapis.com",
         "*.supabase.co",
-        // Remover unsafe-inline e unsafe-eval
+        "https://js.stripe.com"
       ],
       styleSrc: [
         "'self'",
         "'nonce-${res.locals.nonce}'", // Usar nonce para estilos inline
         "cdn.jsdelivr.net",
         "fonts.googleapis.com",
-        "*.googleapis.com"
+        "*.googleapis.com",
+        "cdnjs.cloudflare.com"
       ],
       fontSrc: [
         "'self'",
         "fonts.gstatic.com",
         "cdn.jsdelivr.net",
-        "*.googleapis.com"
+        "*.googleapis.com",
+        "cdnjs.cloudflare.com",
+        "use.fontawesome.com"
+      ],
+      frameSrc: [
+        "'self'",
+        "https://js.stripe.com"
       ],
       imgSrc: [
         "'self'",
@@ -151,9 +158,9 @@ app.use((req, res, next) => {
   // Atualizar CSP com o nonce gerado
   res.setHeader('Content-Security-Policy',
     `default-src 'self'; ` +
-    `script-src 'self' 'nonce-${res.locals.nonce}' cdn.jsdelivr.net *.googleapis.com *.supabase.co; ` +
-    `style-src 'self' 'nonce-${res.locals.nonce}' cdn.jsdelivr.net fonts.googleapis.com *.googleapis.com; ` +
-    `font-src 'self' fonts.gstatic.com cdn.jsdelivr.net *.googleapis.com; ` +
+    `script-src 'self' 'nonce-${res.locals.nonce}' cdn.jsdelivr.net *.googleapis.com *.supabase.co https://js.stripe.com; ` +
+    `style-src 'self' 'nonce-${res.locals.nonce}' cdn.jsdelivr.net fonts.googleapis.com *.googleapis.com cdnjs.cloudflare.com; ` +
+    `font-src 'self' fonts.gstatic.com cdn.jsdelivr.net *.googleapis.com cdnjs.cloudflare.com use.fontawesome.com; ` +
     `img-src 'self' data: blob: *.supabase.co ui-avatars.com placehold.co *.googleapis.com; ` +
     `connect-src 'self' *.supabase.co wss: *.evolution-api.com *.v8sistema.com *.googleapis.com; ` +
     `media-src 'self'; ` +
@@ -161,6 +168,7 @@ app.use((req, res, next) => {
     `base-uri 'self'; ` +
     `form-action 'self'; ` +
     `frame-ancestors 'none'; ` +
+    `frame-src 'self' https://js.stripe.com; ` +
     `upgrade-insecure-requests;`
   );
   
@@ -207,7 +215,7 @@ app.use(cors({
 
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use(morgan('dev'));
+// app.use(morgan('dev'));
 app.use(cookieParser());
 
 // Middleware global para logar todas as requisições recebidas
