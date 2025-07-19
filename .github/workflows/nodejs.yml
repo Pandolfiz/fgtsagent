@@ -1,5 +1,4 @@
 name: CI Node.js
-name: Pull Request Validation
 
 on:
   pull_request:
