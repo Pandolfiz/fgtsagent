@@ -58,3 +58,21 @@
 2025-07-05 15:52:28 error: 3. Executar o SQL de criação da tabela user_profiles manualmente
 2025-07-05 15:52:28 error: 4. Ou usar uma migração apropriada através do CLI do Supabase
 2025-07-05 17:47:37 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-14 21:59:20 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-15 15:35:28 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-15 17:35:00 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-15 17:36:15 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-15 19:49:06 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-16 11:14:01 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-16 11:25:55 error: Erro ao desconectar instância antes de excluir:
+2025-07-16 19:05:47 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-17 16:58:05 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-17 18:08:08 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-17 19:51:22 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-18 16:05:17 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-18 17:51:04 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-18 17:59:40 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-18 17:59:40 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-18 18:53:24 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-18 19:04:57 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function
+2025-07-19 00:17:39 error: Erro ao renovar token: supabaseAdmin.auth.admin.createSession is not a function

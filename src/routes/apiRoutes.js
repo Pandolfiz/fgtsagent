@@ -138,23 +138,28 @@ router.get('/dashboard/stats', requireAuth, require('../controllers/dashboardCon
 router.get('/contacts/:contactId/data', requireAuth, async (req, res) => {
   try {
     const { contactId } = req.params;
-    const userId = req.user.id;
-    
-    logger.info(`Obtendo dados do cliente ${contactId} para exibição no chat (usuário: ${userId})`);
-    
+    const userId = req.user ? req.user.id : null;
+    logger.info(`[CONTACT-DATA] Início - contactId: ${contactId}, userId: ${userId}`);
+    if (!req.user) {
+      logger.warn(`[CONTACT-DATA] req.user não está definido!`);
+    }
     // Verificar se o contato existe e buscar o lead_id (usar supabaseAdmin)
     const { data: contact, error: contactError } = await supabaseAdmin
       .from('contacts')
       .select('*, lead_id')
       .eq('remote_jid', contactId)
       .single();
-    
     if (contactError) {
-      logger.error(`Erro ao buscar contato: ${contactError.message}`);
+      logger.error(`[CONTACT-DATA] Erro ao buscar contato: ${contactError.message}`);
       return res.status(404).json({
         success: false,
         message: 'Contato não encontrado'
       });
+    }
+    if (!contact) {
+      logger.warn(`[CONTACT-DATA] Contato não encontrado para remote_jid: ${contactId}`);
+    } else {
+      logger.info(`[CONTACT-DATA] Contato encontrado: ${JSON.stringify(contact)}`);
     }
     
     // Verificar se o contato tem um lead_id associado
@@ -858,7 +863,7 @@ router.post('/agent/save-name', requireAuth, async (req, res) => {
 const upload = multer({ 
   dest: 'uploads/',
   limits: {
-    fileSize: 50 * 1024 * 1024, // 50MB max
+    fileSize: 500 * 1024 * 1024, // 500MB max
     files: 10 // máximo 10 arquivos por upload
   },
   fileFilter: (req, file, cb) => {

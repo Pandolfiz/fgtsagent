@@ -5,6 +5,8 @@ const { requireAuth } = require('../middleware/auth');
 const logger = require('../utils/logger');
 const whatsappService = require('../services/whatsappService');
 
+// console.log('DEBUG: Arquivo src/routes/messages.js carregado');
+
 /**
  * @route GET /api/messages/:conversationId
  * @desc Obter mensagens de uma conversa específica
@@ -82,6 +84,7 @@ router.get('/:conversationId', requireAuth, async (req, res) => {
  * @access Private
  */
 router.post('/', requireAuth, async (req, res) => {
+  // console.log('[HANDLER LOG] Entrou no handler POST /api/messages', { body: req.body });
   try {
     const userId = req.user.id;
     const { conversationId, content, recipientId, role } = req.body;
@@ -93,6 +96,7 @@ router.post('/', requireAuth, async (req, res) => {
       });
     }
     
+    logger.info(`DEBUG: Role recebido do frontend: ${role}`);
     // Garantir que role seja um dos valores aceitos
     let validRole = role;
     if (!validRole || !['ME', 'AI', 'USER'].includes(validRole)) {
@@ -129,14 +133,16 @@ router.post('/', requireAuth, async (req, res) => {
       contact: contactData.phone,
       role: validRole
     };
-    
-    logger.info(`Enviando nova mensagem para conversa ${conversationId}`);
-    
+
+    // Log após inserir a mensagem no banco
+    logger.info('DEBUG: Inserindo mensagem no banco', newMsg);
+    logger.info('DEBUG: Antes do insert no banco');
     // Inserir a mensagem no banco de dados
     const { data, error } = await supabase
       .from('messages')
       .insert(newMsg)
       .select();
+    logger.info('DEBUG: Mensagem inserida no banco, retorno:', data);
     
     if (error) {
       logger.error(`Erro ao inserir mensagem no banco: ${error.message}`, { error });
@@ -146,45 +152,46 @@ router.post('/', requireAuth, async (req, res) => {
         error: error.message
       });
     }
-    
+
+    // Log antes do bloco de envio WhatsApp
+    logger.info(`DEBUG: Antes do bloco de envio WhatsApp. validRole=${validRole}`);
     // Apenas enviar pelo WhatsApp se for uma mensagem do usuário ou do assistente
     // Mensagens com role 'USER' são mensagens recebidas e não precisam ser enviadas
     if (validRole === 'ME' || validRole === 'AI') {
       const recipientPhone = recipientId || contactData.phone;
       let messageMetadata = {};
       try {
-        // Verificar se temos um userId válido
         if (!userId) {
           logger.error('ID do usuário não fornecido para enviar mensagem pelo WhatsApp');
           throw new Error('ID do usuário é obrigatório para enviar mensagem');
         }
         logger.info(`Enviando mensagem para ${recipientPhone} pelo usuário ${userId}`);
-        // Garantir que o userId esteja no formato correto
         const clientId = contactData.client_id || userId;
-        // Log para depuração do clientId
         logger.info(`ClientId para envio de mensagem: ${clientId}, Tipo: ${typeof clientId}`);
         logger.info(`Dados de contato: ${JSON.stringify(contactData)}`);
-        // Verificar se o telefone está no formato correto
-        const formattedPhone = recipientPhone.startsWith('+') ? 
-          recipientPhone.substring(1) : recipientPhone;
-        logger.info(`Número formatado: ${formattedPhone}`);
-        // Adicionar indicador de digitação para melhorar a experiência do usuário
+
+        // CORREÇÃO: Formatar número corretamente (apenas dígitos)
+        const formattedPhone = recipientPhone.replace(/\D/g, '');
+        logger.info(`Número formatado para WhatsApp: ${formattedPhone}`);
+
         await whatsappService.sendTypingIndicator(formattedPhone, clientId);
-        // Aguardar um tempo para simular digitação (entre 1 e 3 segundos dependendo do tamanho da mensagem)
         const typingDelay = Math.min(Math.max(content.length * 30, 1000), 3000);
         await new Promise(resolve => setTimeout(resolve, typingDelay));
-        // Enviar a mensagem de texto usando as credenciais oficiais do WhatsApp
+
         logger.info(`Tentando enviar mensagem via WhatsApp oficial para ${formattedPhone}`);
         logger.info(`Payload para WhatsApp: phone=${formattedPhone}, content=${content}, clientId=${clientId}`);
         const whatsappResponse = await whatsappService.sendTextMessage(formattedPhone, content, clientId);
         logger.info(`Resposta da API WhatsApp: ${JSON.stringify(whatsappResponse)}`);
+  
+
         if (whatsappResponse.success) {
           logger.info(`Mensagem enviada com sucesso. ID: ${whatsappResponse.data.messages[0].id}`);
           messageMetadata = {
             whatsapp_message_id: whatsappResponse.data.messages[0].id,
             response_data: whatsappResponse.data
           };
-          // Atualizar status para sent
+         // Atualizar status para sent
+
           await supabase
             .from('messages')
             .update({ status: 'sent', metadata: messageMetadata })
@@ -193,8 +200,8 @@ router.post('/', requireAuth, async (req, res) => {
         } else {
           const errorMessage = whatsappResponse.error || 'Erro desconhecido';
           logger.error(`Erro ao enviar mensagem para WhatsApp: ${errorMessage}`);
+          logger.error(`Detalhes do erro: ${whatsappResponse.error_details}`);
           messageMetadata = { error: errorMessage, error_details: whatsappResponse.error_details };
-          // Atualize o status da mensagem no banco para 'failed'
           await supabase
             .from('messages')
             .update({ status: 'failed', metadata: messageMetadata })
@@ -209,7 +216,6 @@ router.post('/', requireAuth, async (req, res) => {
         }
       } catch (err) {
         logger.error(`Exceção ao enviar mensagem para WhatsApp: ${err.message}`);
-        // Atualize o status da mensagem no banco para 'failed'
         await supabase
           .from('messages')
           .update({ status: 'failed', metadata: { error: err.message } })
@@ -221,6 +227,8 @@ router.post('/', requireAuth, async (req, res) => {
           error: err.message
         });
       }
+    } else {
+      logger.info(`DEBUG: Bloco de envio WhatsApp NÃO executado. validRole=${validRole}`);
     }
     
     // Formatar para retornar ao cliente
