@@ -79,12 +79,14 @@ exports.fixDatabasePolicies = async (req, res) => {
 
 // Busca o CPF de um lead pelo lead_id (admin/debug)
 exports.getLeadCpfByLeadId = async (req, res) => {
+  logger.warn(`[CPF] (WARN) Entrou no controller getLeadCpfByLeadId`);
   try {
     const { lead_id } = req.params;
+    logger.info(`[CPF] Recebido lead_id: ${lead_id}`);
     
     // Validar se o lead_id é um UUID válido
     if (!lead_id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lead_id)) {
-      logger.warn(`Tentativa de buscar lead com ID inválido: ${lead_id}`);
+      logger.warn(`[CPF] Tentativa de buscar lead com ID inválido: ${lead_id}`);
       return res.status(400).json({ 
         success: false, 
         message: 'ID do lead inválido. Deve ser um UUID válido.',
@@ -93,7 +95,7 @@ exports.getLeadCpfByLeadId = async (req, res) => {
     }
 
     const { supabaseAdmin } = require('../config/supabase');
-    logger.info(`Buscando CPF para lead: ${lead_id}`);
+    logger.info(`[CPF] Buscando CPF para lead: ${lead_id}`);
     
     const { data, error } = await supabaseAdmin
       .from('leads')
@@ -102,7 +104,7 @@ exports.getLeadCpfByLeadId = async (req, res) => {
       .single();
       
     if (error) {
-      logger.error(`Erro ao buscar lead ${lead_id}:`, error);
+      logger.error(`[CPF] Erro ao buscar lead ${lead_id}: ${error.message}`);
       return res.status(404).json({ 
         success: false, 
         message: 'Lead não encontrado no banco de dados', 
@@ -112,7 +114,7 @@ exports.getLeadCpfByLeadId = async (req, res) => {
     }
     
     if (!data) {
-      logger.warn(`Lead não encontrado: ${lead_id}`);
+      logger.warn(`[CPF] Lead não encontrado: ${lead_id}`);
       return res.status(404).json({ 
         success: false, 
         message: 'Lead não encontrado', 
@@ -120,10 +122,10 @@ exports.getLeadCpfByLeadId = async (req, res) => {
       });
     }
     
-    logger.info(`CPF encontrado para lead ${lead_id}: ${data.cpf ? 'SIM' : 'NÃO'}`);
+    logger.info(`[CPF] CPF encontrado para lead ${lead_id}: ${data.cpf ? 'SIM' : 'NÃO'}`);
     return res.json({ success: true, cpf: data.cpf, lead: data });
   } catch (err) {
-    logger.error(`Erro interno ao buscar CPF do lead ${req.params.lead_id}:`, err);
+    logger.error(`[CPF] Erro interno ao buscar CPF do lead ${req.params.lead_id}: ${err.message}`);
     return res.status(500).json({ 
       success: false, 
       message: 'Erro interno do servidor', 

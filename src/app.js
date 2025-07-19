@@ -42,13 +42,13 @@ app.set('trust proxy', 1);
 // Configurar limites de requisição
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 300 // Máximo de 300 requisições por janela de tempo
+  max: 1000 // Máximo de 1000 requisições por janela de tempo
 });
 
 // Limiter mais restritivo para rotas de API
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 200 // Máximo de 200 requisições por janela de tempo
+  max: 1000 // Máximo de 1000 requisições por janela de tempo
 });
 
 // Limiter ainda mais restritivo para rotas de autenticação
@@ -192,7 +192,11 @@ app.use(cors({
     ].filter(Boolean); // Remove valores nulos ou undefined
     
     // Verificar se a origem da requisição está na lista
-    if (allowedOrigins.includes(origin) || origin.includes('localhost')) {
+    if (
+      allowedOrigins.includes(origin) ||
+      origin.includes('localhost') ||
+      (origin && (origin.includes('.ngrok-free.app') || origin.includes('.ngrok.io')))
+    ) {
       callback(null, true);
     } else {
       callback(new Error('Origem não permitida pelo CORS'), false);
@@ -206,6 +210,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 app.use(cookieParser());
 
+// Middleware global para logar todas as requisições recebidas
+// app.use((req, res, next) => {
+//   console.log(`[GLOBAL LOG] ${req.method} ${req.originalUrl}`);
+//   next();
+// });
+
 // Aplicar logging avançado (deve vir antes de outras rotas)
 app.use(requestLogger);
 
@@ -213,10 +223,18 @@ app.use(requestLogger);
 app.use(sanitizeInput);
 app.use(sanitizeRequest(['body', 'query', 'params']));
 
-// REMOVIDO: Backend não deve servir arquivos estáticos
-// Isso é responsabilidade do nginx
-// app.use(express.static(path.join(__dirname, 'public')));
-// app.use(express.static(path.join(__dirname, '../frontend/dist')));
+// Servir arquivos estáticos do build do frontend
+const frontendDistPath = path.join(__dirname, '../frontend/dist');
+app.use(express.static(frontendDistPath));
+
+// Fallback: para qualquer rota que não seja API, servir index.html do React
+app.get('*', (req, res, next) => {
+  if (!req.path.startsWith('/api')) {
+    res.sendFile(path.join(frontendDistPath, 'index.html'));
+  } else {
+    next();
+  }
+});
 
 // Configurar engine de templates
 app.set('view engine', 'ejs');
@@ -280,7 +298,11 @@ app.get('/api/health', (req, res) => {
 // Rota do webhook (deve vir antes das rotas autenticadas)
 app.use('/api/webhooks/evolution', webhookAuth, chatWebhookRoutes);
 
-// Rotas API - estas devem vir antes da rota catch-all para o React
+// Rotas específicas de mensagens e contatos - devem vir ANTES de app.use('/api', apiRoutes)
+app.use('/api/messages', requireAuth, messagesRoutes);
+app.use('/api/contacts', requireAuth, contactsRoutes);
+
+// Rotas API - estas devem vir depois das rotas específicas
 app.use('/api', apiRoutes);
 app.use('/auth', authLimiter, authRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
@@ -292,8 +314,8 @@ app.use('/api/chat', requireAuth, chatRoutes);
 app.use('/api/admin', adminRoutes);
 
 // Novas rotas para gerenciamento de contatos e mensagens
-app.use('/api/contacts', requireAuth, contactsRoutes);
-app.use('/api/messages', requireAuth, messagesRoutes);
+// app.use('/api/contacts', requireAuth, contactsRoutes); // Moved up
+// app.use('/api/messages', requireAuth, messagesRoutes); // Moved up
 
 // Rotas específicas do backend com renderização de template
 app.use('/admin', webRoutes.router);
