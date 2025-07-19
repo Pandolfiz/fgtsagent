@@ -13,7 +13,7 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
 
   const fetchPlans = async () => {
     try {
-      const response = await api.get('/api/stripe/plans');
+      const response = await api.get('/stripe/plans');
       setPlans(response.data.data);
     } catch (err) {
       setError('Erro ao carregar planos');

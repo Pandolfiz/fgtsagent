@@ -203,7 +203,7 @@ const SignUpWithPlans = () => {
 
           <div>
             <label className="block text-cyan-200 mb-0.5 text-sm">
-              Telefone (Opcional)
+              Telefone 
             </label>
             <input
               type="tel"
