@@ -121,7 +121,7 @@ class EvolutionService {
         token: this.apiKey,
         number,
         qrcode: true,
-        integration: 'WHATSAPP-BUSINESS',
+        integration: 'WHATSAPP-BAILEYS',
         webhook:{
           enabled: true,
           url: process.env.N8N_WEBHOOK_URL || 'https://n8n-n8n.8cgx4t.easypanel.host/webhook/fgtsAgent',
@@ -171,51 +171,15 @@ class EvolutionService {
   // Busca QR Code de uma instância
   async fetchQrCode() {
     try {
-      // Primeiro, deletar a instância se existir para forçar recriação limpa
-      logger.info('Forçando recriação da instância para garantir QR Code...');
+      logger.info('Buscando QR Code da instância existente...');
       
-      try {
-        await this.deleteInstance();
-        logger.info('Instância deletada com sucesso');
-      } catch (deleteError) {
-        logger.warn(`Erro ao deletar instância (ignorando): ${deleteError.message}`);
-      }
-      
-      // Aguardar um pouco após deletar
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      
-      // Agora criar uma nova instância limpa
-      logger.info('Criando nova instância para gerar QR Code...');
-      
-      const createEndpoint = `${this.baseUrl}/instance/create`;
-      const createPayload = {
-        instanceName: this.instanceName,
-        token: this.apiKey,
-        qrcode: true,
-        integration: 'WHATSAPP-BAILEYS'
-      };
-      
-      logger.info(`Criando instância em: ${createEndpoint}`, createPayload);
-      
-      const createResponse = await axios.post(createEndpoint, createPayload, {
-        headers: { 
-          apikey: this.apiKey,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      const createData = createResponse.data;
-      logger.info('Instância criada:', createData);
-      
-      // Aguardar um pouco para a instância inicializar
-      await new Promise(resolve => setTimeout(resolve, 3000));
-      
-      // Agora tentar conectar para obter QR Code
+      // Primeiro, tentar obter QR Code diretamente da instância existente
       const connectEndpoint = `${this.baseUrl}/instance/connect/${encodeURIComponent(this.instanceName)}`;
       logger.info(`Conectando para obter QR Code: ${connectEndpoint}`);
       
       const connectResponse = await axios.get(connectEndpoint, {
-        headers: { apikey: this.apiKey }
+        headers: { apikey: this.apiKey },
+        timeout: 5000 // Timeout de 5 segundos
       });
       
       const connectData = connectResponse.data;
@@ -245,74 +209,116 @@ class EvolutionService {
         };
       }
       
-      // Se o connect retornou vazio, aguardar mais um pouco e tentar novamente
-      if (Object.keys(connectData).length === 0) {
-        logger.info('Connect retornou vazio, aguardando mais tempo...');
-        await new Promise(resolve => setTimeout(resolve, 5000));
-        
-        // Tentar conectar novamente
-        const retryResponse = await axios.get(connectEndpoint, {
-          headers: { apikey: this.apiKey }
-        });
-        
-        const retryData = retryResponse.data;
-        logger.info('Segunda tentativa de connect:', retryData);
-        
-        if (retryData?.pairingCode && retryData?.code) {
-          return {
-            base64: null,
-            pairingCode: retryData.pairingCode,
-            code: retryData.code
-          };
-        } else if (retryData?.base64) {
-          return {
-            base64: retryData.base64,
-            pairingCode: retryData.pairingCode || null,
-            code: retryData.code || null
-          };
-        } else if (retryData?.qrcode) {
-          return {
-            base64: null,
-            pairingCode: retryData.pairingCode || null,
-            code: retryData.qrcode
-          };
-        }
+      // Se não conseguiu QR Code, verificar status da instância
+      logger.info('QR Code não encontrado, verificando status da instância...');
+      const statusEndpoint = `${this.baseUrl}/instance/connectionState/${encodeURIComponent(this.instanceName)}`;
+      const statusResponse = await axios.get(statusEndpoint, {
+        headers: { apikey: this.apiKey },
+        timeout: 3000
+      });
+      
+      const statusData = statusResponse.data;
+      logger.info('Status da instância:', statusData);
+      
+      if (statusData?.instance?.qrcode) {
+        return {
+          base64: null,
+          pairingCode: statusData.instance.pairingCode || null,
+          code: statusData.instance.qrcode
+        };
       }
+      
+      // Se ainda não tem QR Code, recriar instância (método mais lento, mas garantido)
+      logger.info('Instância não tem QR Code, recriando...');
+      return await this._recreateInstanceForQrCode();
       
     } catch (error) {
       logger.error(`Erro ao buscar QR Code: ${error.message}`);
       
-      // Se deu erro 404, tentar uma última vez com connectionState
+      // Se deu erro 404, a instância não existe, recriar
       if (error.response?.status === 404) {
-        logger.info('Tentando verificar status da instância como fallback...');
-        try {
-          const statusEndpoint = `${this.baseUrl}/instance/connectionState/${encodeURIComponent(this.instanceName)}`;
-          const statusResponse = await axios.get(statusEndpoint, {
-            headers: { apikey: this.apiKey }
-          });
-          
-          const statusData = statusResponse.data;
-          logger.info('Status como fallback:', statusData);
-          
-          if (statusData?.instance?.qrcode) {
-            return {
-              base64: null,
-              pairingCode: statusData.instance.pairingCode || null,
-              code: statusData.instance.qrcode
-            };
-          }
-        } catch (statusError) {
-          logger.warn(`Erro no fallback status: ${statusError.message}`);
-        }
-        
-        throw new Error('Instância não encontrada. Verifique se a Evolution API está funcionando corretamente.');
+        logger.info('Instância não encontrada, recriando...');
+        return await this._recreateInstanceForQrCode();
       }
       
       throw error;
     }
+  }
 
-    // Se chegou até aqui, não conseguiu obter QR Code
-    throw new Error('Não foi possível obter QR Code da instância. Tente novamente em alguns segundos.');
+  // Método privado para recriar instância (método mais lento)
+  async _recreateInstanceForQrCode() {
+    try {
+      // Deletar instância existente
+      try {
+        await this.deleteInstance();
+        logger.info('Instância deletada com sucesso');
+      } catch (deleteError) {
+        logger.warn(`Erro ao deletar instância (ignorando): ${deleteError.message}`);
+      }
+      
+      // Aguardar um pouco após deletar
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      
+      // Criar nova instância
+      logger.info('Criando nova instância para gerar QR Code...');
+      
+      const createEndpoint = `${this.baseUrl}/instance/create`;
+      const createPayload = {
+        instanceName: this.instanceName,
+        token: this.apiKey,
+        qrcode: true,
+        integration: 'WHATSAPP-BAILEYS'
+      };
+      
+      const createResponse = await axios.post(createEndpoint, createPayload, {
+        headers: { 
+          apikey: this.apiKey,
+          'Content-Type': 'application/json'
+        },
+        timeout: 10000
+      });
+      
+      const createData = createResponse.data;
+      logger.info('Instância criada:', createData);
+      
+      // Aguardar um pouco para a instância inicializar
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      
+      // Tentar conectar para obter QR Code
+      const connectEndpoint = `${this.baseUrl}/instance/connect/${encodeURIComponent(this.instanceName)}`;
+      const connectResponse = await axios.get(connectEndpoint, {
+        headers: { apikey: this.apiKey },
+        timeout: 5000
+      });
+      
+      const connectData = connectResponse.data;
+      
+      if (connectData?.pairingCode && connectData?.code) {
+        return {
+          base64: null,
+          pairingCode: connectData.pairingCode,
+          code: connectData.code
+        };
+      } else if (connectData?.base64) {
+        return {
+          base64: connectData.base64,
+          pairingCode: connectData.pairingCode || null,
+          code: connectData.code || null
+        };
+      } else if (connectData?.qrcode) {
+        return {
+          base64: null,
+          pairingCode: connectData.pairingCode || null,
+          code: connectData.qrcode
+        };
+      }
+      
+      throw new Error('Não foi possível obter QR Code da instância recriada.');
+      
+    } catch (error) {
+      logger.error(`Erro ao recriar instância: ${error.message}`);
+      throw error;
+    }
   }
 
   // Deleta instância na Evolution API

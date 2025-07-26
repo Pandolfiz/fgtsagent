@@ -358,9 +358,45 @@ class WhatsappCredentialController {
         instanceName: apiRes?.instance?.instanceName
       });
       
+      if (!apiRes || !apiRes.instance) {
+        throw new Error('Falha ao criar instância na Evolution API');
+      }
+      
       const oldId = existing.id;
       const newId = apiRes.instance.instanceId;
-      // ... (restante igual ao controller original)
+      
+      // Atualizar credencial no banco com o novo ID da instância
+      const { data: updatedCred, error: updateError } = await supabaseAdmin
+        .from('whatsapp_credentials')
+        .update({
+          id: newId,
+          instance_name: instanceName,
+          status: 'pending',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', oldId)
+        .select()
+        .single();
+        
+      if (updateError) {
+        logger.error(`[SETUP] Erro ao atualizar credencial: ${updateError.message}`);
+        throw updateError;
+      }
+      
+      logger.info(`[SETUP] Credencial atualizada com sucesso:`, {
+        oldId,
+        newId,
+        instanceName: updatedCred.instance_name,
+        status: updatedCred.status
+      });
+      
+      // Retornar a credencial atualizada
+      return res.json({ 
+        success: true, 
+        data: updatedCred,
+        message: 'Instância criada com sucesso'
+      });
+      
     } catch (err) {
       logger.error('WhatsappCredentialController.setupInstance error:', err.message || err);
       return res.status(500).json({ success: false, message: err.message });
@@ -441,12 +477,123 @@ class WhatsappCredentialController {
         return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
       }
       const service = EvolutionService.fromCredential(existing);
-      const data = await service.restartInstance();
-      // Opcional: atualizar metadata ou status no banco, se necessário
-      return res.json({ success: true, data });
+      await service.restartInstance();
+      return res.json({ success: true, message: 'Instância reiniciada com sucesso' });
     } catch (err) {
       logger.error('WhatsappCredentialController.restartInstance error:', err.message || err);
       return res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+  // Busca QR Code de uma instância
+  async fetchQrCode(req, res) {
+    try {
+      const { id } = req.params;
+      
+      logger.info(`[QRCODE] Buscando QR Code para credencial ${id}`);
+      
+      const { data: creds, error } = await supabaseAdmin
+        .from('whatsapp_credentials')
+        .select('*')
+        .eq('id', id);
+      if (error) throw error;
+      const credential = creds && creds[0];
+      if (!credential || credential.client_id !== req.clientId) {
+        return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
+      }
+      
+      logger.info(`[QRCODE] Credencial encontrada:`, {
+        id: credential.id,
+        instance_name: credential.instance_name,
+        connection_type: credential.connection_type
+      });
+      
+      // Primeiro, tentar usar QR Code em cache se ainda for válido
+      const cachedQr = credential.metadata?.evolution?.qrcode;
+      if (cachedQr && (cachedQr.base64 || cachedQr.code || cachedQr.pairingCode)) {
+        logger.info(`[QRCODE] Usando QR Code em cache`);
+        return res.json({ 
+          success: true, 
+          data: {
+            base64: cachedQr.base64 || null,
+            code: cachedQr.code || null,
+            pairingCode: cachedQr.pairingCode || null
+          }
+        });
+      }
+      
+      // Buscar QR Code fresco da Evolution API
+      const service = EvolutionService.fromCredential(credential);
+      let freshQr;
+      try {
+        logger.info(`[QRCODE] Solicitando QR Code da Evolution API...`);
+        freshQr = await service.fetchQrCode();
+        logger.info(`[QRCODE] QR Code obtido da API:`, {
+          hasBase64: !!freshQr?.base64,
+          hasCode: !!freshQr?.code,
+          hasPairingCode: !!freshQr?.pairingCode
+        });
+      } catch (err) {
+        logger.warn(`[QRCODE] Falha ao buscar QR Code na API: ${err.message}, usando metadata`);
+        freshQr = cachedQr;
+      }
+      
+      if (!freshQr) {
+        logger.error(`[QRCODE] QR Code não encontrado`);
+        return res.status(404).json({ success: false, message: 'QR Code não encontrado' });
+      }
+      
+      // Processar dados do QR Code para formato consistente
+      const qrData = { ...freshQr };
+      
+      // Se temos base64 mas está sem o prefixo data:image, adicione-o
+      if (qrData.base64 && !qrData.base64.startsWith('data:image')) {
+        // Verificar se é um base64 válido ou apenas um código
+        if (/^[A-Za-z0-9+/=]+$/.test(qrData.base64)) {
+          qrData.base64 = `data:image/png;base64,${qrData.base64}`;
+        } else {
+          // Se não é um base64 válido, pode ser que o campo esteja sendo usado incorretamente
+          logger.warn('[QRCODE] Base64 QR Code inválido, transformando em código', qrData.base64);
+          qrData.code = qrData.base64;
+          delete qrData.base64;
+        }
+      }
+      
+      // Atualizar metadata local com novo QR Code (em background, não bloquear resposta)
+      const updatedMetadata = {
+        ...credential.metadata,
+        evolution: {
+          ...credential.metadata?.evolution,
+          qrcode: qrData
+        }
+      };
+      
+      // Atualizar em background para não bloquear a resposta
+      supabaseAdmin
+        .from('whatsapp_credentials')
+        .update({ metadata: updatedMetadata })
+        .eq('id', id)
+        .then(() => {
+          logger.info(`[QRCODE] Metadata atualizada com sucesso`);
+        })
+        .catch((updateError) => {
+          logger.error(`[QRCODE] Erro ao atualizar metadata: ${updateError.message}`);
+        });
+      
+      logger.info(`[QRCODE] QR Code retornado com sucesso`);
+      
+      // Retornar imediatamente
+      return res.json({ 
+        success: true, 
+        data: {
+          base64: qrData.base64 || null,
+          code: qrData.code || null,
+          pairingCode: qrData.pairingCode || null
+        }
+      });
+    } catch (error) {
+      logger.error(`[QRCODE] Erro: ${error.message}`);
+      return res.status(500).json({ success: false, message: error.message });
     }
   }
 }

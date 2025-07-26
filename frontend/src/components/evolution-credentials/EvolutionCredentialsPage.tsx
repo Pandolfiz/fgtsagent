@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api, EvolutionCredential } from '../../utilities/api';
 import { FaWhatsapp, FaEdit, FaTrash, FaSync, FaPlus, FaCircle, FaCheck, FaExclamation, FaQuestionCircle, FaHourglass, FaBullhorn, FaPhone, FaBroadcastTower } from 'react-icons/fa';
 import { Dialog, Transition } from '@headlessui/react';
@@ -39,19 +39,26 @@ export function EvolutionCredentialsPage() {
   });
   
   // Estado para informações do usuário atual
-  const [currentUser, setCurrentUser] = useState<{ id: string; full_name?: string; email: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; full_name?: string; email: string; displayName?: string; name?: string; user_metadata?: any } | null>(null);
 
-  // Carregar credenciais
+  // Carregar credenciais do usuário
   const loadCredentials = async () => {
-    setLoading(true);
     try {
+      console.log('🔄 Carregando credenciais...');
+      setLoading(true);
       const response = await api.evolution.getAll();
+      console.log('📡 Resposta da API de credenciais:', response);
+      
       if (response.success && response.data) {
+        console.log('✅ Credenciais carregadas:', response.data.length, 'itens');
+        console.log('📋 Lista de credenciais:', response.data);
         setCredentials(response.data);
       } else {
+        console.error('❌ Erro ao carregar credenciais:', response.message);
         setError(response.message || 'Erro ao carregar credenciais');
       }
     } catch (err) {
+      console.error('❌ Erro geral ao carregar credenciais:', err);
       setError('Erro ao carregar credenciais: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
@@ -410,7 +417,8 @@ export function EvolutionCredentialsPage() {
   // Salvar nova credencial
   const handleSaveNew = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setError(null); // Limpar erros anteriores
+    
     try {
       // Preparar dados da credencial
       let credentialData = { 
@@ -420,53 +428,81 @@ export function EvolutionCredentialsPage() {
       
       // Se for WhatsApp Business, gerar nome da instância automaticamente
       if (connectionType === 'whatsapp_business') {
-        console.log('🔍 Debug - Dados do currentUser:', currentUser);
-        console.log('🔍 Debug - Valores disponíveis:', {
-          'currentUser?.full_name': currentUser?.full_name,
-          'currentUser?.displayName': currentUser?.displayName,
-          'currentUser?.name': currentUser?.name,
-          'currentUser?.email': currentUser?.email,
-          'currentUser?.user_metadata': currentUser?.user_metadata
-        });
-        
         const userName = currentUser?.full_name || currentUser?.displayName || currentUser?.name || currentUser?.email?.split('@')[0] || 'Usuario';
-        console.log('🔍 Debug - userName selecionado:', userName);
-        
         const agentName = formData.agent_name || 'Agente';
         const phone = formData.phone || '';
         
         // Gerar nome da instância: Usuario_Agente_Phone
         credentialData.instance_name = `${userName}_${agentName}_${phone}`.replace(/\s+/g, '_');
-        console.log('🔍 Debug - instance_name gerado:', credentialData.instance_name);
       }
+      
+      console.log('🔄 Criando credencial com dados:', credentialData);
       
       // Criar registro de credencial
       const createRes = await api.evolution.create(credentialData);
+      
       if (createRes.success && createRes.data) {
-        // Fechar modal de criação
+        console.log('✅ Credencial criada com sucesso:', createRes.data);
+        
+        // Fechar modal de criação imediatamente
         setShowAddModal(false);
-        // Criar instância na Evolution API
-        const setupRes = await api.evolution.setupInstance(createRes.data.id);
-        if (setupRes.success && setupRes.data) {
-          // Atualizar lista de credenciais
-          setCredentials(prev => [...prev, setupRes.data!]);
-          // Exibir QR Code para configuração
-          const qrRes = await api.evolution.getQrCode(setupRes.data.id);
-          if (qrRes.success && qrRes.data) {
-            setQrData(qrRes.data);
-            setSelectedCredential(setupRes.data!);
-            setShowQrModal(true);
+        
+        // Criar uma credencial temporária para mostrar instantaneamente
+        const tempCredential = {
+          ...createRes.data!,
+          status: 'pending',
+          instance_name: credentialData.instance_name
+        };
+        
+        // Mostrar card instantaneamente
+        setCredentials(prev => [...prev, tempCredential]);
+        
+        // Processar setup e QR Code em background (não bloqueia a UI)
+        (async () => {
+          try {
+            console.log('🔄 Configurando instância para ID:', createRes.data!.id);
+            const setupRes = await api.evolution.setupInstance(createRes.data!.id);
+            
+            if (setupRes.success && setupRes.data) {
+              console.log('✅ Instância configurada com sucesso:', setupRes.data);
+              
+              // Atualizar credencial com dados reais
+              setCredentials(prev => 
+                prev.map(cred => 
+                  cred.id === createRes.data!.id ? setupRes.data! : cred
+                )
+              );
+              
+              // Buscar QR Code em background
+              console.log('🔄 Solicitando QR Code para ID:', setupRes.data.id);
+              const qrRes = await api.evolution.getQrCode(setupRes.data.id);
+              
+              if (qrRes.success && qrRes.data) {
+                console.log('✅ QR Code obtido com sucesso');
+                setQrData(qrRes.data);
+                setSelectedCredential(setupRes.data!);
+                setShowQrModal(true);
+              } else {
+                console.error('❌ Erro ao obter QR Code:', qrRes.message);
+                setError(qrRes.message || 'Erro ao obter QR Code');
+              }
+            } else {
+              console.error('❌ Erro ao configurar instância:', setupRes.message);
+              setError(setupRes.message || 'Erro ao configurar instância');
+            }
+          } catch (err) {
+            console.error('❌ Erro no background:', err);
+            setError('Erro ao configurar instância: ' + (err instanceof Error ? err.message : String(err)));
           }
-        } else {
-          setError(setupRes.message || 'Erro ao configurar instância');
-        }
+        })();
+        
       } else {
+        console.error('❌ Erro ao criar credencial:', createRes.message);
         setError(createRes.message || 'Erro ao salvar credencial');
       }
     } catch (err) {
+      console.error('❌ Erro geral:', err);
       setError('Erro ao salvar credencial: ' + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -579,12 +615,26 @@ export function EvolutionCredentialsPage() {
     
     try {
       console.log('🔄 Solicitando QR Code para credential:', credential.id);
+      console.log('📱 Dados da credencial:', {
+        id: credential.id,
+        instance_name: credential.instance_name,
+        phone: credential.phone,
+        status: credential.status
+      });
+      
       const response = await api.evolution.getQrCode(credential.id);
-      console.log('📱 Resposta do QR Code:', response);
+      console.log('📱 Resposta completa do QR Code:', response);
       
       if (response.success && response.data) {
+        console.log('✅ QR Code obtido com sucesso:', response.data);
+        console.log('🔍 Dados do QR Code:', {
+          hasBase64: !!response.data.base64,
+          hasCode: !!response.data.code,
+          hasPairingCode: !!response.data.pairingCode,
+          base64Length: response.data.base64?.length,
+          codeLength: response.data.code?.length
+        });
         setQrData(response.data);
-        console.log('✅ QR Code definido:', response.data);
       } else {
         console.error('❌ Erro na resposta:', response.message);
         setError(response.message || 'Erro ao obter QR Code');
@@ -744,110 +794,116 @@ export function EvolutionCredentialsPage() {
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {credentials.map((credential) => (
-              <div
-                key={credential.id}
-                className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg border border-cyan-800/30 hover:border-cyan-600/50 transition-all duration-300 overflow-hidden"
-              >
-                {/* Header compacto com nome, telefone, tipo e status */}
-                <div className="p-3 border-b border-cyan-800/30">
-                  <div className="flex justify-between items-start">
-                    <div className="flex items-center flex-1">
-                      <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
-                        credential.connection_type === 'ads' 
-                          ? 'bg-purple-600/20 text-purple-400' 
-                          : 'bg-emerald-600/20 text-emerald-400'
-                      }`}>
-                        {credential.connection_type === 'ads' ? (
-                          <FaBroadcastTower className="text-sm" />
-                        ) : (
-                          <FaWhatsapp className="text-sm" />
-                        )}
+            {(() => {
+              console.log('🔄 Renderizando lista de credenciais:', {
+                totalCredentials: credentials.length,
+                credentials: credentials.map(c => ({ id: c.id, instance_name: c.instance_name, status: c.status }))
+              });
+              return credentials.map((credential) => (
+                <div
+                  key={credential.id}
+                  className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg border border-cyan-800/30 hover:border-cyan-600/50 transition-all duration-300 overflow-hidden"
+                >
+                  {/* Header compacto com nome, telefone, tipo e status */}
+                  <div className="p-3 border-b border-cyan-800/30">
+                    <div className="flex justify-between items-start">
+                      <div className="flex items-center flex-1">
+                        <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
+                          credential.connection_type === 'ads' 
+                            ? 'bg-purple-600/20 text-purple-400' 
+                            : 'bg-emerald-600/20 text-emerald-400'
+                        }`}>
+                          {credential.connection_type === 'ads' ? (
+                            <FaBroadcastTower className="text-sm" />
+                          ) : (
+                            <FaWhatsapp className="text-sm" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-base font-semibold text-white truncate">{credential.agent_name || credential.instance_name || 'Sem nome'}</h3>
+                          <p className="text-cyan-300 text-xs truncate">{credential.phone || 'Sem número'}</p>
+                        </div>
                       </div>
-                      <div className="flex-1 min-w-0">
-                        <h3 className="text-base font-semibold text-white truncate">{credential.agent_name || credential.instance_name || 'Sem nome'}</h3>
-                        <p className="text-cyan-300 text-xs truncate">{credential.phone || 'Sem número'}</p>
+                      
+                      {/* Lado direito: Tipo e Status */}
+                      <div className="flex flex-col items-end space-y-1 ml-3">
+                        <ConnectionTypeBadge connectionType={credential.connection_type} />
+                        <StatusBadge status={credential.status} size="sm" />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Body compacto */}
+                  <div className="p-3">
+                    {/* Status da conexão - mais compacto */}
+                    <div className="p-2 rounded-lg bg-white/5 border border-cyan-800/20 mb-3">
+                      <div className="flex justify-between items-center">
+                        <div>
+                          <p className="text-xs text-cyan-300 font-medium">STATUS DA CONEXÃO</p>
+                          <p className="text-white font-medium text-sm">
+                            {credential.status === 'connected' || credential.status === 'open' ? 'Conectado' : 
+                             credential.status === 'connecting' ? 'Conectando...' : 
+                             credential.status === 'disconnected' ? 'Desconectado' : 'Aguardando Conexão'}
+                          </p>
+                        </div>
+                        <StatusIcon status={credential.status} />
                       </div>
                     </div>
                     
-                    {/* Lado direito: Tipo e Status */}
-                    <div className="flex flex-col items-end space-y-1 ml-3">
-                      <ConnectionTypeBadge connectionType={credential.connection_type} />
-                      <StatusBadge status={credential.status} size="sm" />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Body compacto */}
-                <div className="p-3">
-                  {/* Status da conexão - mais compacto */}
-                  <div className="p-2 rounded-lg bg-white/5 border border-cyan-800/20 mb-3">
-                    <div className="flex justify-between items-center">
-                      <div>
-                        <p className="text-xs text-cyan-300 font-medium">STATUS DA CONEXÃO</p>
-                        <p className="text-white font-medium text-sm">
-                          {credential.status === 'connected' || credential.status === 'open' ? 'Conectado' : 
-                           credential.status === 'connecting' ? 'Conectando...' : 
-                           credential.status === 'disconnected' ? 'Desconectado' : 'Aguardando Conexão'}
+                    {/* Info grid mais compacto */}
+                    <div className="grid grid-cols-2 gap-2 mb-3">
+                      <div className="text-center p-2 rounded-lg bg-white/5">
+                        <p className="text-xs text-cyan-300 mb-1">Instância</p>
+                        <p className="font-medium text-white truncate text-xs">{credential.instance_name || '-'}</p>
+                      </div>
+                      <div className="text-center p-2 rounded-lg bg-white/5">
+                        <p className="text-xs text-cyan-300 mb-1">Criado em</p>
+                        <p className="font-medium text-white truncate text-xs">
+                          {credential.created_at ? new Date(credential.created_at).toLocaleDateString('pt-BR') : '-'}
                         </p>
                       </div>
-                      <StatusIcon status={credential.status} />
                     </div>
-                  </div>
-                  
-                  {/* Info grid mais compacto */}
-                  <div className="grid grid-cols-2 gap-2 mb-3">
-                    <div className="text-center p-2 rounded-lg bg-white/5">
-                      <p className="text-xs text-cyan-300 mb-1">Instância</p>
-                      <p className="font-medium text-white truncate text-xs">{credential.instance_name || '-'}</p>
-                    </div>
-                    <div className="text-center p-2 rounded-lg bg-white/5">
-                      <p className="text-xs text-cyan-300 mb-1">Criado em</p>
-                      <p className="font-medium text-white truncate text-xs">
-                        {credential.created_at ? new Date(credential.created_at).toLocaleDateString('pt-BR') : '-'}
-                      </p>
-                    </div>
-                  </div>
 
-                  {/* Botões de ação - grid mais compacto */}
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => handleEdit(credential)}
-                      className="px-2 py-1.5 rounded-md bg-white/10 text-white text-xs hover:bg-white/20 transition-colors flex items-center justify-center"
-                    >
-                      <FaEdit className="mr-1" /> Editar
-                    </button>
-                    <button
-                      onClick={() => handleRestartInstance(credential)}
-                      className="px-2 py-1.5 rounded-md bg-white/10 text-white text-xs hover:bg-white/20 transition-colors flex items-center justify-center"
-                    >
-                      <FaSync className="mr-1" /> Reiniciar
-                    </button>
-                    <button
-                      onClick={() => credential.status?.toLowerCase() === 'connected' || credential.status?.toLowerCase() === 'open'
-                        ? handleDisconnect(credential)
-                        : handleShowQrCode(credential)
-                      }
-                      className={`px-2 py-1.5 rounded-md text-xs flex items-center justify-center ${
-                        credential.status?.toLowerCase() === 'connected' || credential.status?.toLowerCase() === 'open'
-                          ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30'
-                          : 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
-                      }`}
-                    >
-                      {credential.status?.toLowerCase() === 'connected' || credential.status?.toLowerCase() === 'open'
-                        ? 'Desconectar'
-                        : 'Conectar'}
-                    </button>
-                    <button
-                      onClick={() => handleDelete(credential)}
-                      className="px-2 py-1.5 rounded-md bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30 transition-colors flex items-center justify-center"
-                    >
-                      <FaTrash className="mr-1" /> Excluir
-                    </button>
+                    {/* Botões de ação - grid mais compacto */}
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => handleEdit(credential)}
+                        className="px-2 py-1.5 rounded-md bg-white/10 text-white text-xs hover:bg-white/20 transition-colors flex items-center justify-center"
+                      >
+                        <FaEdit className="mr-1" /> Editar
+                      </button>
+                      <button
+                        onClick={() => handleRestartInstance(credential)}
+                        className="px-2 py-1.5 rounded-md bg-white/10 text-white text-xs hover:bg-white/20 transition-colors flex items-center justify-center"
+                      >
+                        <FaSync className="mr-1" /> Reiniciar
+                      </button>
+                      <button
+                        onClick={() => credential.status?.toLowerCase() === 'connected' || credential.status?.toLowerCase() === 'open'
+                          ? handleDisconnect(credential)
+                          : handleShowQrCode(credential)
+                        }
+                        className={`px-2 py-1.5 rounded-md text-xs flex items-center justify-center ${
+                          credential.status?.toLowerCase() === 'connected' || credential.status?.toLowerCase() === 'open'
+                            ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30'
+                            : 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
+                        }`}
+                      >
+                        {credential.status?.toLowerCase() === 'connected' || credential.status?.toLowerCase() === 'open'
+                          ? 'Desconectar'
+                          : 'Conectar'}
+                      </button>
+                      <button
+                        onClick={() => handleDelete(credential)}
+                        className="px-2 py-1.5 rounded-md bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30 transition-colors flex items-center justify-center"
+                      >
+                        <FaTrash className="mr-1" /> Excluir
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              ));
+            })()}
           </div>
         )}
 
@@ -1271,58 +1327,84 @@ export function EvolutionCredentialsPage() {
                       Conectar WhatsApp
                     </Dialog.Title>
                     <div className="flex flex-col items-center mb-6">
-                      {qrData?.base64 ? (
-                        <div className="bg-white p-4 rounded-lg shadow-inner">
-                          <img
-                            src={qrData.base64.startsWith('data:') ? qrData.base64 : `data:image/png;base64,${qrData.base64}`}
-                            alt="QR Code para conexão"
-                            className="w-64 h-64"
-                          />
-                        </div>
-                      ) : qrData?.code ? (
-                        <div className="bg-white p-4 rounded-lg shadow-inner">
-                          <QRCodeSVG value={qrData.code} size={256} style={{ width: '100%', height: '100%' }} />
-                        </div>
-                      ) : loading ? (
-                        <div className="flex flex-col items-center">
-                          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-cyan-400 mb-4"></div>
-                          <p className="text-cyan-300 text-lg font-medium">Gerando QR Code...</p>
-                          <p className="text-gray-400 text-sm mt-2">Isso pode levar até 10 segundos</p>
-                        </div>
-                      ) : error ? (
-                        <div className="text-center">
-                          <div className="bg-red-900/50 p-6 rounded-lg mb-4 border border-red-700">
-                            <FaExclamation className="text-4xl text-red-400 mx-auto mb-2" />
-                            <p className="text-red-300 font-medium mb-2">Erro ao gerar QR Code</p>
-                            <p className="text-red-200 text-sm">{error}</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => selectedCredential && handleShowQrCode(selectedCredential)}
-                            className="px-4 py-2 rounded-md bg-cyan-600 text-white hover:bg-cyan-700 transition-colors flex items-center gap-2 mx-auto"
-                            disabled={loading}
-                          >
-                            <FaSync className={loading ? 'animate-spin' : ''} />
-                            Tentar Novamente
-                          </button>
-                        </div>
-                      ) : (
-                        <div className="text-center">
-                          <div className="bg-gray-800 p-8 rounded-lg mb-4">
-                            <FaQuestionCircle className="text-6xl text-gray-500 mx-auto mb-2" />
-                            <p className="text-gray-400">QR Code não disponível</p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => selectedCredential && handleShowQrCode(selectedCredential)}
-                            className="px-4 py-2 rounded-md bg-cyan-600 text-white hover:bg-cyan-700 transition-colors flex items-center gap-2 mx-auto"
-                            disabled={loading}
-                          >
-                            <FaSync className={loading ? 'animate-spin' : ''} />
-                            {loading ? 'Atualizando...' : 'Atualizar QR Code'}
-                          </button>
-                        </div>
-                      )}
+                      {(() => {
+                        console.log('🔍 Renderizando QR Code modal:', {
+                          hasQrData: !!qrData,
+                          hasBase64: !!qrData?.base64,
+                          hasCode: !!qrData?.code,
+                          isLoading: loading,
+                          hasError: !!error,
+                          qrData: qrData
+                        });
+                        
+                        if (qrData?.base64) {
+                          console.log('📱 Exibindo QR Code como imagem base64');
+                          return (
+                            <div className="bg-white p-4 rounded-lg shadow-inner">
+                              <img
+                                src={qrData.base64.startsWith('data:') ? qrData.base64 : `data:image/png;base64,${qrData.base64}`}
+                                alt="QR Code para conexão"
+                                className="w-64 h-64"
+                              />
+                            </div>
+                          );
+                        } else if (qrData?.code) {
+                          console.log('📱 Exibindo QR Code como SVG');
+                          return (
+                            <div className="bg-white p-4 rounded-lg shadow-inner">
+                              <QRCodeSVG value={qrData.code} size={256} style={{ width: '100%', height: '100%' }} />
+                            </div>
+                          );
+                        } else if (loading) {
+                          console.log('⏳ Exibindo loading');
+                          return (
+                            <div className="flex flex-col items-center">
+                              <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-cyan-400 mb-4"></div>
+                              <p className="text-cyan-300 text-lg font-medium">Gerando QR Code...</p>
+                              <p className="text-gray-400 text-sm mt-2">Isso pode levar até 10 segundos</p>
+                            </div>
+                          );
+                        } else if (error) {
+                          console.log('❌ Exibindo erro:', error);
+                          return (
+                            <div className="text-center">
+                              <div className="bg-red-900/50 p-6 rounded-lg mb-4 border border-red-700">
+                                <FaExclamation className="text-4xl text-red-400 mx-auto mb-2" />
+                                <p className="text-red-300 font-medium mb-2">Erro ao gerar QR Code</p>
+                                <p className="text-red-200 text-sm">{error}</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => selectedCredential && handleShowQrCode(selectedCredential)}
+                                className="px-4 py-2 rounded-md bg-cyan-600 text-white hover:bg-cyan-700 transition-colors flex items-center gap-2 mx-auto"
+                                disabled={loading}
+                              >
+                                <FaSync className={loading ? 'animate-spin' : ''} />
+                                Tentar Novamente
+                              </button>
+                            </div>
+                          );
+                        } else {
+                          console.log('❓ Exibindo estado vazio');
+                          return (
+                            <div className="text-center">
+                              <div className="bg-gray-800 p-8 rounded-lg mb-4">
+                                <FaQuestionCircle className="text-6xl text-gray-500 mx-auto mb-2" />
+                                <p className="text-gray-400">QR Code não disponível</p>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => selectedCredential && handleShowQrCode(selectedCredential)}
+                                className="px-4 py-2 rounded-md bg-cyan-600 text-white hover:bg-cyan-700 transition-colors flex items-center gap-2 mx-auto"
+                                disabled={loading}
+                              >
+                                <FaSync className={loading ? 'animate-spin' : ''} />
+                                {loading ? 'Atualizando...' : 'Atualizar QR Code'}
+                              </button>
+                            </div>
+                          );
+                        }
+                      })()}
                       
                       {qrData?.pairingCode && (
                         <div className="mt-4 text-center">
