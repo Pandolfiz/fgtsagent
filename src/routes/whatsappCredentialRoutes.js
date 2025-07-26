@@ -11,11 +11,23 @@ router.use(clientContext);
 // Listar credenciais WhatsApp
 router.get('/', whatsappCredentialController.list);
 
-// Obter credencial por ID
-router.get('/:id', whatsappCredentialController.getById);
-
 // Criar nova credencial
 router.post('/', whatsappCredentialController.create);
+
+// Verificar status de todos os números do cliente
+router.get('/check-all-status', whatsappCredentialController.checkAllPhoneNumbersStatus);
+
+// Rotas para gerenciamento de números na API oficial da Meta
+router.post('/add-phone-number', requireAuth, whatsappCredentialController.addPhoneNumber);
+router.post('/check-phone-availability', requireAuth, whatsappCredentialController.checkPhoneNumberAvailability);
+router.post('/list-phone-numbers', requireAuth, whatsappCredentialController.listPhoneNumbers);
+router.post('/remove-phone-number', requireAuth, whatsappCredentialController.removePhoneNumber);
+
+// Rota para criar conta WhatsApp na API oficial da Meta (fluxo automatizado)
+router.post('/create-whatsapp-account', requireAuth, whatsappCredentialController.createWhatsAppAccount);
+
+// Obter credencial por ID
+router.get('/:id', whatsappCredentialController.getById);
 
 // Atualizar credencial existente
 router.put('/:id', whatsappCredentialController.update);
@@ -34,15 +46,6 @@ router.get('/:id/qrcode', whatsappCredentialController.fetchQrCode);
 
 // Verificar status de número WhatsApp via API da Meta
 router.get('/:id/check-status', whatsappCredentialController.checkPhoneNumberStatus);
-
-// Verificar status de todos os números do cliente
-router.get('/check-all-status', whatsappCredentialController.checkAllPhoneNumbersStatus);
-
-// Rotas para gerenciamento de números na API oficial da Meta
-router.post('/add-phone-number', requireAuth, whatsappCredentialController.addPhoneNumber);
-router.post('/check-phone-availability', requireAuth, whatsappCredentialController.checkPhoneNumberAvailability);
-router.post('/list-phone-numbers', requireAuth, whatsappCredentialController.listPhoneNumbers);
-router.post('/remove-phone-number', requireAuth, whatsappCredentialController.removePhoneNumber);
 
 // Webhook para receber mensagens enviadas do n8n
 router.post('/webhook/receivedWhatsApp', requireAuth, async (req, res) => {

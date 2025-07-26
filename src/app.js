@@ -216,7 +216,7 @@ app.use(cors({
       process.env.APP_URL
     ].filter(Boolean); // Remove valores nulos ou undefined
     
-    console.log(`[CORS DEBUG] Origens permitidas:`, allowedOrigins);
+    // console.log(`[CORS DEBUG] Origens permitidas:`, allowedOrigins);
     
     // Verificar se a origem da requisição está na lista
     if (!origin) {

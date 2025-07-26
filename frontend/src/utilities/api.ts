@@ -199,6 +199,9 @@ export const evolutionCredentialsApi = {
     }) => {
       const response = await apiFetch('/api/whatsapp-credentials/add-phone-number', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(data)
       });
       return response;
@@ -210,6 +213,9 @@ export const evolutionCredentialsApi = {
     }) => {
       const response = await apiFetch('/api/whatsapp-credentials/check-phone-availability', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(data)
       });
       return response;
@@ -221,6 +227,9 @@ export const evolutionCredentialsApi = {
     }) => {
       const response = await apiFetch('/api/whatsapp-credentials/list-phone-numbers', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(data)
       });
       return response;
@@ -232,6 +241,28 @@ export const evolutionCredentialsApi = {
     }) => {
       const response = await apiFetch('/api/whatsapp-credentials/remove-phone-number', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+
+    createWhatsAppAccount: async (data: {
+      phoneNumber: string;
+      businessAccountId: string;
+      accessToken: string;
+      displayName: string;
+      timezone?: string;
+      category?: string;
+      businessDescription?: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/create-whatsapp-account', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
         body: JSON.stringify(data)
       });
       return response;

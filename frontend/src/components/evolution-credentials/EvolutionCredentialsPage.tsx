@@ -283,11 +283,19 @@ export function EvolutionCredentialsPage() {
     }));
   };
 
+  // Estados para verificação
+  const [verificationStep, setVerificationStep] = useState<'input' | 'pending' | 'verify' | 'success'>('input');
+  const [phoneNumberId, setPhoneNumberId] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+
   // Enviar formulário de anúncios e salvar no Supabase
   const handleAdsFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
+    setError(null);
+    setVerificationStep('input');
+    setPhoneNumberId('');
+    setVerificationCode('');
     try {
       // Validar dados obrigatórios
       if (!adsFormData.agent_name || !adsFormData.phone) {
@@ -295,61 +303,67 @@ export function EvolutionCredentialsPage() {
         return;
       }
       
-      // Preparar dados para salvar no Supabase
-      const credentialData = {
-        agent_name: adsFormData.agent_name,
-        phone: adsFormData.phone,
-        connection_type: 'ads' as const,
-        instance_name: `${currentUser?.full_name || 'Usuario'} - ${adsFormData.agent_name} - Anúncios`,
-        metadata: {
-          requires_configuration: true,
-          scheduled_setup: true,
-          created_via: 'ads_form',
-          form_data: adsFormData
-        }
+      // Validar dados da Meta
+      if (!metaPhoneData.businessAccountId || !metaPhoneData.accessToken) {
+        setError('Por favor, preencha o Business Account ID e Access Token da Meta');
+        return;
+      }
+      // Chamar backend para criar conta WhatsApp na Meta
+      const payload = {
+        phoneNumber: adsFormData.phone,
+        businessAccountId: metaPhoneData.businessAccountId,
+        accessToken: metaPhoneData.accessToken,
+        displayName: adsFormData.agent_name,
+        timezone: 'America/Sao_Paulo',
+        category: 'BUSINESS',
+        businessDescription: 'Conta criada automaticamente via sistema.'
       };
       
-      console.log('Salvando credencial de anúncios no Supabase:', credentialData);
+      console.log('📤 Enviando payload para criar conta WhatsApp:', {
+        phoneNumber: payload.phoneNumber,
+        businessAccountId: payload.businessAccountId,
+        accessToken: payload.accessToken ? `${payload.accessToken.substring(0, 10)}...` : 'undefined',
+        displayName: payload.displayName
+      });
       
-      // Criar registro no Supabase
-      const createRes = await api.evolution.create(credentialData);
-      if (!createRes.success) {
-        throw new Error(createRes.message || 'Erro ao salvar credencial de anúncios');
-      }
-      
-      console.log('Credencial de anúncios salva com sucesso:', createRes.data);
-      
-      // Atualizar lista de credenciais
-      if (createRes.data) {
-        setCredentials(prev => [...prev, createRes.data!]);
-      }
-      
-      // Fechar modal do formulário
-      setShowAdsModal(false);
-      
-      // Mostrar modal do calendário
-      setShowCalendar(true);
-      
-      // Expor função globalmente para permitir retry
-      (window as any).loadGoogleCalendarScript = loadGoogleCalendarScript;
-      
-      // Carregar script do Google Calendar após um pequeno delay
-      setTimeout(() => {
-        loadGoogleCalendarScript();
-      }, 500);
-      
-      // Fallback para iframe após 10 segundos se o script não carregar
-      setTimeout(() => {
-        const targetElement = document.getElementById('google-calendar-target');
-        if (targetElement && targetElement.innerHTML.includes('Carregando calendário')) {
-          console.log('Script demorou muito, usando iframe como fallback');
-          tryIframeCalendar();
+      // Log detalhado do payload completo
+      console.log('📤 Payload completo:', JSON.stringify(payload, null, 2));
+      console.log('📤 Tipos dos dados:', {
+        phoneNumber: typeof payload.phoneNumber,
+        businessAccountId: typeof payload.businessAccountId,
+        accessToken: typeof payload.accessToken,
+        displayName: typeof payload.displayName
+      });
+      const response = await api.evolution.createWhatsAppAccount(payload);
+      const result = await response.json();
+      if (result.success && result.data) {
+        setPhoneNumberId(result.data.phoneNumberId);
+        setVerificationStep('pending');
+        // Salvar credencial no banco com status pendente
+        const credentialData = {
+          agent_name: adsFormData.agent_name,
+          phone: adsFormData.phone,
+          connection_type: 'ads' as const,
+          instance_name: `${currentUser?.full_name || 'Usuario'} - ${adsFormData.agent_name} - Anúncios`,
+          wpp_number_id: result.data.phoneNumberId,
+          metadata: {
+            created_via: 'ads_form',
+            form_data: adsFormData,
+            status: 'pending_verification',
+            verificationMethod: result.data.verificationMethod
+          }
+        };
+        const createRes = await api.evolution.create(credentialData);
+        if (createRes.success && createRes.data) {
+          setCredentials(prev => [...prev, createRes.data!]);
         }
-      }, 10000);
-      
+        setShowAdsModal(false);
+      } else {
+        setError(result.error || 'Erro ao criar conta WhatsApp na Meta');
+      }
     } catch (err) {
-      console.error('Erro ao processar formulário de anúncios:', err);
-      setError('Erro ao salvar credencial: ' + (err instanceof Error ? err.message : String(err)));
+      console.error('Erro ao criar conta WhatsApp na Meta:', err);
+      setError('Erro ao criar conta WhatsApp: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
@@ -1869,6 +1883,38 @@ export function EvolutionCredentialsPage() {
                             value={adsFormData.phone}
                             onChange={handleAdsFormChange}
                             placeholder="Ex: 5511999999999"
+                            className="w-full px-3 py-2 bg-slate-800 border border-purple-700/50 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            required
+                          />
+                        </div>
+                        
+                        <div>
+                          <label htmlFor="ads_business_account_id" className="block text-sm font-medium text-purple-200 mb-2">
+                            Business Account ID
+                          </label>
+                          <input
+                            type="text"
+                            id="ads_business_account_id"
+                            name="businessAccountId"
+                            value={metaPhoneData.businessAccountId}
+                            onChange={(e) => setMetaPhoneData(prev => ({ ...prev, businessAccountId: e.target.value }))}
+                            placeholder="Ex: 123456789012345"
+                            className="w-full px-3 py-2 bg-slate-800 border border-purple-700/50 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            required
+                          />
+                        </div>
+                        
+                        <div>
+                          <label htmlFor="ads_access_token" className="block text-sm font-medium text-purple-200 mb-2">
+                            Access Token
+                          </label>
+                          <input
+                            type="password"
+                            id="ads_access_token"
+                            name="accessToken"
+                            value={metaPhoneData.accessToken}
+                            onChange={(e) => setMetaPhoneData(prev => ({ ...prev, accessToken: e.target.value }))}
+                            placeholder="Ex: EAABwzLixnjYBO..."
                             className="w-full px-3 py-2 bg-slate-800 border border-purple-700/50 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
                             required
                           />
