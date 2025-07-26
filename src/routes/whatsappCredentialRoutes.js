@@ -29,8 +29,8 @@ router.post('/:id/setup', whatsappCredentialController.setupInstance);
 // Reiniciar instância na API
 router.post('/:id/restart', whatsappCredentialController.restartInstance);
 
-// Adicionar rota para obter QR Code de instância (removida pois não existe no controller)
-// router.get('/:id/qrcode', whatsappCredentialController.fetchQrCode);
+// Adicionar rota para obter QR Code de instância
+router.get('/:id/qrcode', whatsappCredentialController.fetchQrCode);
 
 // Webhook para receber mensagens enviadas do n8n
 router.post('/webhook/receivedWhatsApp', requireAuth, async (req, res) => {

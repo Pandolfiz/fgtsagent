@@ -179,13 +179,13 @@ app.use((req, res, next) => {
 app.use(cors({
   origin: function(origin, callback) {
     // Log para debug
-    console.log(`[CORS DEBUG] Origem da requisição: ${origin}`);
+    //console.log(`[CORS DEBUG] Origem da requisição: ${origin}`);
     
     // Permitir requisições sem origem (ex: Postman, aplicações móveis)
-    if (!origin) {
-      console.log(`[CORS DEBUG] Permitindo requisição sem origem`);
-      return callback(null, true);
-    }
+    //if (!origin) {
+    //  console.log(`[CORS DEBUG] Permitindo requisição sem origem`);
+    //  return callback(null, true);
+    //}
     
     // Lista de domínios permitidos
     const allowedOrigins = [
@@ -219,14 +219,17 @@ app.use(cors({
     console.log(`[CORS DEBUG] Origens permitidas:`, allowedOrigins);
     
     // Verificar se a origem da requisição está na lista
-    if (
+    if (!origin) {
+      console.log(`[CORS DEBUG] Permitindo requisição sem origem`);
+      callback(null, true);
+    } else if (
       allowedOrigins.includes(origin) ||
       origin.includes('localhost') ||
       origin.includes('127.0.0.1') ||
       origin.includes('172.27.0.1') ||
       origin.includes('192.168.15.188') ||
       origin.includes('172.20.80.1') ||
-      (origin && (origin.includes('.ngrok-free.app') || origin.includes('.ngrok.io')))
+      (origin.includes('.ngrok-free.app') || origin.includes('.ngrok.io'))
     ) {
       console.log(`[CORS DEBUG] Origem permitida: ${origin}`);
       callback(null, true);
