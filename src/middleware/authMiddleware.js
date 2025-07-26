@@ -46,7 +46,8 @@ async function ensureUserProfile(user) {
   const releaseLock = await acquireUserProfileLock(user.id);
 
   try {
-    // logger.info(`Verificando perfil de usuário para ${user.id}`);
+    logger.info(`[ensureUserProfile] Verificando perfil de usuário para ${user.id}`);
+    logger.info(`[ensureUserProfile] Metadados do usuário:`, user.user_metadata);
     
     // Verificar se o perfil já existe (usando transação para consistência)
     const { data: existingProfile, error: profileError } = await supabaseAdmin
@@ -74,6 +75,8 @@ async function ensureUserProfile(user) {
     const needsProfile = !existingProfile;
     const needsClient = !existingClient;
     
+    logger.info(`[ensureUserProfile] Status: needsProfile=${needsProfile}, needsClient=${needsClient}`);
+    
     if (needsProfile || needsClient) {
       // logger.info(`Usuário ${user.id} precisa: ${needsProfile ? 'perfil' : ''} ${needsProfile && needsClient ? 'e' : ''} ${needsClient ? 'cliente' : ''}`);
       
@@ -82,6 +85,8 @@ async function ensureUserProfile(user) {
       const fullName = userMetadata.full_name || 
                       userMetadata.name || 
                       `${userMetadata.first_name || userMetadata.given_name || ''} ${userMetadata.last_name || userMetadata.family_name || ''}`.trim();
+      
+      logger.info(`[ensureUserProfile] Nome extraído: "${fullName}"`);
       
       // Preparar dados
       const profileData = needsProfile ? {
@@ -103,6 +108,14 @@ async function ensureUserProfile(user) {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       } : null;
+      
+      if (needsProfile) {
+        logger.info(`[ensureUserProfile] Criando perfil com dados:`, profileData);
+      }
+      
+      if (needsClient) {
+        logger.info(`[ensureUserProfile] Criando cliente com dados:`, clientData);
+      }
       
       // Executar operações em paralelo (agora que temos lock)
       const operations = [];
@@ -138,17 +151,28 @@ async function ensureUserProfile(user) {
           logger.error(`Erro ao criar ${value.type}: ${value.result.error.message}`);
           hasErrors = true;
         } else {
-          // logger.info(`${value.type} criado/atualizado com sucesso para usuário ${user.id}`);
+          logger.info(`[ensureUserProfile] ${value.type} criado/atualizado com sucesso`);
         }
       }
       
-      return !hasErrors;
+      if (hasErrors) {
+        logger.error(`[ensureUserProfile] Erros encontrados durante criação de perfil/cliente`);
+        return false;
+      }
+      
+      // Atualizar o objeto user com os dados do perfil criado
+      if (needsProfile && profileData) {
+        user.profile = profileData;
+        logger.info(`[ensureUserProfile] Perfil adicionado ao objeto user:`, profileData);
+      }
+      
+      return true;
     } else {
-      // logger.info(`Perfil e cliente já existem para o usuário ${user.id}`);
+      logger.info(`[ensureUserProfile] Usuário ${user.id} já possui perfil e cliente`);
       return true;
     }
-  } catch (err) {
-    logger.error(`Erro ao processar perfil do usuário: ${err.message}`);
+  } catch (error) {
+    logger.error(`[ensureUserProfile] Erro geral: ${error.message}`);
     return false;
   } finally {
     // Sempre liberar o lock
@@ -629,40 +653,50 @@ const requireAuth = async (req, res, next) => {
       const metadata = user.user_metadata || {};
       const profile = user.profile || {};
       
+      logger.info(`[requireAuth] Definindo displayName para usuário ${user.id}:`, {
+        metadata_full_name: metadata.full_name,
+        metadata_first_name: metadata.first_name,
+        metadata_last_name: metadata.last_name,
+        profile_full_name: profile.full_name,
+        profile_first_name: profile.first_name,
+        profile_last_name: profile.last_name,
+        user_email: user.email
+      });
+      
       // Obter o nome completo de metadados ou perfil
       if (metadata.full_name) {
         user.displayName = metadata.full_name;
-        // logger.info(`Usando full_name dos metadados para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando full_name dos metadados para displayName: ${user.displayName}`);
       } else if (profile.full_name) {
         user.displayName = profile.full_name;
-        // logger.info(`Usando full_name do perfil para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando full_name do perfil para displayName: ${user.displayName}`);
       } 
       // Tentar construir a partir de first_name + last_name
       else if (metadata.first_name && metadata.last_name) {
         user.displayName = `${metadata.first_name} ${metadata.last_name}`;
-        // logger.info(`Usando first_name + last_name dos metadados para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando first_name + last_name dos metadados para displayName: ${user.displayName}`);
       } else if (profile.first_name && profile.last_name) {
         user.displayName = `${profile.first_name} ${profile.last_name}`;
-        // logger.info(`Usando first_name + last_name do perfil para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando first_name + last_name do perfil para displayName: ${user.displayName}`);
       }
       // Usar apenas first_name
       else if (metadata.first_name) {
         user.displayName = metadata.first_name;
-        // logger.info(`Usando first_name dos metadados para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando first_name dos metadados para displayName: ${user.displayName}`);
       } else if (profile.first_name) {
         user.displayName = profile.first_name;
-        // logger.info(`Usando first_name do perfil para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando first_name do perfil para displayName: ${user.displayName}`);
       }
       // Usar email como último recurso antes do genérico
       else if (user.email) {
         // Tentar extrair um nome do email, por exemplo luizfiorimr@email.com -> Luizfiorimr
         const emailName = user.email.split('@')[0];
         user.displayName = emailName.charAt(0).toUpperCase() + emailName.slice(1);
-        // logger.info(`Usando email para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando email para displayName: ${user.displayName}`);
       } else {
         // Último recurso - nome genérico
         user.displayName = 'Usuário';
-        // logger.info(`Usando nome genérico para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando nome genérico para displayName: ${user.displayName}`);
       }
       
       // Verificar se o displayName está vazio por algum motivo e definir um fallback
@@ -671,16 +705,16 @@ const requireAuth = async (req, res, next) => {
         if (user.email) {
           const emailName = user.email.split('@')[0];
           user.displayName = emailName.charAt(0).toUpperCase() + emailName.slice(1);
-          // logger.info(`Definindo displayName a partir do email como fallback: ${user.displayName}`);
+          logger.info(`[requireAuth] Definindo displayName a partir do email como fallback: ${user.displayName}`);
         } else {
           user.displayName = 'Usuário';
-          // logger.info(`Definindo displayName genérico como último recurso`);
+          logger.info(`[requireAuth] Definindo displayName genérico como último recurso`);
         }
       }
     }
     
     // Log para debugging do displayName
-    // logger.info(`Usuário final: ID=${user.id}, Email=${user.email}, DisplayName="${user.displayName}"`);
+    logger.info(`[requireAuth] Usuário final: ID=${user.id}, Email=${user.email}, DisplayName="${user.displayName}"`);
     
     // Usuário está autenticado, adicionar ao objeto de requisição para uso posterior
     req.user = user;

@@ -178,35 +178,60 @@ app.use((req, res, next) => {
 // Configurar CORS para permitir requisições do frontend
 app.use(cors({
   origin: function(origin, callback) {
+    // Log para debug
+    console.log(`[CORS DEBUG] Origem da requisição: ${origin}`);
+    
     // Permitir requisições sem origem (ex: Postman, aplicações móveis)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      console.log(`[CORS DEBUG] Permitindo requisição sem origem`);
+      return callback(null, true);
+    }
     
     // Lista de domínios permitidos
     const allowedOrigins = [
+      // Localhost com diferentes portas
       'http://localhost:5173',
       'http://localhost:5174',
       'http://127.0.0.1:5173',
       'http://127.0.0.1:5174',
       'http://localhost:3000',
       'http://localhost:8000',
+      
+      // Interfaces de rede locais (para desenvolvimento)
+      'http://172.27.0.1:5173',
+      'http://172.27.0.1:5174',
+      'http://192.168.15.188:5173',
+      'http://192.168.15.188:5174',
+      'http://172.20.80.1:5173',
+      'http://172.20.80.1:5174',
+      
       // URLs de produção
       'https://fgtsagent.com.br',
       'https://www.fgtsagent.com.br',
       'http://fgtsagent.com.br',
       'http://www.fgtsagent.com.br',
+      
       // Variáveis de ambiente
       process.env.FRONTEND_URL,
       process.env.APP_URL
     ].filter(Boolean); // Remove valores nulos ou undefined
     
+    console.log(`[CORS DEBUG] Origens permitidas:`, allowedOrigins);
+    
     // Verificar se a origem da requisição está na lista
     if (
       allowedOrigins.includes(origin) ||
       origin.includes('localhost') ||
+      origin.includes('127.0.0.1') ||
+      origin.includes('172.27.0.1') ||
+      origin.includes('192.168.15.188') ||
+      origin.includes('172.20.80.1') ||
       (origin && (origin.includes('.ngrok-free.app') || origin.includes('.ngrok.io')))
     ) {
+      console.log(`[CORS DEBUG] Origem permitida: ${origin}`);
       callback(null, true);
     } else {
+      console.log(`[CORS DEBUG] Origem rejeitada: ${origin}`);
       callback(new Error('Origem não permitida pelo CORS'), false);
     }
   },
