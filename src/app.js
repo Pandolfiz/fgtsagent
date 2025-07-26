@@ -220,7 +220,6 @@ app.use(cors({
     
     // Verificar se a origem da requisição está na lista
     if (!origin) {
-      console.log(`[CORS DEBUG] Permitindo requisição sem origem`);
       callback(null, true);
     } else if (
       allowedOrigins.includes(origin) ||
@@ -231,10 +230,9 @@ app.use(cors({
       origin.includes('172.20.80.1') ||
       (origin.includes('.ngrok-free.app') || origin.includes('.ngrok.io'))
     ) {
-      console.log(`[CORS DEBUG] Origem permitida: ${origin}`);
       callback(null, true);
     } else {
-      console.log(`[CORS DEBUG] Origem rejeitada: ${origin}`);
+      logger.warn(`[CORS] Origem rejeitada: ${origin}`);
       callback(new Error('Origem não permitida pelo CORS'), false);
     }
   },
