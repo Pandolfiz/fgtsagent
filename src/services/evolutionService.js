@@ -121,7 +121,7 @@ class EvolutionService {
         token: this.apiKey,
         number,
         qrcode: true,
-        integration: 'EVOLUTION',
+        integration: 'WHATSAPP-BUSINESS',
         webhook:{
           enabled: true,
           url: process.env.N8N_WEBHOOK_URL || 'https://n8n-n8n.8cgx4t.easypanel.host/webhook/fgtsAgent',
