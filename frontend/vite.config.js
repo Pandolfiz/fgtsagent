@@ -56,6 +56,17 @@ export default defineConfig({
     port: 5173,
     open: false,
     
+    // Permitir hosts do ngrok e outros tunnels
+    allowedHosts: [
+      'localhost',
+      '.ngrok.io',
+      '.ngrok-free.app',
+      '.ngrok.app',
+      '.tunnel.me',
+      '.localtunnel.me',
+      '.serveo.net'
+    ],
+    
     // Configurações de proxy para desenvolvimento
     proxy: {
       '/api': {
@@ -69,7 +80,17 @@ export default defineConfig({
   // Preview server configurações
   preview: {
     port: 4173,
-    host: true
+    host: true,
+    // Permitir hosts para preview também
+    allowedHosts: [
+      'localhost',
+      '.ngrok.io',
+      '.ngrok-free.app',
+      '.ngrok.app',
+      '.tunnel.me',
+      '.localtunnel.me',
+      '.serveo.net'
+    ]
   },
   
   // Configurações de alias
