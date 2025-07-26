@@ -185,7 +185,17 @@ export const userApi = {
   // Obter usuário atual
   getCurrentUser: async (): Promise<ApiResponse<{ id: string; full_name?: string; email: string; [key: string]: any }>> => {
     const response = await apiFetch(`${API_URL}/auth/me`);
-    return response.json();
+    const data = await response.json();
+    // O backend retorna { success: true, user: {...} } mas a interface espera { success: true, data: {...} }
+    // Vamos ajustar a estrutura para manter compatibilidade
+    if (data.success && data.user) {
+      return {
+        success: true,
+        data: data.user,
+        message: data.message
+      };
+    }
+    return data;
   }
 };
 

@@ -52,7 +52,7 @@ export default defineConfig({
   
   // Otimizações de servidor de desenvolvimento
   server: {
-    host: true,
+    host: 'localhost', // Usar apenas localhost para evitar problemas de CORS
     port: 5173,
     open: false,
     
@@ -80,7 +80,7 @@ export default defineConfig({
   // Preview server configurações
   preview: {
     port: 4173,
-    host: true,
+    host: 'localhost', // Usar apenas localhost para evitar problemas de CORS
     // Permitir hosts para preview também
     allowedHosts: [
       'localhost',

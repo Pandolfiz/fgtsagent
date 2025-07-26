@@ -61,12 +61,24 @@ export function EvolutionCredentialsPage() {
   // Carregar dados do usuário atual
   const loadCurrentUser = async () => {
     try {
+      console.log('🔄 Carregando dados do usuário atual...');
       const response = await api.user.getCurrentUser();
+      console.log('📡 Resposta da API getCurrentUser:', response);
+      
       if (response.success && response.data) {
+        console.log('✅ Dados do usuário carregados:', response.data);
+        console.log('👤 Nome do usuário:', {
+          full_name: response.data.full_name,
+          displayName: response.data.displayName,
+          name: response.data.name,
+          user_metadata: response.data.user_metadata
+        });
         setCurrentUser(response.data);
+      } else {
+        console.error('❌ Erro na resposta da API:', response.message);
       }
     } catch (err) {
-      console.error('Erro ao carregar dados do usuário:', err);
+      console.error('💥 Erro ao carregar dados do usuário:', err);
     }
   };
 
@@ -408,12 +420,24 @@ export function EvolutionCredentialsPage() {
       
       // Se for WhatsApp Business, gerar nome da instância automaticamente
       if (connectionType === 'whatsapp_business') {
-        const userName = currentUser?.full_name || currentUser?.email?.split('@')[0] || 'Usuario';
+        console.log('🔍 Debug - Dados do currentUser:', currentUser);
+        console.log('🔍 Debug - Valores disponíveis:', {
+          'currentUser?.full_name': currentUser?.full_name,
+          'currentUser?.displayName': currentUser?.displayName,
+          'currentUser?.name': currentUser?.name,
+          'currentUser?.email': currentUser?.email,
+          'currentUser?.user_metadata': currentUser?.user_metadata
+        });
+        
+        const userName = currentUser?.full_name || currentUser?.displayName || currentUser?.name || currentUser?.email?.split('@')[0] || 'Usuario';
+        console.log('🔍 Debug - userName selecionado:', userName);
+        
         const agentName = formData.agent_name || 'Agente';
         const phone = formData.phone || '';
         
         // Gerar nome da instância: Usuario_Agente_Phone
         credentialData.instance_name = `${userName}_${agentName}_${phone}`.replace(/\s+/g, '_');
+        console.log('🔍 Debug - instance_name gerado:', credentialData.instance_name);
       }
       
       // Criar registro de credencial
