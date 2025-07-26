@@ -3,6 +3,7 @@ const EvolutionService = require('../services/evolutionService');
 const WhatsappService = require('../services/whatsappService');
 const config = require('../config');
 const { supabaseAdmin } = require('../config/supabase');
+const axios = require('axios'); // Adicionado para o novo método
 
 class WhatsappCredentialController {
   // Lista credenciais do cliente autenticado
@@ -951,6 +952,184 @@ class WhatsappCredentialController {
     } catch (err) {
       logger.error(`[REMOVE_PHONE] Erro ao remover número: ${err.message}`);
       return res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+  // Método para criar conta WhatsApp na API oficial da Meta (fluxo automatizado)
+  async createWhatsAppAccount(req, res) {
+    try {
+      const {
+        phoneNumber,
+        businessAccountId,
+        accessToken,
+        displayName,
+        timezone = 'America/Sao_Paulo',
+        category = 'BUSINESS',
+        businessDescription = 'Conta criada automaticamente via sistema.'
+      } = req.body;
+
+      // Log detalhado do req.body para debug ANTES da desestruturação
+      logger.info(`[CREATE_WHATSAPP_ACCOUNT] req.body completo:`, JSON.stringify(req.body, null, 2));
+      logger.info(`[CREATE_WHATSAPP_ACCOUNT] req.body keys:`, Object.keys(req.body || {}));
+      logger.info(`[CREATE_WHATSAPP_ACCOUNT] req.body.phoneNumber:`, req.body?.phoneNumber);
+      
+      logger.info(`[CREATE_WHATSAPP_ACCOUNT] Iniciando criação de conta para ${phoneNumber}`);
+      logger.info(`[CREATE_WHATSAPP_ACCOUNT] Dados recebidos:`, {
+        phoneNumber,
+        businessAccountId,
+        accessToken: accessToken ? `${accessToken.substring(0, 10)}...` : 'undefined',
+        displayName
+      });
+      logger.info(`[CREATE_WHATSAPP_ACCOUNT] Tipos dos dados:`, {
+        phoneNumber: typeof phoneNumber,
+        businessAccountId: typeof businessAccountId,
+        accessToken: typeof accessToken,
+        displayName: typeof displayName
+      });
+
+      // Validar dados obrigatórios
+      if (!phoneNumber) {
+        logger.error(`[CREATE_WHATSAPP_ACCOUNT] phoneNumber está undefined ou vazio`);
+        return res.status(400).json({
+          success: false,
+          error: 'phoneNumber é obrigatório'
+        });
+      }
+
+      if (!businessAccountId) {
+        logger.error(`[CREATE_WHATSAPP_ACCOUNT] businessAccountId está undefined ou vazio`);
+        return res.status(400).json({
+          success: false,
+          error: 'businessAccountId é obrigatório'
+        });
+      }
+
+      if (!accessToken) {
+        logger.error(`[CREATE_WHATSAPP_ACCOUNT] accessToken está undefined ou vazio`);
+        return res.status(400).json({
+          success: false,
+          error: 'accessToken é obrigatório'
+        });
+      }
+
+      if (!displayName) {
+        logger.error(`[CREATE_WHATSAPP_ACCOUNT] displayName está undefined ou vazio`);
+        return res.status(400).json({
+          success: false,
+          error: 'displayName é obrigatório'
+        });
+      }
+
+      // 1. Verificar disponibilidade do número
+      logger.info(`[CREATE_WHATSAPP_ACCOUNT] Verificando disponibilidade do número ${phoneNumber}`);
+      const availabilityResult = await WhatsappService.checkPhoneNumberAvailability(phoneNumber, accessToken);
+      
+      if (!availabilityResult.success) {
+        logger.error(`[CREATE_WHATSAPP_ACCOUNT] Erro ao verificar disponibilidade: ${availabilityResult.error}`);
+        
+        // Se o erro for de número já registrado, retornar erro específico
+        if (availabilityResult.code === 'NUMBER_ALREADY_REGISTERED') {
+          return res.status(400).json({
+            success: false,
+            error: availabilityResult.error,
+            code: 'NUMBER_ALREADY_REGISTERED',
+            details: availabilityResult.details
+          });
+        }
+        
+        return res.status(400).json({
+          success: false,
+          error: `Erro ao verificar disponibilidade do número: ${availabilityResult.error}`
+        });
+      }
+
+      if (!availabilityResult.available) {
+        logger.warn(`[CREATE_WHATSAPP_ACCOUNT] Número ${phoneNumber} não está disponível`);
+        return res.status(400).json({
+          success: false,
+          error: `Número ${phoneNumber} não está disponível para registro`
+        });
+      }
+
+      // 2. Adicionar número à conta de negócios
+      logger.info(`[CREATE_WHATSAPP_ACCOUNT] Adicionando número ${phoneNumber} à conta de negócios`);
+      const addResult = await WhatsappService.addPhoneNumber(phoneNumber, accessToken, businessAccountId);
+      
+      if (!addResult.success) {
+        logger.error(`[CREATE_WHATSAPP_ACCOUNT] Erro ao adicionar número: ${addResult.error}`);
+        return res.status(400).json({
+          success: false,
+          error: `Erro ao adicionar número: ${addResult.error}`
+        });
+      }
+
+      const phoneNumberId = addResult.phone_number_id;
+      logger.info(`[CREATE_WHATSAPP_ACCOUNT] Número adicionado com ID: ${phoneNumberId}`);
+
+      // 3. Configurar informações do negócio
+      logger.info(`[CREATE_WHATSAPP_ACCOUNT] Configurando informações do negócio`);
+      const businessInfo = {
+        messaging_product: 'whatsapp',
+        display_name: displayName,
+        timezone: timezone,
+        category: category,
+        business_description: businessDescription
+      };
+
+      try {
+        const businessConfigResponse = await axios.post(
+          `https://graph.facebook.com/v18.0/${phoneNumberId}`,
+          businessInfo,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+
+        logger.info(`[CREATE_WHATSAPP_ACCOUNT] Informações do negócio configuradas:`, businessConfigResponse.data);
+      } catch (businessErr) {
+        logger.warn(`[CREATE_WHATSAPP_ACCOUNT] Erro ao configurar informações do negócio: ${businessErr.message}`);
+        // Não falhar se a configuração do negócio falhar
+      }
+
+      // 4. Iniciar processo de verificação
+      logger.info(`[CREATE_WHATSAPP_ACCOUNT] Iniciando processo de verificação`);
+      const verificationResponse = await axios.post(
+        `https://graph.facebook.com/v18.0/${phoneNumberId}/request_code`,
+        {
+          code_method: 'SMS',
+          language: 'pt_BR'
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+
+      logger.info(`[CREATE_WHATSAPP_ACCOUNT] Verificação iniciada:`, verificationResponse.data);
+
+      // 5. Retornar sucesso com dados para verificação
+      return res.json({
+        success: true,
+        data: {
+          phoneNumberId: phoneNumberId,
+          phoneNumber: phoneNumber,
+          verificationMethod: 'SMS',
+          message: 'Conta WhatsApp criada com sucesso. Verifique o código SMS enviado para completar a verificação.',
+          requiresVerification: true
+        }
+      });
+
+    } catch (error) {
+      logger.error(`[CREATE_WHATSAPP_ACCOUNT] Erro interno: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        error: `Erro interno ao criar conta WhatsApp: ${error.message}`
+      });
     }
   }
 }
