@@ -474,15 +474,9 @@ const logout = async (req, res) => {
 /**
  * Obter informações do usuário atual (versão direta)
  */
-const getMe = async (req, res) => {
-  try {
-    logger.info(`[getMe] Iniciando busca de dados do usuário: ${req.user?.id}`);
-    logger.info(`[getMe] req.user disponível:`, {
-      id: req.user?.id,
-      email: req.user?.email,
-      user_metadata: req.user?.user_metadata,
-      displayName: req.user?.displayName
-    });
+    const getMe = async (req, res) => {
+      try {
+        logger.info(`[getMe] Buscando dados do usuário: ${req.user?.id}`);
     
     // Verificar se o usuário está autenticado
     if (!req.user) {

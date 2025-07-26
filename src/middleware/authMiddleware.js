@@ -47,7 +47,6 @@ async function ensureUserProfile(user) {
 
   try {
     logger.info(`[ensureUserProfile] Verificando perfil de usuário para ${user.id}`);
-    logger.info(`[ensureUserProfile] Metadados do usuário:`, user.user_metadata);
     
     // Verificar se o perfil já existe (usando transação para consistência)
     const { data: existingProfile, error: profileError } = await supabaseAdmin
@@ -75,7 +74,7 @@ async function ensureUserProfile(user) {
     const needsProfile = !existingProfile;
     const needsClient = !existingClient;
     
-    logger.info(`[ensureUserProfile] Status: needsProfile=${needsProfile}, needsClient=${needsClient}`);
+
     
     if (needsProfile || needsClient) {
       // logger.info(`Usuário ${user.id} precisa: ${needsProfile ? 'perfil' : ''} ${needsProfile && needsClient ? 'e' : ''} ${needsClient ? 'cliente' : ''}`);
@@ -86,7 +85,7 @@ async function ensureUserProfile(user) {
                       userMetadata.name || 
                       `${userMetadata.first_name || userMetadata.given_name || ''} ${userMetadata.last_name || userMetadata.family_name || ''}`.trim();
       
-      logger.info(`[ensureUserProfile] Nome extraído: "${fullName}"`);
+
       
       // Preparar dados
       const profileData = needsProfile ? {
