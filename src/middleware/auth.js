@@ -27,6 +27,30 @@ exports.verifyToken = async (req, res, next) => {
     // Anexar usuário à requisição
     req.user = data.user;
     
+    // Buscar perfil completo do usuário para garantir nome completo
+    try {
+      const { data: profile, error: profileError } = await require('../config/supabase').supabaseAdmin
+        .from('user_profiles')
+        .select('*')
+        .eq('id', req.user.id)
+        .single();
+      if (!profileError && profile) {
+        // Priorizar full_name do perfil
+        req.user.full_name = profile.full_name || req.user.user_metadata?.full_name || req.user.email?.split('@')[0] || 'Usuário';
+        req.user.name = req.user.full_name;
+        req.user.displayName = req.user.full_name;
+      } else {
+        // Fallback para metadados
+        req.user.full_name = req.user.user_metadata?.full_name || req.user.email?.split('@')[0] || 'Usuário';
+        req.user.name = req.user.full_name;
+        req.user.displayName = req.user.full_name;
+      }
+    } catch (profileCatchErr) {
+      req.user.full_name = req.user.user_metadata?.full_name || req.user.email?.split('@')[0] || 'Usuário';
+      req.user.name = req.user.full_name;
+      req.user.displayName = req.user.full_name;
+    }
+
     // Seguir para o próximo middleware
     next();
   } catch (error) {

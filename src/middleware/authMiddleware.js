@@ -46,7 +46,7 @@ async function ensureUserProfile(user) {
   const releaseLock = await acquireUserProfileLock(user.id);
 
   try {
-    logger.info(`Verificando perfil de usuário para ${user.id}`);
+    // logger.info(`Verificando perfil de usuário para ${user.id}`);
     
     // Verificar se o perfil já existe (usando transação para consistência)
     const { data: existingProfile, error: profileError } = await supabaseAdmin
@@ -75,7 +75,7 @@ async function ensureUserProfile(user) {
     const needsClient = !existingClient;
     
     if (needsProfile || needsClient) {
-      logger.info(`Usuário ${user.id} precisa: ${needsProfile ? 'perfil' : ''} ${needsProfile && needsClient ? 'e' : ''} ${needsClient ? 'cliente' : ''}`);
+      // logger.info(`Usuário ${user.id} precisa: ${needsProfile ? 'perfil' : ''} ${needsProfile && needsClient ? 'e' : ''} ${needsClient ? 'cliente' : ''}`);
       
       // Extrair informações do usuário uma única vez
       const userMetadata = user.user_metadata || {};
@@ -138,13 +138,13 @@ async function ensureUserProfile(user) {
           logger.error(`Erro ao criar ${value.type}: ${value.result.error.message}`);
           hasErrors = true;
         } else {
-          logger.info(`${value.type} criado/atualizado com sucesso para usuário ${user.id}`);
+          // logger.info(`${value.type} criado/atualizado com sucesso para usuário ${user.id}`);
         }
       }
       
       return !hasErrors;
     } else {
-      logger.info(`Perfil e cliente já existem para o usuário ${user.id}`);
+      // logger.info(`Perfil e cliente já existem para o usuário ${user.id}`);
       return true;
     }
   } catch (err) {
@@ -179,7 +179,7 @@ function getReactLoginUrl(req, redirectPath, message) {
  * Middleware para verificar se o usuário está autenticado
  */
 const requireAuth = async (req, res, next) => {
-  console.log(`[AUTH LOG] requireAuth chamado para ${req.method} ${req.originalUrl}`);
+  // console.log(`[AUTH LOG] requireAuth chamado para ${req.method} ${req.originalUrl}`);
   try {
     // Inicializar/Limpar dados de usuário para evitar contaminação entre requisições
     req.user = null;
@@ -190,27 +190,27 @@ const requireAuth = async (req, res, next) => {
     // Verificar token na requisição
     // 1. Verificar nos cookies
     let token = req.cookies.authToken;
-    logger.info(`Token do cookie: ${token ? 'encontrado' : 'não encontrado'}`);
+    // logger.info(`Token do cookie: ${token ? 'encontrado' : 'não encontrado'}`);
     
     // 2. Se não encontrou nos cookies, verificar no header de autorização
     if (!token && req.headers.authorization) {
       const authHeader = req.headers.authorization;
       if (authHeader && authHeader.startsWith('Bearer ')) {
         token = authHeader.substring(7);
-        logger.info(`Token do header: ${token ? 'encontrado' : 'não encontrado'}`);
+        // logger.info(`Token do header: ${token ? 'encontrado' : 'não encontrado'}`);
       }
     }
     
     // 3. Se ainda não encontrou, verificar na query string (para uso em fluxos especiais)
     if (!token && req.query.token) {
       token = req.query.token;
-      logger.info(`Token da query: ${token ? 'encontrado' : 'não encontrado'}`);
+      // logger.info(`Token da query: ${token ? 'encontrado' : 'não encontrado'}`);
     }
     
     // 4. Verificar nos parâmetros do body para API
     if (!token && req.body && req.body.token) {
       token = req.body.token;
-      logger.info(`Token do body: ${token ? 'encontrado' : 'não encontrado'}`);
+      // logger.info(`Token do body: ${token ? 'encontrado' : 'não encontrado'}`);
     }
     
     if (!token) {
@@ -233,12 +233,12 @@ const requireAuth = async (req, res, next) => {
         // Aplicativo React - redirecionar para a URL base e deixar o React Router lidar
         const loginPath = getReactLoginUrl(req, req.originalUrl, 'Faça login para acessar esta página');
         
-        logger.info(`Redirecionando cliente React para: ${loginPath}`);
+        // logger.info(`Redirecionando cliente React para: ${loginPath}`);
         return res.redirect(loginPath);
       } else {
         // Cliente tradicional - redirecionar para a rota /login convencional
         const redirectUrl = encodeURIComponent(req.originalUrl);
-        logger.info(`Redirecionando para o login com redirect=${redirectUrl}`);
+        // logger.info(`Redirecionando para o login com redirect=${redirectUrl}`);
         return res.redirect(`/login?redirect=${redirectUrl}&message=Faça login para acessar esta página`);
       }
     }
@@ -255,7 +255,7 @@ const requireAuth = async (req, res, next) => {
           
           // Se o token expira em menos de 10 minutos, renovar o cookie
           if (timeRemaining < 600000 && timeRemaining > 0) {
-            logger.info('Token prestes a expirar, renovando cookie por mais 1 dia');
+            // logger.info('Token prestes a expirar, renovando cookie por mais 1 dia');
             res.cookie('authToken', token, {
               httpOnly: true,
               secure: process.env.NODE_ENV === 'production', 
@@ -269,7 +269,7 @@ const requireAuth = async (req, res, next) => {
               // Extrair o user_id do payload
               const userId = payload.sub;
               if (userId) {
-                logger.info(`Tentando renovar token expirado para usuário ${userId}`);
+                // logger.info(`Tentando renovar token expirado para usuário ${userId}`);
                 
                 // Gerar um novo token usando o userId
                 const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
@@ -314,7 +314,7 @@ const requireAuth = async (req, res, next) => {
                       logger.error(`Erro ao gerar novo token: ${newSessionError.message}`);
                       throw new Error('Não foi possível renovar o token');
                     } else if (newSession && newSession.access_token) {
-                      logger.info(`Novo token gerado com sucesso para usuário ${userId}`);
+                      // logger.info(`Novo token gerado com sucesso para usuário ${userId}`);
                       // Definir novo token e continuar
                       token = newSession.access_token;
                       res.cookie('authToken', token, {
@@ -353,7 +353,7 @@ const requireAuth = async (req, res, next) => {
               
               // Para acesso web, redirecionar para o login com parâmetro redirect
               const redirectUrl = encodeURIComponent(req.originalUrl);
-              logger.info(`Redirecionando para o login após expiração de token: redirect=${redirectUrl}`);
+              // logger.info(`Redirecionando para o login após expiração de token: redirect=${redirectUrl}`);
               
               // Verificar se é cliente React
               const isReactClient = !req.headers['accept'] || req.headers['accept'].includes('text/html');
@@ -362,7 +362,7 @@ const requireAuth = async (req, res, next) => {
                 // Aplicativo React - redirecionar para a rota base
                 const loginPath = getReactLoginUrl(req, req.originalUrl, 'Sua sessão expirou. Faça login novamente.');
                 
-                logger.info(`Redirecionando cliente React para: ${loginPath}`);
+                // logger.info(`Redirecionando cliente React para: ${loginPath}`);
                 return res.redirect(loginPath);
               } else {
                 // Cliente tradicional
@@ -393,13 +393,13 @@ const requireAuth = async (req, res, next) => {
           const payload = JSON.parse(Buffer.from(payloadEncoded, 'base64').toString('utf8'));
           if (payload && payload.sub) {
             const userId = payload.sub;
-            logger.info(`Tentando recuperar usuário pelo ID: ${userId}`);
+            // logger.info(`Tentando recuperar usuário pelo ID: ${userId}`);
             
             // Obter informações do usuário diretamente pelo ID
             const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
             
             if (!userError && userData && userData.user) {
-              logger.info(`Usuário recuperado com sucesso: ${userData.user.email}`);
+              // logger.info(`Usuário recuperado com sucesso: ${userData.user.email}`);
               user = userData.user;
               
               // Gerar novo token
@@ -409,7 +409,7 @@ const requireAuth = async (req, res, next) => {
               
               if (!sessionError && sessionData) {
                 token = sessionData.access_token;
-                logger.info(`Novo token gerado com sucesso para usuário ${userId}`);
+                // logger.info(`Novo token gerado com sucesso para usuário ${userId}`);
                 
                 // Definir cookie com o novo token
                 res.cookie('authToken', token, {
@@ -447,7 +447,7 @@ const requireAuth = async (req, res, next) => {
         
         // Para acesso web, redirecionar para o login com parâmetro redirect
         const redirectUrl2 = encodeURIComponent(req.originalUrl);
-        logger.info(`Redirecionando para o login após falha de recuperação: redirect=${redirectUrl2}`);
+        // logger.info(`Redirecionando para o login após falha de recuperação: redirect=${redirectUrl2}`);
         
         // Verificar se é cliente React
         const isReactClient = !req.headers['accept'] || req.headers['accept'].includes('text/html');
@@ -456,7 +456,7 @@ const requireAuth = async (req, res, next) => {
           // Aplicativo React - redirecionar para a rota base
           const loginPath = getReactLoginUrl(req, req.originalUrl, 'Sua sessão expirou. Faça login novamente.');
           
-          logger.info(`Redirecionando cliente React para: ${loginPath}`);
+          // logger.info(`Redirecionando cliente React para: ${loginPath}`);
           return res.redirect(loginPath);
         } else {
           // Cliente tradicional
@@ -480,7 +480,7 @@ const requireAuth = async (req, res, next) => {
       
       // Para acesso web, redirecionar para o login com parâmetro redirect
       const redirectUrl3 = encodeURIComponent(req.originalUrl);
-      logger.info(`Redirecionando para o login após usuário não encontrado: redirect=${redirectUrl3}`);
+      // logger.info(`Redirecionando para o login após usuário não encontrado: redirect=${redirectUrl3}`);
       
       // Verificar se é cliente React
       const isReactClient = !req.headers['accept'] || req.headers['accept'].includes('text/html');
@@ -489,7 +489,7 @@ const requireAuth = async (req, res, next) => {
         // Aplicativo React - redirecionar para a rota base
         const loginPath = getReactLoginUrl(req, req.originalUrl, 'Sua sessão expirou. Faça login novamente.');
         
-        logger.info(`Redirecionando cliente React para: ${loginPath}`);
+        // logger.info(`Redirecionando cliente React para: ${loginPath}`);
         return res.redirect(loginPath);
       } else {
         // Cliente tradicional
@@ -500,16 +500,16 @@ const requireAuth = async (req, res, next) => {
     // Verificar se o usuário tem metadados
     if (!user.user_metadata) {
       user.user_metadata = {};
-      logger.info(`Inicializando user_metadata para o usuário ${user.id}`);
+      // logger.info(`Inicializando user_metadata para o usuário ${user.id}`);
     }
     
-    // DEBUG: Imprimir ID do usuário para diagnóstico
-    logger.info(`DEBUG: ID do usuário: "${user.id}"`);
+    // // DEBUG: Imprimir ID do usuário para diagnóstico
+    // logger.info(`DEBUG: ID do usuário: "${user.id}"`);
     
     // IMPORTANTE: Verificar e criar o perfil do usuário se não existir
     // Chama a função para qualquer tipo de autenticação (formulário ou OAuth)
     const profileCreated = await ensureUserProfile(user);
-    logger.info(`Resultado da verificação/criação de perfil: ${profileCreated ? 'sucesso' : 'falha'}`);
+    // logger.info(`Resultado da verificação/criação de perfil: ${profileCreated ? 'sucesso' : 'falha'}`);
 
     // Verificar e tentar corrigir os metadados do usuário
     try {
@@ -520,7 +520,7 @@ const requireAuth = async (req, res, next) => {
         const lastName = user.user_metadata.last_name || '';
         user.user_metadata.full_name = firstName + (firstName && lastName ? ' ' : '') + lastName;
         
-        logger.info(`Full name construído para o usuário ${user.id}: ${user.user_metadata.full_name}`);
+        // logger.info(`Full name construído para o usuário ${user.id}: ${user.user_metadata.full_name}`);
         
         // Tentar atualizar os metadados no Supabase
         try {
@@ -533,7 +533,7 @@ const requireAuth = async (req, res, next) => {
           if (updateError) {
             logger.warn(`Não foi possível atualizar metadados do usuário ${user.id}: ${updateError.message}`);
           } else {
-            logger.info(`Metadados do usuário ${user.id} atualizados com sucesso`);
+            // logger.info(`Metadados do usuário ${user.id} atualizados com sucesso`);
           }
         } catch (updateErr) {
           logger.warn(`Erro ao atualizar metadados do usuário ${user.id}: ${updateErr.message}`);
@@ -542,7 +542,7 @@ const requireAuth = async (req, res, next) => {
       
       // Se não temos um perfil na tabela user_profiles, tenta criar um com os metadados
       if (!user.profile) {
-        logger.info(`Perfil não encontrado para o usuário ${user.id}, tentando criar...`);
+        // logger.info(`Perfil não encontrado para o usuário ${user.id}, tentando criar...`);
         
         // Verificar se a tabela user_profiles existe
         await checkAndCreateTables();
@@ -561,7 +561,7 @@ const requireAuth = async (req, res, next) => {
           
           // Se o perfil já existe, apenas use-o
           if (existingProfile) {
-            logger.info(`Perfil já existe para o usuário ${user.id}, usando o existente`);
+            // logger.info(`Perfil já existe para o usuário ${user.id}, usando o existente`);
             user.profile = existingProfile;
           } else {
             // Criar um perfil apenas se não existir
@@ -584,7 +584,7 @@ const requireAuth = async (req, res, next) => {
               if (insertError) {
                 // Se ainda houver erro de duplicação, tente buscar o perfil novamente
                 if (insertError.message && insertError.message.includes('duplicate key value')) {
-                  logger.info(`Ocorreu conflito ao inserir perfil. Buscando perfil existente para ${user.id}...`);
+                  // logger.info(`Ocorreu conflito ao inserir perfil. Buscando perfil existente para ${user.id}...`);
                   
                   const { data: existingProfileRetry, error: retryError } = await supabaseAdmin
                     .from('user_profiles')
@@ -593,7 +593,7 @@ const requireAuth = async (req, res, next) => {
                     .maybeSingle();
                     
                   if (!retryError && existingProfileRetry) {
-                    logger.info(`Perfil encontrado após conflito para o usuário ${user.id}`);
+                    // logger.info(`Perfil encontrado após conflito para o usuário ${user.id}`);
                     user.profile = existingProfileRetry;
                   } else {
                     logger.warn(`Não foi possível recuperar perfil após conflito: ${retryError?.message || 'Perfil não encontrado'}`);
@@ -602,7 +602,7 @@ const requireAuth = async (req, res, next) => {
                   logger.warn(`Não foi possível criar perfil para o usuário ${user.id}: ${insertError.message}`);
                 }
               } else if (insertData) {
-                logger.info(`Perfil criado com sucesso para o usuário ${user.id}`);
+                // logger.info(`Perfil criado com sucesso para o usuário ${user.id}`);
                 user.profile = insertData;
               }
             } catch (insertErr) {
@@ -632,37 +632,37 @@ const requireAuth = async (req, res, next) => {
       // Obter o nome completo de metadados ou perfil
       if (metadata.full_name) {
         user.displayName = metadata.full_name;
-        logger.info(`Usando full_name dos metadados para displayName: ${user.displayName}`);
+        // logger.info(`Usando full_name dos metadados para displayName: ${user.displayName}`);
       } else if (profile.full_name) {
         user.displayName = profile.full_name;
-        logger.info(`Usando full_name do perfil para displayName: ${user.displayName}`);
+        // logger.info(`Usando full_name do perfil para displayName: ${user.displayName}`);
       } 
       // Tentar construir a partir de first_name + last_name
       else if (metadata.first_name && metadata.last_name) {
         user.displayName = `${metadata.first_name} ${metadata.last_name}`;
-        logger.info(`Usando first_name + last_name dos metadados para displayName: ${user.displayName}`);
+        // logger.info(`Usando first_name + last_name dos metadados para displayName: ${user.displayName}`);
       } else if (profile.first_name && profile.last_name) {
         user.displayName = `${profile.first_name} ${profile.last_name}`;
-        logger.info(`Usando first_name + last_name do perfil para displayName: ${user.displayName}`);
+        // logger.info(`Usando first_name + last_name do perfil para displayName: ${user.displayName}`);
       }
       // Usar apenas first_name
       else if (metadata.first_name) {
         user.displayName = metadata.first_name;
-        logger.info(`Usando first_name dos metadados para displayName: ${user.displayName}`);
+        // logger.info(`Usando first_name dos metadados para displayName: ${user.displayName}`);
       } else if (profile.first_name) {
         user.displayName = profile.first_name;
-        logger.info(`Usando first_name do perfil para displayName: ${user.displayName}`);
+        // logger.info(`Usando first_name do perfil para displayName: ${user.displayName}`);
       }
       // Usar email como último recurso antes do genérico
       else if (user.email) {
         // Tentar extrair um nome do email, por exemplo luizfiorimr@email.com -> Luizfiorimr
         const emailName = user.email.split('@')[0];
         user.displayName = emailName.charAt(0).toUpperCase() + emailName.slice(1);
-        logger.info(`Usando email para displayName: ${user.displayName}`);
+        // logger.info(`Usando email para displayName: ${user.displayName}`);
       } else {
         // Último recurso - nome genérico
         user.displayName = 'Usuário';
-        logger.info(`Usando nome genérico para displayName: ${user.displayName}`);
+        // logger.info(`Usando nome genérico para displayName: ${user.displayName}`);
       }
       
       // Verificar se o displayName está vazio por algum motivo e definir um fallback
@@ -671,16 +671,16 @@ const requireAuth = async (req, res, next) => {
         if (user.email) {
           const emailName = user.email.split('@')[0];
           user.displayName = emailName.charAt(0).toUpperCase() + emailName.slice(1);
-          logger.info(`Definindo displayName a partir do email como fallback: ${user.displayName}`);
+          // logger.info(`Definindo displayName a partir do email como fallback: ${user.displayName}`);
         } else {
           user.displayName = 'Usuário';
-          logger.info(`Definindo displayName genérico como último recurso`);
+          // logger.info(`Definindo displayName genérico como último recurso`);
         }
       }
     }
     
     // Log para debugging do displayName
-    logger.info(`Usuário final: ID=${user.id}, Email=${user.email}, DisplayName="${user.displayName}"`);
+    // logger.info(`Usuário final: ID=${user.id}, Email=${user.email}, DisplayName="${user.displayName}"`);
     
     // Usuário está autenticado, adicionar ao objeto de requisição para uso posterior
     req.user = user;
@@ -688,7 +688,7 @@ const requireAuth = async (req, res, next) => {
     req.user.auth_method = 'jwt';
     req.token = token;
     
-    logger.info(`Usuário autenticado: ${user.email}, ID: ${user.id}`);
+    // logger.info(`Usuário autenticado: ${user.email}, ID: ${user.id}`);
     
     // Garantir que o token esteja nos cookies para futuras requisições
     res.cookie('authToken', token, {
@@ -768,7 +768,7 @@ const requireOrganization = async (req, res, next) => {
  * Middleware para verificar se o usuário é administrador da organização
  */
 const requireAdmin = async (req, res, next) => {
-  logger.warn('[ADMIN] Entrou no middleware requireAdmin');
+  // logger.warn('[ADMIN] Entrou no middleware requireAdmin');
   try {
     if (!req.user) {
       return res.status(401).json({ success: false, message: 'Acesso não autorizado' });
@@ -781,20 +781,20 @@ const requireAdmin = async (req, res, next) => {
       .eq('id', req.user.id)
       .single();
 
-    logger.warn(`[ADMIN DEBUG] Resultado profile:`, profile, 'Erro:', error);
+    // logger.warn(`[ADMIN DEBUG] Resultado profile:`, profile, 'Erro:', error);
 
     if (error || !profile) {
-      logger.warn('[ADMIN] Perfil não encontrado ou erro ao buscar role.');
+      // logger.warn('[ADMIN] Perfil não encontrado ou erro ao buscar role.');
       return res.status(403).json({ success: false, message: 'Acesso restrito a administradores' });
     }
 
     // Permitir qualquer valor de role
     if (!profile.role) {
-      logger.warn('[ADMIN] Usuário sem role definido no perfil.');
+      // logger.warn('[ADMIN] Usuário sem role definido no perfil.');
       return res.status(403).json({ success: false, message: 'Acesso restrito a administradores' });
     }
 
-    logger.warn(`[ADMIN] Usuário com role "${profile.role}" permitido.`);
+    // logger.warn(`[ADMIN] Usuário com role "${profile.role}" permitido.`);
     return next();
   } catch (err) {
     logger.error('Erro no middleware de administrador:', err);
@@ -807,7 +807,7 @@ const requireAdmin = async (req, res, next) => {
  */
 async function checkAndCreateTables() {
   try {
-    logger.info('Verificando tabelas do sistema...');
+    // logger.info('Verificando tabelas do sistema...');
     
     let tableExists = false;
     
@@ -819,7 +819,7 @@ async function checkAndCreateTables() {
       
       if (!tablesError && tablesData !== null) {
         tableExists = tablesData === true;
-        logger.info(`Verificação via RPC: tabela user_profiles ${tableExists ? 'existe' : 'não existe'}`);
+        // logger.info(`Verificação via RPC: tabela user_profiles ${tableExists ? 'existe' : 'não existe'}`);
       } else {
         logger.warn(`Erro ao verificar tabela via RPC: ${tablesError?.message || 'Resposta inválida'}`);
         throw new Error('Falha na verificação via RPC');
@@ -828,7 +828,7 @@ async function checkAndCreateTables() {
       logger.warn(`Função RPC indisponível: ${rpcError.message}`);
       
       // Método alternativo: verificar diretamente com SQL
-      logger.info('Tentando verificar tabela diretamente com SQL...');
+      // logger.info('Tentando verificar tabela diretamente com SQL...');
       
       try {
         // Usar from() com uma query simples para verificar se a tabela existe
@@ -840,10 +840,10 @@ async function checkAndCreateTables() {
         // Se não há erro ou é apenas "relation does not exist", sabemos o status da tabela
         if (directCheckError && directCheckError.message.includes('relation "user_profiles" does not exist')) {
           tableExists = false;
-          logger.info(`Verificação direta: tabela user_profiles não existe`);
+          // logger.info(`Verificação direta: tabela user_profiles não existe`);
         } else if (!directCheckError) {
           tableExists = true;
-          logger.info(`Verificação direta: tabela user_profiles existe`);
+          // logger.info(`Verificação direta: tabela user_profiles existe`);
         } else {
           logger.warn(`Erro na verificação direta: ${directCheckError?.message || 'Sem dados'}`);
           // Assumir que a tabela não existe para tentar criá-la
@@ -858,7 +858,7 @@ async function checkAndCreateTables() {
     
     // Se a tabela não existir, criá-la
     if (!tableExists) {
-      logger.warn(`Tabela 'user_profiles' não encontrada. Tentando criar...`);
+      // logger.warn(`Tabela 'user_profiles' não encontrada. Tentando criar...`);
       
       // SQL para criação da tabela user_profiles
       const createProfilesSQL = `
@@ -890,19 +890,19 @@ async function checkAndCreateTables() {
           logger.error(`Erro ao criar tabela via RPC: ${createError.message}`);
           throw new Error('Falha ao criar tabela via RPC');
         } else {
-          logger.info(`Tabela 'user_profiles' criada com sucesso via RPC!`);
+          // logger.info(`Tabela 'user_profiles' criada com sucesso via RPC!`);
           return;
         }
       } catch (rpcCreateError) {
         logger.warn(`Função RPC execute_sql indisponível: ${rpcCreateError.message}`);
         
         // Método alternativo: executar SQL diretamente
-        logger.info('Tentando criar tabela diretamente com SQL...');
+        // logger.info('Tentando criar tabela diretamente com SQL...');
         
         try {
           // Tentar usar uma abordagem alternativa sem .sql()
           // Em vez de executar SQL diretamente, usamos uma operação que force a criação se necessário
-          logger.info(`Tentativa de criação de tabela não suportada pelo cliente JavaScript do Supabase.`);
+          // logger.info(`Tentativa de criação de tabela não suportada pelo cliente JavaScript do Supabase.`);
           logger.error(`Para resolver este problema, você precisa:`);
           logger.error(`1. Acessar o painel do Supabase (https://supabase.com/dashboard)`);
           logger.error(`2. Ir na seção 'SQL Editor'`);
@@ -915,7 +915,7 @@ async function checkAndCreateTables() {
         }
       }
     } else {
-      logger.info(`Tabela 'user_profiles' verificada e está disponível.`);
+      // logger.info(`Tabela 'user_profiles' verificada e está disponível.`);
     }
   } catch (err) {
     logger.error(`Erro ao verificar e criar tabelas: ${err.message}`);
@@ -949,7 +949,7 @@ const isAuthenticatedApi = async (req, res, next) => {
     
     // Se não encontrou token em nenhum lugar, retornar erro
     if (!accessToken) {
-      logger.info('API: Sem token de autenticação');
+      // logger.info('API: Sem token de autenticação');
       return res.status(401).json({
         success: false,
         message: 'Acesso negado: Token não fornecido'
@@ -965,11 +965,11 @@ const isAuthenticatedApi = async (req, res, next) => {
       const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
       
       if (userError) {
-        logger.warn(`API: Erro ao obter usuário pelo token: ${userError.message}`);
+        // logger.warn(`API: Erro ao obter usuário pelo token: ${userError.message}`);
         
         // Se o erro indica token expirado, tentar renovar
         if (userError.message.includes('expired') || userError.message.includes('invalid')) {
-          logger.info('API: Token expirado ou inválido, tentando renovar');
+          // logger.info('API: Token expirado ou inválido, tentando renovar');
           
           // Verificar se temos refresh token
           const refreshToken = req.cookies.refreshToken;
@@ -982,7 +982,7 @@ const isAuthenticatedApi = async (req, res, next) => {
             
             if (!refreshError && refreshData?.session) {
               // Sessão renovada com sucesso
-              logger.info('API: Sessão renovada com sucesso no middleware');
+              // logger.info('API: Sessão renovada com sucesso no middleware');
               
               // Atualizar cookies
               if (refreshData.session.access_token) {
@@ -1006,7 +1006,7 @@ const isAuthenticatedApi = async (req, res, next) => {
               
               if (!newUserError && newUserData?.user) {
                 tokenUser = newUserData.user;
-                logger.info(`API: Usuário recuperado após renovação do token: ${tokenUser.id}`);
+                // logger.info(`API: Usuário recuperado após renovação do token: ${tokenUser.id}`);
                 
                 // Configurar o payload do token
                 tokenPayload = { sub: tokenUser.id, email: tokenUser.email };
@@ -1026,7 +1026,7 @@ const isAuthenticatedApi = async (req, res, next) => {
               });
             }
           } else {
-            logger.warn('API: Sem refresh token disponível para renovação');
+            // logger.warn('API: Sem refresh token disponível para renovação');
             return res.status(401).json({
               success: false,
               message: 'Sessão expirada. Por favor, faça login novamente.'
@@ -1044,7 +1044,7 @@ const isAuthenticatedApi = async (req, res, next) => {
         // Token válido, usuário encontrado
         tokenUser = userData.user;
         tokenPayload = { sub: tokenUser.id, email: tokenUser.email };
-        logger.info(`API: Usuário autenticado: ${tokenUser.id}`);
+        // logger.info(`API: Usuário autenticado: ${tokenUser.id}`);
       } else {
         logger.warn('API: Token válido mas usuário não encontrado');
         return res.status(401).json({
@@ -1113,7 +1113,7 @@ const isAuthenticatedApi = async (req, res, next) => {
         res.locals.user = user;
         res.locals.userId = userId;
         
-        logger.info(`API: Usuário autenticado e configurado: ${user.id} (${user.email})`);
+        // logger.info(`API: Usuário autenticado e configurado: ${user.id} (${user.email})`);
         
         // Prosseguir para a próxima middleware
         return next();
@@ -1153,7 +1153,7 @@ const prepareUserData = async (req, res, next) => {
       res.locals.user = req.user;
       res.locals.userId = req.user.id;
       
-      logger.info(`Dados do usuário preparados para a view: ${req.user.id}`);
+      // logger.info(`Dados do usuário preparados para a view: ${req.user.id}`);
     } else if (req.userId) {
       // Se temos apenas o ID do usuário, buscar dados completos
       try {
@@ -1173,7 +1173,7 @@ const prepareUserData = async (req, res, next) => {
           res.locals.user = user;
           res.locals.userId = user.id;
           
-          logger.info(`Dados do usuário recuperados e preparados: ${user.id}`);
+          // logger.info(`Dados do usuário recuperados e preparados: ${user.id}`);
         } else {
           logger.warn(`Não foi possível recuperar dados do usuário: ${req.userId} - ${userError?.message}`);
         }
@@ -1199,7 +1199,7 @@ const commonViewData = (req, res, next) => {
     if (!res.locals.user && req.user) {
       res.locals.user = req.user;
       res.locals.userId = req.user.id;
-      logger.info('Usuário copiado de req.user para res.locals.user');
+      // logger.info('Usuário copiado de req.user para res.locals.user');
     }
     
     // Definir variáveis globais para todas as views
@@ -1213,7 +1213,7 @@ const commonViewData = (req, res, next) => {
     res.locals.currentUrl = req.originalUrl;
     res.locals.isAuthenticated = req.isAuthenticated || false;
     
-    logger.info(`Dados comuns preparados para a view: ${req.path}`);
+    // logger.info(`Dados comuns preparados para a view: ${req.path}`);
   } catch (err) {
     logger.error('Erro ao preparar dados comuns para a view:', err);
     // Continuar mesmo com erro

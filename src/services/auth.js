@@ -29,7 +29,7 @@ class AuthService {
         .eq('id', authData.user.id)
         .single();
       if (existingProfile) {
-        logger.info(`Perfil já existe para o usuário ${authData.user.id}, atualizando...`);
+        // logger.info(`Perfil já existe para o usuário ${authData.user.id}, atualizando...`);
         const { error: updateError } = await supabaseAdmin
           .from('user_profiles')
           .update({
@@ -401,7 +401,7 @@ class AuthService {
 
       // Verificar se já existe uma sessão para este sessionId (muito improvável, mas vamos verificar)
       try {
-        logger.info(`Verificando se existe sessão para o sessionId ${sessionId}`);
+        // logger.info(`Verificando se existe sessão para o sessionId ${sessionId}`);
         const { data: existingSession, error: checkError } = await supabaseAdmin
           .from('sessions')
           .schema('auth')
@@ -438,7 +438,7 @@ class AuthService {
 
       // Tentar armazenar a sessão na tabela auth.sessions
       try {
-        logger.info(`Tentando criar sessão no banco para o usuário ${userId} com sessionId ${sessionId}`);
+        // logger.info(`Tentando criar sessão no banco para o usuário ${userId} com sessionId ${sessionId}`);
         
         const sessionData = {
           id: sessionId,
@@ -545,7 +545,7 @@ class AuthService {
       
       // Verificar perfil e criar/atualizar usando upsert em vez de insert
       try {
-        logger.info(`Verificando/atualizando perfil para o usuário ${userId}`);
+        // logger.info(`Verificando/atualizando perfil para o usuário ${userId}`);
         const { error: upsertError } = await supabaseAdmin
           .from('user_profiles')
           .upsert({
@@ -574,7 +574,7 @@ class AuthService {
 
       // Tente criar uma sessão usando a API Admin mais recente do Supabase
       try {
-        logger.info(`Tentando criar sessão para o usuário ${userId} via API Admin`);
+        // logger.info(`Tentando criar sessão para o usuário ${userId} via API Admin`);
         
         // Na versão 2.49.4 do Supabase, o método correto é createSession
         const { data, error } = await supabaseAdmin.auth.admin.createSession({

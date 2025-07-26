@@ -19,7 +19,7 @@ const userApiKeyMiddleware = require('./middleware/userApiKeyMiddleware');
 const { requireAuth } = require('./middleware/auth');
 const adminRoutes = require('./routes/adminRoutes');
 const apiRoutes = require('./routes/apiRoutes');
-const evolutionCredentialRoutes = require('./routes/evolutionCredentialRoutes');
+const whatsappCredentialRoutes = require('./routes/whatsappCredentialRoutes');
 const chatWebhookRoutes = require('./routes/chatWebhookRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const contactsRoutes = require('./routes/contacts');
@@ -83,20 +83,27 @@ app.use(helmet({
         "cdn.jsdelivr.net",
         "*.googleapis.com",
         "*.supabase.co",
-        // Remover unsafe-inline e unsafe-eval
+        "https://js.stripe.com"
       ],
       styleSrc: [
         "'self'",
         "'nonce-${res.locals.nonce}'", // Usar nonce para estilos inline
         "cdn.jsdelivr.net",
         "fonts.googleapis.com",
-        "*.googleapis.com"
+        "*.googleapis.com",
+        "cdnjs.cloudflare.com"
       ],
       fontSrc: [
         "'self'",
         "fonts.gstatic.com",
         "cdn.jsdelivr.net",
-        "*.googleapis.com"
+        "*.googleapis.com",
+        "cdnjs.cloudflare.com",
+        "use.fontawesome.com"
+      ],
+      frameSrc: [
+        "'self'",
+        "https://js.stripe.com"
       ],
       imgSrc: [
         "'self'",
@@ -151,9 +158,9 @@ app.use((req, res, next) => {
   // Atualizar CSP com o nonce gerado
   res.setHeader('Content-Security-Policy',
     `default-src 'self'; ` +
-    `script-src 'self' 'nonce-${res.locals.nonce}' cdn.jsdelivr.net *.googleapis.com *.supabase.co; ` +
-    `style-src 'self' 'nonce-${res.locals.nonce}' cdn.jsdelivr.net fonts.googleapis.com *.googleapis.com; ` +
-    `font-src 'self' fonts.gstatic.com cdn.jsdelivr.net *.googleapis.com; ` +
+    `script-src 'self' 'nonce-${res.locals.nonce}' cdn.jsdelivr.net *.googleapis.com *.supabase.co https://js.stripe.com; ` +
+    `style-src 'self' 'nonce-${res.locals.nonce}' cdn.jsdelivr.net fonts.googleapis.com *.googleapis.com cdnjs.cloudflare.com; ` +
+    `font-src 'self' fonts.gstatic.com cdn.jsdelivr.net *.googleapis.com cdnjs.cloudflare.com use.fontawesome.com; ` +
     `img-src 'self' data: blob: *.supabase.co ui-avatars.com placehold.co *.googleapis.com; ` +
     `connect-src 'self' *.supabase.co wss: *.evolution-api.com *.v8sistema.com *.googleapis.com; ` +
     `media-src 'self'; ` +
@@ -161,6 +168,7 @@ app.use((req, res, next) => {
     `base-uri 'self'; ` +
     `form-action 'self'; ` +
     `frame-ancestors 'none'; ` +
+    `frame-src 'self' https://js.stripe.com; ` +
     `upgrade-insecure-requests;`
   );
   
@@ -207,7 +215,7 @@ app.use(cors({
 
 app.use(express.json({ limit: '20mb' }));
 app.use(express.urlencoded({ extended: true }));
-app.use(morgan('dev'));
+// app.use(morgan('dev'));
 app.use(cookieParser());
 
 // Middleware global para logar todas as requisições recebidas
@@ -223,18 +231,9 @@ app.use(requestLogger);
 app.use(sanitizeInput);
 app.use(sanitizeRequest(['body', 'query', 'params']));
 
-// Servir arquivos estáticos do build do frontend
-const frontendDistPath = path.join(__dirname, '../frontend/dist');
-app.use(express.static(frontendDistPath));
-
-// Fallback: para qualquer rota que não seja API, servir index.html do React
-app.get('*', (req, res, next) => {
-  if (!req.path.startsWith('/api')) {
-    res.sendFile(path.join(frontendDistPath, 'index.html'));
-  } else {
-    next();
-  }
-});
+// 🚀 Frontend é servido pelo Vite (desenvolvimento) ou Nginx (produção)
+// Backend focado apenas em APIs - Arquitetura mais limpa e performática
+console.log('🎯 Backend configurado apenas para APIs - Frontend servido externamente');
 
 // Configurar engine de templates
 app.set('view engine', 'ejs');
@@ -309,7 +308,7 @@ app.use('/api/stripe', stripeRoutes);
 app.use('/api', apiRoutes);
 app.use('/auth', authLimiter, authRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
-app.use('/api/whatsapp-credentials', requireAuth, evolutionCredentialRoutes);
+app.use('/api/whatsapp-credentials', requireAuth, whatsappCredentialRoutes);
 app.use('/api/credentials', credentialsRoutes);
 app.use('/api', credentialsRoutes);
 app.use('/api/chat', requireAuth, chatRoutes);
@@ -329,23 +328,7 @@ app.get('/auth/google/callback', (req, res, next) => {
   return authRoutes(req, res, next);
 });
 
-// REMOVIDO: Rotas de callback OAuth devem ser tratadas pelo nginx/frontend
-// app.get(['/auth/callback', '/auth/callback/'], (req, res) => {
-//   console.log('Redirecionando para App React: callback de autenticação', req.url);
-//   res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
-// });
-
-// REMOVIDO: Callback OAuth genérico deve ser tratado pelo nginx/frontend  
-// app.get('*/callback*', (req, res, next) => {
-//   if (req.path === '/auth/google/callback') {
-//     return next();
-//   }
-//   console.log('Detectado padrão de callback OAuth genérico:', req.path);
-//   res.sendFile(path.join(__dirname, '../frontend/dist/index.html'));
-// });
-
-// REMOVIDO: Backend não deve servir o frontend
-// Isso é responsabilidade do nginx
+// OAuth callbacks são tratados pelo nginx/frontend
 // Rota 404 para qualquer coisa que não seja API
 app.get('*', (req, res) => {
   // Se for uma requisição de API
@@ -357,7 +340,10 @@ app.get('*', (req, res) => {
   }
   
   // Para outras requisições, informar que nginx deve tratar
-  console.log('Requisição não-API recebida pelo backend:', req.path);
+  // Log reduzido para evitar spam nos logs
+  if (req.path !== '/' && req.path !== '/dashboard' && req.path !== '/login') {
+    console.log('Requisição não-API incomum recebida pelo backend:', req.path);
+  }
   res.status(404).json({
     message: 'Backend API - Esta rota deve ser tratada pelo nginx',
     timestamp: new Date().toISOString(),
@@ -380,10 +366,7 @@ app.use((err, req, res, next) => {
     });
   }
   
-  // Se for uma requisição para o dashboard ou front React, usar o SPA React
-  if (req.path.startsWith('/dashboard') || !req.path.startsWith('/admin/')) {
-    return res.status(err.statusCode || 500).sendFile(path.join(__dirname, '../frontend/dist/index.html'));
-  }
+  // Backend não serve mais frontend - Nginx cuida disso
   
   // Responder com página de erro para requisições web (apenas admin)
   res.status(err.statusCode || 500).render('error', {
