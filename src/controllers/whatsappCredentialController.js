@@ -1,5 +1,6 @@
 const logger = require('../utils/logger');
 const EvolutionService = require('../services/evolutionService');
+const WhatsappService = require('../services/whatsappService');
 const config = require('../config');
 const { supabaseAdmin } = require('../config/supabase');
 
@@ -14,20 +15,49 @@ class WhatsappCredentialController {
         .select('*')
         .eq('client_id', clientId);
       if (error) throw error;
+      
       // Para cada credencial, buscar e atualizar status da instância
       if (Array.isArray(creds) && creds.length > 0) {
         for (const cred of creds) {
-          // Para credenciais de anúncios, definir status especial sem verificar Evolution API
+          // Para credenciais de anúncios, verificar status na API da Meta
           if (cred.connection_type === 'ads') {
-            const requiresConfig = cred.metadata?.requires_configuration;
-            const scheduledSetup = cred.metadata?.scheduled_setup;
-            if (requiresConfig && scheduledSetup) {
-              cred.status = "aguardando_configuracao";
-            } else {
-              cred.status = "configuracao_pendente";
+            try {
+              // Verificar se tem os dados necessários para verificar status
+              if (cred.wpp_number_id && cred.wpp_access_token) {
+                logger.info(`[LIST] Verificando status da credencial ads ${cred.id} na API da Meta`);
+                
+                const statusResult = await WhatsappService.checkPhoneNumberStatus(
+                  cred.wpp_number_id,
+                  cred.wpp_access_token
+                );
+                
+                if (statusResult.success && statusResult.status) {
+                  cred.status = statusResult.status;
+                  logger.info(`[LIST] Status atualizado para ${cred.id}: ${statusResult.status}`);
+                } else {
+                  // Se não conseguiu verificar, usar status do banco ou padrão
+                  cred.status = cred.status || "aguardando_configuracao";
+                  logger.warn(`[LIST] Não foi possível verificar status da credencial ${cred.id}`);
+                }
+              } else {
+                // Se não tem dados da Meta, verificar metadados
+                const requiresConfig = cred.metadata?.requires_configuration;
+                const scheduledSetup = cred.metadata?.scheduled_setup;
+                if (requiresConfig && scheduledSetup) {
+                  cred.status = "aguardando_configuracao";
+                } else {
+                  cred.status = "configuracao_pendente";
+                }
+                logger.info(`[LIST] Credencial ads ${cred.id} sem dados da Meta, usando metadados`);
+              }
+            } catch (metaErr) {
+              logger.warn(`[LIST] Erro ao verificar status da credencial ads ${cred.id}: ${metaErr.message}`);
+              // Em caso de erro, manter status atual ou usar padrão
+              cred.status = cred.status || "aguardando_configuracao";
             }
             continue; // Pular verificação na Evolution API
           }
+          
           // Para credenciais WhatsApp Business normais, verificar status na Evolution API
           try {
             const service = EvolutionService.fromCredential(cred);
@@ -416,6 +446,15 @@ class WhatsappCredentialController {
       if (!existing || existing.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
       }
+      
+      // Verificar se é uma credencial WhatsApp Business
+      if (existing.connection_type !== 'whatsapp_business') {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Esta funcionalidade é apenas para credenciais WhatsApp Business' 
+        });
+      }
+      
       const service = EvolutionService.fromCredential(existing);
       await service.logoutInstance();
       // Não deletar o registro, apenas desconectar
@@ -441,6 +480,13 @@ class WhatsappCredentialController {
         req.flash('error', 'Credencial não encontrada');
         return res.redirect('/whatsapp-credentials');
       }
+      
+      // Verificar se é uma credencial WhatsApp Business
+      if (cred.connection_type !== 'whatsapp_business') {
+        req.flash('error', 'Esta funcionalidade é apenas para credenciais WhatsApp Business');
+        return res.redirect('/whatsapp-credentials');
+      }
+      
       // Deletar instância na API
       const service = EvolutionService.fromCredential(cred);
       await service.deleteInstance();
@@ -476,6 +522,15 @@ class WhatsappCredentialController {
       if (!existing || existing.client_id !== req.clientId) {
         return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
       }
+      
+      // Verificar se é uma credencial WhatsApp Business
+      if (existing.connection_type !== 'whatsapp_business') {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Esta funcionalidade é apenas para credenciais WhatsApp Business' 
+        });
+      }
+      
       const service = EvolutionService.fromCredential(existing);
       await service.restartInstance();
       return res.json({ success: true, message: 'Instância reiniciada com sucesso' });
@@ -507,6 +562,14 @@ class WhatsappCredentialController {
         instance_name: credential.instance_name,
         connection_type: credential.connection_type
       });
+      
+      // Verificar se é uma credencial WhatsApp Business
+      if (credential.connection_type !== 'whatsapp_business') {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'QR Code é apenas para credenciais WhatsApp Business. Para credenciais de ads, use "Verificar Status".' 
+        });
+      }
       
       // Primeiro, tentar usar QR Code em cache se ainda for válido
       const cachedQr = credential.metadata?.evolution?.qrcode;
@@ -585,15 +648,309 @@ class WhatsappCredentialController {
       // Retornar imediatamente
       return res.json({ 
         success: true, 
-        data: {
-          base64: qrData.base64 || null,
-          code: qrData.code || null,
-          pairingCode: qrData.pairingCode || null
-        }
+        data: qrData
       });
-    } catch (error) {
-      logger.error(`[QRCODE] Erro: ${error.message}`);
-      return res.status(500).json({ success: false, message: error.message });
+      
+    } catch (err) {
+      logger.error('WhatsappCredentialController.fetchQrCode error:', err.message || err);
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+  // Verificar status de números WhatsApp via API da Meta
+  async checkPhoneNumberStatus(req, res) {
+    try {
+      const { id } = req.params;
+      
+      logger.info(`[STATUS] Verificando status do número para credencial: ${id}`);
+      
+      // Buscar credencial
+      const { data: creds, error } = await supabaseAdmin
+        .from('whatsapp_credentials')
+        .select('*')
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      const credential = creds && creds[0];
+      if (!credential || credential.client_id !== req.clientId) {
+        return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
+      }
+      
+      // Verificar se é uma credencial de ads com dados necessários
+      if (credential.connection_type !== 'ads') {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Esta credencial não é do tipo ads' 
+        });
+      }
+      
+      if (!credential.wpp_number_id || !credential.wpp_access_token) {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Credencial não possui wpp_number_id ou wpp_access_token' 
+        });
+      }
+      
+      // Verificar status via API da Meta
+      const statusResult = await WhatsappService.checkPhoneNumberStatus(
+        credential.wpp_number_id,
+        credential.wpp_access_token
+      );
+      
+      if (statusResult.success) {
+        // Atualizar status no banco de dados
+        const { error: updateError } = await supabaseAdmin
+          .from('whatsapp_credentials')
+          .update({ 
+            status: statusResult.status,
+            metadata: {
+              ...credential.metadata,
+              last_status_check: new Date().toISOString(),
+              meta_status: statusResult.data
+            }
+          })
+          .eq('id', id);
+        
+        if (updateError) {
+          logger.warn(`[STATUS] Erro ao atualizar status no banco: ${updateError.message}`);
+        }
+        
+        return res.json({
+          success: true,
+          data: {
+            credential_id: id,
+            phone: credential.phone,
+            wpp_number_id: credential.wpp_number_id,
+            status: statusResult.status,
+            meta_data: statusResult.data
+          }
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: statusResult.error || 'Erro ao verificar status',
+          data: {
+            credential_id: id,
+            phone: credential.phone,
+            wpp_number_id: credential.wpp_number_id,
+            status: 'unknown'
+          }
+        });
+      }
+      
+    } catch (err) {
+      logger.error(`[STATUS] Erro ao verificar status: ${err.message}`);
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+  // Verificar status de todos os números do cliente
+  async checkAllPhoneNumbersStatus(req, res) {
+    try {
+      const clientId = req.clientId;
+      
+      logger.info(`[STATUS] Verificando status de todos os números do cliente: ${clientId}`);
+      
+      // Buscar todas as credenciais de ads do cliente
+      const { data: creds, error } = await supabaseAdmin
+        .from('whatsapp_credentials')
+        .select('*')
+        .eq('client_id', clientId)
+        .eq('connection_type', 'ads');
+      
+      if (error) throw error;
+      
+      if (!creds || creds.length === 0) {
+        return res.json({
+          success: true,
+          data: [],
+          message: 'Nenhuma credencial de ads encontrada'
+        });
+      }
+      
+      // Verificar status de todos os números
+      const results = await WhatsappService.checkMultiplePhoneNumbers(creds);
+      
+      // Atualizar status no banco de dados
+      for (const result of results) {
+        if (result.success) {
+          const credential = creds.find(c => c.id === result.credential_id);
+          if (credential) {
+            const { error: updateError } = await supabaseAdmin
+              .from('whatsapp_credentials')
+              .update({ 
+                status: result.status,
+                metadata: {
+                  ...credential.metadata,
+                  last_status_check: new Date().toISOString(),
+                  meta_status: result
+                }
+              })
+              .eq('id', result.credential_id);
+            
+            if (updateError) {
+              logger.warn(`[STATUS] Erro ao atualizar status da credencial ${result.credential_id}: ${updateError.message}`);
+            }
+          }
+        }
+      }
+      
+      return res.json({
+        success: true,
+        data: results,
+        message: `Status verificado para ${results.length} números`
+      });
+      
+    } catch (err) {
+      logger.error(`[STATUS] Erro ao verificar status de todos os números: ${err.message}`);
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+  // Adicionar novo número de telefone à conta WhatsApp Business
+  async addPhoneNumber(req, res) {
+    try {
+      const { phoneNumber, businessAccountId, accessToken } = req.body;
+      
+      if (!phoneNumber || !businessAccountId || !accessToken) {
+        return res.status(400).json({
+          success: false,
+          message: 'phoneNumber, businessAccountId e accessToken são obrigatórios'
+        });
+      }
+      
+      logger.info(`[ADD_PHONE] Adicionando número ${phoneNumber} à conta ${businessAccountId}`);
+      
+      const result = await WhatsappService.addPhoneNumber(phoneNumber, accessToken, businessAccountId);
+      
+      if (result.success) {
+        return res.json({
+          success: true,
+          data: result.data,
+          message: 'Número adicionado com sucesso'
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: result.error,
+          details: result.details
+        });
+      }
+      
+    } catch (err) {
+      logger.error(`[ADD_PHONE] Erro ao adicionar número: ${err.message}`);
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+  // Verificar disponibilidade de um número
+  async checkPhoneNumberAvailability(req, res) {
+    try {
+      const { phoneNumber, accessToken } = req.body;
+      
+      if (!phoneNumber || !accessToken) {
+        return res.status(400).json({
+          success: false,
+          message: 'phoneNumber e accessToken são obrigatórios'
+        });
+      }
+      
+      logger.info(`[CHECK_AVAILABILITY] Verificando disponibilidade do número ${phoneNumber}`);
+      
+      const result = await WhatsappService.checkPhoneNumberAvailability(phoneNumber, accessToken);
+      
+      if (result.success) {
+        return res.json({
+          success: true,
+          data: result.data,
+          available: result.available,
+          message: result.available ? 'Número disponível' : 'Número não disponível'
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: result.error,
+          details: result.details
+        });
+      }
+      
+    } catch (err) {
+      logger.error(`[CHECK_AVAILABILITY] Erro ao verificar disponibilidade: ${err.message}`);
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+  // Listar números de telefone da conta
+  async listPhoneNumbers(req, res) {
+    try {
+      const { businessAccountId, accessToken } = req.body;
+      
+      if (!businessAccountId || !accessToken) {
+        return res.status(400).json({
+          success: false,
+          message: 'businessAccountId e accessToken são obrigatórios'
+        });
+      }
+      
+      logger.info(`[LIST_PHONES] Listando números da conta ${businessAccountId}`);
+      
+      const result = await WhatsappService.listPhoneNumbers(accessToken, businessAccountId);
+      
+      if (result.success) {
+        return res.json({
+          success: true,
+          data: result.data,
+          total: result.total,
+          message: `${result.total} números encontrados`
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: result.error,
+          details: result.details
+        });
+      }
+      
+    } catch (err) {
+      logger.error(`[LIST_PHONES] Erro ao listar números: ${err.message}`);
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+  // Remover número de telefone da conta
+  async removePhoneNumber(req, res) {
+    try {
+      const { phoneNumberId, accessToken } = req.body;
+      
+      if (!phoneNumberId || !accessToken) {
+        return res.status(400).json({
+          success: false,
+          message: 'phoneNumberId e accessToken são obrigatórios'
+        });
+      }
+      
+      logger.info(`[REMOVE_PHONE] Removendo número ${phoneNumberId}`);
+      
+      const result = await WhatsappService.removePhoneNumber(phoneNumberId, accessToken);
+      
+      if (result.success) {
+        return res.json({
+          success: true,
+          data: result.data,
+          message: 'Número removido com sucesso'
+        });
+      } else {
+        return res.status(400).json({
+          success: false,
+          message: result.error,
+          details: result.details
+        });
+      }
+      
+    } catch (err) {
+      logger.error(`[REMOVE_PHONE] Erro ao remover número: ${err.message}`);
+      return res.status(500).json({ success: false, message: err.message });
     }
   }
 }

@@ -177,7 +177,65 @@ export const evolutionCredentialsApi = {
       method: 'GET'
     });
     return response.json();
-  }
+  },
+
+  // Verificar status de um número
+  checkStatus: async (id: string): Promise<ApiResponse<{ credential_id: string; phone: string; wpp_number_id: string; status: string; meta_data: any }>> => {
+    const response = await apiFetch(`${API_URL}/whatsapp-credentials/${id}/check-status`);
+    return response.json();
+  },
+
+  // Verificar status de todos os números
+  checkAllStatus: async (): Promise<ApiResponse<Array<{ credential_id: string; phone: string; wpp_number_id: string; status: string; success: boolean; error?: string }>>> => {
+    const response = await apiFetch(`${API_URL}/whatsapp-credentials/check-all-status`);
+    return response.json();
+  },
+
+    // Gerenciamento de números na API oficial da Meta
+    addPhoneNumber: async (data: {
+      phoneNumber: string;
+      businessAccountId: string;
+      accessToken: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/add-phone-number', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+
+    checkPhoneAvailability: async (data: {
+      phoneNumber: string;
+      accessToken: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/check-phone-availability', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+
+    listPhoneNumbers: async (data: {
+      businessAccountId: string;
+      accessToken: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/list-phone-numbers', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+
+    removePhoneNumber: async (data: {
+      phoneNumberId: string;
+      accessToken: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/remove-phone-number', {
+        method: 'POST',
+        body: JSON.stringify(data)
+      });
+      return response;
+    }
 };
 
 // API para usuários
