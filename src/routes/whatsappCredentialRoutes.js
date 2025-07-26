@@ -32,6 +32,18 @@ router.post('/:id/restart', whatsappCredentialController.restartInstance);
 // Adicionar rota para obter QR Code de instância
 router.get('/:id/qrcode', whatsappCredentialController.fetchQrCode);
 
+// Verificar status de número WhatsApp via API da Meta
+router.get('/:id/check-status', whatsappCredentialController.checkPhoneNumberStatus);
+
+// Verificar status de todos os números do cliente
+router.get('/check-all-status', whatsappCredentialController.checkAllPhoneNumbersStatus);
+
+// Rotas para gerenciamento de números na API oficial da Meta
+router.post('/add-phone-number', requireAuth, whatsappCredentialController.addPhoneNumber);
+router.post('/check-phone-availability', requireAuth, whatsappCredentialController.checkPhoneNumberAvailability);
+router.post('/list-phone-numbers', requireAuth, whatsappCredentialController.listPhoneNumbers);
+router.post('/remove-phone-number', requireAuth, whatsappCredentialController.removePhoneNumber);
+
 // Webhook para receber mensagens enviadas do n8n
 router.post('/webhook/receivedWhatsApp', requireAuth, async (req, res) => {
   try {
