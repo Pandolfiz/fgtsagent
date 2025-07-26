@@ -8,7 +8,7 @@
         "setup": "npm run install:frontend && npm run build:frontend && npm run install:backend",
         "install:frontend": "cd frontend && npm install",
         "install:backend": "cd src && npm install",
-        "build:frontend": "cd frontend && npm run build",
+        "build": "cd frontend && npm run build",
         "dev": "cd src && npm run dev",
         "dev:all": "concurrently \"npm run dev\" \"cd frontend && npm run dev\"",
         "start": "cd src && npm start",
