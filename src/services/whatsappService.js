@@ -433,7 +433,7 @@ class WhatsappService {
       logger.info(`[WHATSAPP] Verificando status do número: ${wppNumberId}`);
       
       const response = await axios.get(
-        `https://graph.facebook.com/v18.0/${wppNumberId}?fields=status`,
+        `https://graph.facebook.com/v23.0/${wppNumberId}?fields=status`,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
@@ -635,11 +635,12 @@ class WhatsappService {
         verified_name: cleanVerifiedName // Campo obrigatório da Meta API (limpo)
       };
       
-      logger.info(`[WHATSAPP] Enviando requisição para: https://graph.facebook.com/v21.0/${businessAccountId}/phone_numbers`);
+      logger.info(`[WHATSAPP] Enviando requisição para: https://graph.facebook.com/v23.0/${businessAccountId}/phone_numbers`);
       logger.info(`[WHATSAPP] Payload: cc=${cc}, phone_number=${number}, verified_name=${cleanVerifiedName}`);
+      logger.info(`[WHATSAPP] Headers: Authorization=Bearer ${accessToken ? accessToken.substring(0, 10) + '...' : 'undefined'}`);
       
       const response = await axios.post(
-        `https://graph.facebook.com/v21.0/${businessAccountId}/phone_numbers`,
+        `https://graph.facebook.com/v23.0/${businessAccountId}/phone_numbers`,
         payload,
         {
           headers: {
@@ -814,7 +815,7 @@ class WhatsappService {
       
       try {
         const response = await axios.post(
-          'https://graph.facebook.com/v21.0/me/phone_numbers',
+          'https://graph.facebook.com/v23.0/me/phone_numbers',
           testPayload,
           {
             headers: {
@@ -948,7 +949,7 @@ class WhatsappService {
       logger.info(`[WHATSAPP] Listando números da conta ${businessAccountId}`);
       
       const response = await axios.get(
-        `https://graph.facebook.com/v18.0/${businessAccountId}/phone_numbers`,
+        `https://graph.facebook.com/v23.0/${businessAccountId}/phone_numbers`,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
@@ -996,7 +997,7 @@ class WhatsappService {
       logger.info(`[WHATSAPP] Removendo número ${phoneNumberId}`);
       
       const response = await axios.delete(
-        `https://graph.facebook.com/v18.0/${phoneNumberId}`,
+        `https://graph.facebook.com/v23.0/${phoneNumberId}`,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
@@ -1015,6 +1016,207 @@ class WhatsappService {
       
     } catch (error) {
       logger.error(`[WHATSAPP] Erro ao remover número ${phoneNumberId}: ${error.message}`);
+      
+      if (error.response) {
+        logger.error(`[WHATSAPP] Resposta de erro da API:`, error.response.data);
+        return {
+          success: false,
+          error: error.response.data.error?.message || 'Erro na API da Meta',
+          details: error.response.data
+        };
+      }
+      
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Solicita código de verificação via SMS
+   * @param {string} phoneNumberId - ID do número de telefone
+   * @param {string} accessToken - Token de acesso da Meta
+   * @param {string} codeMethod - Método de código (SMS, VOICE)
+   * @param {string} language - Idioma do código (pt_BR, en_US, etc.)
+   * @returns {Promise<object>} - Resposta da API
+   */
+  async requestVerificationCode(phoneNumberId, accessToken, codeMethod = 'SMS', language = 'pt_BR') {
+    try {
+      logger.info(`[WHATSAPP] Solicitando código de verificação para ${phoneNumberId} via ${codeMethod}`);
+      
+      const response = await axios.post(
+        `https://graph.facebook.com/v23.0/${phoneNumberId}/request_code`,
+        {
+          code_method: codeMethod,
+          language: language
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
+        }
+      );
+      
+      logger.info(`[WHATSAPP] Código de verificação solicitado com sucesso:`, response.data);
+      
+      return {
+        success: true,
+        data: response.data
+      };
+      
+    } catch (error) {
+      logger.error(`[WHATSAPP] Erro ao solicitar código de verificação: ${error.message}`);
+      
+      if (error.response) {
+        logger.error(`[WHATSAPP] Resposta de erro da API:`, error.response.data);
+        
+        const errorData = error.response.data.error;
+        if (errorData) {
+          // Erro específico para código já solicitado
+          if (errorData.code === 100 && errorData.error_subcode === 2388004) {
+            return {
+              success: false,
+              error: 'Código já foi solicitado. Aguarde alguns minutos antes de solicitar novamente.',
+              code: 'CODE_ALREADY_REQUESTED',
+              details: errorData
+            };
+          }
+          
+          // Erro específico para número não pendente de verificação
+          if (errorData.code === 100 && errorData.error_subcode === 2388005) {
+            return {
+              success: false,
+              error: 'Número não está pendente de verificação.',
+              code: 'NUMBER_NOT_PENDING_VERIFICATION',
+              details: errorData
+            };
+          }
+          
+          return {
+            success: false,
+            error: errorData.message || 'Erro ao solicitar código de verificação',
+            details: errorData
+          };
+        }
+        
+        return {
+          success: false,
+          error: 'Erro na API da Meta',
+          details: error.response.data
+        };
+      }
+      
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Verifica código de verificação
+   * @param {string} phoneNumberId - ID do número de telefone
+   * @param {string} accessToken - Token de acesso da Meta
+   * @param {string} code - Código de verificação
+   * @returns {Promise<object>} - Resposta da API
+   */
+  async verifyWhatsAppCode(phoneNumberId, accessToken, code) {
+    try {
+      logger.info(`[WHATSAPP] Verificando código para ${phoneNumberId}`);
+      
+      const response = await axios.post(
+        `https://graph.facebook.com/v23.0/${phoneNumberId}/verify_code`,
+        {
+          code: code
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
+        }
+      );
+      
+      logger.info(`[WHATSAPP] Código verificado com sucesso:`, response.data);
+      
+      return {
+        success: true,
+        data: response.data
+      };
+      
+    } catch (error) {
+      logger.error(`[WHATSAPP] Erro ao verificar código: ${error.message}`);
+      
+      if (error.response) {
+        logger.error(`[WHATSAPP] Resposta de erro da API:`, error.response.data);
+        
+        const errorData = error.response.data.error;
+        if (errorData) {
+          // Erro específico para código inválido
+          if (errorData.code === 100 && errorData.error_subcode === 2388006) {
+            return {
+              success: false,
+              error: 'Código de verificação inválido.',
+              code: 'INVALID_CODE',
+              details: errorData
+            };
+          }
+          
+          return {
+            success: false,
+            error: errorData.message || 'Erro ao verificar código',
+            details: errorData
+          };
+        }
+        
+        return {
+          success: false,
+          error: 'Erro na API da Meta',
+          details: error.response.data
+        };
+      }
+      
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
+   * Verifica status da verificação
+   * @param {string} phoneNumberId - ID do número de telefone
+   * @param {string} accessToken - Token de acesso da Meta
+   * @returns {Promise<object>} - Resposta da API
+   */
+  async checkVerificationStatus(phoneNumberId, accessToken) {
+    try {
+      logger.info(`[WHATSAPP] Verificando status da verificação para ${phoneNumberId}`);
+      
+      const response = await axios.get(
+        `https://graph.facebook.com/v23.0/${phoneNumberId}`,
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
+        }
+      );
+      
+      logger.info(`[WHATSAPP] Status da verificação:`, response.data);
+      
+      return {
+        success: true,
+        data: response.data
+      };
+      
+    } catch (error) {
+      logger.error(`[WHATSAPP] Erro ao verificar status: ${error.message}`);
       
       if (error.response) {
         logger.error(`[WHATSAPP] Resposta de erro da API:`, error.response.data);
