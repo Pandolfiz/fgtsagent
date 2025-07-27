@@ -6,7 +6,7 @@
 
 ```bash
 curl -X POST \
-  "https://graph.facebook.com/v18.0/{PHONE_NUMBER_ID}/request_code" \
+  "https://graph.facebook.com/v23.0/{PHONE_NUMBER_ID}/request_code" \
   -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '{
@@ -18,7 +18,7 @@ curl -X POST \
 **Exemplo:**
 ```bash
 curl -X POST \
-  "https://graph.facebook.com/v18.0/123456789/request_code" \
+  "https://graph.facebook.com/v23.0/123456789/request_code" \
   -H "Authorization: Bearer EAABwzLixnjYBO..." \
   -H "Content-Type: application/json" \
   -d '{

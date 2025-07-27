@@ -2,7 +2,7 @@
 
 ## 🔍 **Endpoint de Verificação**
 ```bash
-GET https://graph.facebook.com/v18.0/{WHATSAPP_BUSINESS_PHONE_NUMBER_ID}?fields=status
+GET https://graph.facebook.com/v23.0/{WHATSAPP_BUSINESS_PHONE_NUMBER_ID}?fields=status
 Authorization: Bearer {ACCESS_TOKEN}
 ```
 
@@ -139,4 +139,4 @@ O sistema registra logs detalhados para cada verificação:
 ---
 
 **Última atualização**: 26/07/2025
-**Versão da API Meta**: v18.0 
+**Versão da API Meta**: v23.0 

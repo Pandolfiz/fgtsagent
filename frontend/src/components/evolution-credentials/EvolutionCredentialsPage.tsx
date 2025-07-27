@@ -57,6 +57,10 @@ export function EvolutionCredentialsPage() {
   const [showVerificationModal, setShowVerificationModal] = useState(false);
   const [verificationError, setVerificationError] = useState<string>('');
 
+  // Estados para modal de confirmação de SMS
+  const [showSMSConfirmation, setShowSMSConfirmation] = useState(false);
+  const [selectedCredentialForSMS, setSelectedCredentialForSMS] = useState<EvolutionCredential | null>(null);
+
   // Adicionar novo número na Meta
   const handleAddMetaPhoneNumber = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -188,9 +192,11 @@ export function EvolutionCredentialsPage() {
         // Verificar se há credenciais ads que precisam de atualização de status
         const adsCredentials = response.data.filter((cred: any) => cred.connection_type === 'ads');
         if (adsCredentials.length > 0) {
-          console.log(`🔄 Encontradas ${adsCredentials.length} credenciais ads, verificando status...`);
+          console.log(`🔄 Encontradas ${adsCredentials.length} credenciais ads`);
           
+          // TEMPORARIAMENTE DESABILITADO: Verificação automática de status
           // Aguardar um pouco para não sobrecarregar a API
+          /*
           setTimeout(async () => {
             try {
               const statusResponse = await api.evolution.checkAllStatus();
@@ -212,6 +218,7 @@ export function EvolutionCredentialsPage() {
               console.warn('⚠️ Erro ao atualizar status das credenciais ads:', statusErr);
             }
           }, 1000); // Aguardar 1 segundo antes de verificar status
+          */
         }
       } else {
         console.error('❌ Erro ao carregar credenciais:', response.message);
@@ -345,19 +352,30 @@ export function EvolutionCredentialsPage() {
               // A credencial já foi salva no backend
               if (result.data.credentialId) {
                 console.log('✅ Credencial salva no backend com ID:', result.data.credentialId);
-
+      
                 // Recarregar credenciais para mostrar a nova
                 await loadCredentials();
-              }
-
+      }
+      
               // Mostrar mensagem para o usuário
-              setShowAdsModal(false);
-              
+      setShowAdsModal(false);
+      
               if (result.data.requiresVerification) {
-                // Se precisa de verificação, abrir modal
-                setPhoneNumberId(result.data.phoneNumberId);
-                setVerificationStep('pending');
-                setShowVerificationModal(true);
+                // Perguntar se o usuário quer solicitar SMS agora
+                const shouldRequestSMS = confirm(
+                  'A credencial foi criada com sucesso! Deseja solicitar o código de verificação via SMS agora?\n\n' +
+                  '⚠️ Importante: A Meta API tem limites de solicitações por dia. Use com moderação.'
+                );
+                
+                if (shouldRequestSMS) {
+                  // Se precisa de verificação, abrir modal
+                  setPhoneNumberId(result.data.phoneNumberId);
+                  setVerificationStep('pending');
+                  setShowVerificationModal(true);
+                } else {
+                  // Mostrar mensagem de sucesso sem solicitar SMS
+                  alert('Credencial criada com sucesso! Você pode solicitar o código de verificação posteriormente através do botão "Enviar SMS" no card da credencial.');
+                }
               } else {
                 // Mostrar mensagem baseada no status
                 alert(result.data.message);
@@ -462,6 +480,48 @@ export function EvolutionCredentialsPage() {
       console.error('❌ Erro ao solicitar código de verificação:', err);
       alert('Erro ao solicitar código: ' + (err instanceof Error ? err.message : String(err)));
       return false;
+    }
+  };
+
+  // Função para solicitar SMS de verificação para credencial 'ads'
+  const handleRequestSMS = async (credential: EvolutionCredential) => {
+    if (!credential.wpp_number_id || !credential.wpp_access_token) {
+      alert('Credencial não possui dados necessários para solicitar SMS. Verifique se o número foi registrado corretamente.');
+      return;
+    }
+
+    // Mostrar modal de confirmação
+    setSelectedCredentialForSMS(credential);
+    setShowSMSConfirmation(true);
+  };
+
+  // Função para confirmar e enviar SMS
+  const handleConfirmSMS = async () => {
+    if (!selectedCredentialForSMS) return;
+
+    try {
+      console.log('📱 Solicitando SMS para credencial:', selectedCredentialForSMS.id);
+      
+      const success = await handleRequestVerificationCode(
+        selectedCredentialForSMS.wpp_number_id!,
+        selectedCredentialForSMS.wpp_access_token!
+      );
+      
+      if (success) {
+        // Atualizar status da credencial para indicar que SMS foi solicitado
+        setCredentials(prev => prev.map(c => 
+          c.id === selectedCredentialForSMS.id 
+            ? { ...c, status: 'pending_verification', status_description: 'SMS enviado. Aguardando verificação.' }
+            : c
+        ));
+      }
+    } catch (err) {
+      console.error('❌ Erro ao solicitar SMS:', err);
+      alert('Erro ao solicitar SMS: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      // Fechar modal
+      setShowSMSConfirmation(false);
+      setSelectedCredentialForSMS(null);
     }
   };
 
@@ -1299,6 +1359,51 @@ export function EvolutionCredentialsPage() {
                             {credential.status_description}
                           </p>
                         )}
+                        
+                        {/* Mensagem informativa para credenciais 'ads' não verificadas */}
+                        {credential.connection_type === 'ads' && 
+                         credential.wpp_number_id && 
+                         credential.wpp_access_token && 
+                         credential.status !== 'CONNECTED' && 
+                         credential.status !== 'connected' && 
+                         credential.status !== 'VERIFIED' && 
+                         credential.status !== 'verified' && (
+                          <div className="mt-2 p-2 rounded-lg bg-blue-800/20 border border-blue-700/30">
+                            <p className="text-xs text-blue-200 font-medium mb-1">ℹ️ Número criado com sucesso!</p>
+                            <p className="text-xs text-blue-100">
+                              O número foi registrado na Meta API. Para completar a configuração, 
+                              solicite o código de verificação via SMS.
+                            </p>
+                          </div>
+                        )}
+                        
+                        {/* Mensagem de sucesso para credenciais 'ads' verificadas */}
+                        {credential.connection_type === 'ads' && 
+                         credential.wpp_number_id && 
+                         credential.wpp_access_token && 
+                         (credential.status === 'CONNECTED' || 
+                          credential.status === 'connected' || 
+                          credential.status === 'VERIFIED' || 
+                          credential.status === 'verified') && (
+                          <div className="mt-2 p-2 rounded-lg bg-green-800/20 border border-green-700/30">
+                            <p className="text-xs text-green-200 font-medium mb-1">✅ Número verificado e pronto!</p>
+                            <p className="text-xs text-green-100">
+                              O número foi verificado com sucesso na Meta API e está pronto para uso.
+                            </p>
+                          </div>
+                        )}
+                        
+                        {/* Mensagem para credenciais 'ads' sem dados da Meta API */}
+                        {credential.connection_type === 'ads' && 
+                         (!credential.wpp_number_id || !credential.wpp_access_token) && (
+                          <div className="mt-2 p-2 rounded-lg bg-yellow-800/20 border border-yellow-700/30">
+                            <p className="text-xs text-yellow-200 font-medium mb-1">⚠️ Configuração incompleta</p>
+                            <p className="text-xs text-yellow-100">
+                              Esta credencial precisa ser configurada com os dados da Meta API 
+                              (Business Account ID e Access Token).
+                            </p>
+                          </div>
+                        )}
                       </div>
                       <StatusIcon status={credential.status} />
                     </div>
@@ -1355,6 +1460,35 @@ export function EvolutionCredentialsPage() {
                         : 'Conectar'}
                     </button>
                       )}
+                      
+                      {/* Botão SMS - apenas para credenciais 'ads' não verificadas */}
+                      {(() => {
+                        const shouldShowSMSButton = credential.connection_type === 'ads' && 
+                          credential.wpp_number_id && 
+                          credential.wpp_access_token && 
+                          credential.status !== 'CONNECTED' && 
+                          credential.status !== 'connected' && 
+                          credential.status !== 'VERIFIED' && 
+                          credential.status !== 'verified';
+                        
+                        console.log(`🔍 Debug SMS Button para credencial ${credential.id}:`, {
+                          connection_type: credential.connection_type,
+                          wpp_number_id: credential.wpp_number_id,
+                          wpp_access_token: credential.wpp_access_token ? 'presente' : 'ausente',
+                          status: credential.status,
+                          shouldShow: shouldShowSMSButton
+                        });
+                        
+                        return shouldShowSMSButton ? (
+                          <button
+                            onClick={() => handleRequestSMS(credential)}
+                            className="px-2 py-1.5 rounded-md bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30 transition-colors flex items-center justify-center"
+                            title="Solicitar código de verificação via SMS"
+                          >
+                            <FaPhone className="mr-1" /> Enviar SMS
+                          </button>
+                        ) : null;
+                      })()}
                       
                       {/* Botão Verificar Status - função específica para cada tipo */}
                       <button
@@ -2114,7 +2248,11 @@ export function EvolutionCredentialsPage() {
                       <div className="flex justify-between items-center">
                         <button
                           type="button"
-                          onClick={() => handleRequestVerificationCode(phoneNumberId, metaPhoneData.accessToken)}
+                          onClick={() => {
+                            if (confirm('Tem certeza que deseja enviar um novo SMS? Esta ação não pode ser desfeita.')) {
+                              handleRequestVerificationCode(phoneNumberId, metaPhoneData.accessToken);
+                            }
+                          }}
                           className="px-3 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors text-sm"
                         >
                           📱 Solicitar SMS
@@ -2235,6 +2373,80 @@ export function EvolutionCredentialsPage() {
                         className="px-4 py-1.5 text-sm rounded-md bg-slate-700 text-white hover:bg-slate-600 transition-colors"
                       >
                         Fechar
+                      </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition>
+
+        {/* Modal de Confirmação de SMS */}
+        <Transition appear show={showSMSConfirmation} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={() => setShowSMSConfirmation(false)}>
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0"
+              enterTo="opacity-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100"
+              leaveTo="opacity-0"
+            >
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
+            </Transition.Child>
+
+            <div className="fixed inset-0 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0 scale-95"
+                  enterTo="opacity-100 scale-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100 scale-100"
+                  leaveTo="opacity-0 scale-95"
+                >
+                  <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-lg bg-gradient-to-b from-cyan-900 to-slate-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700/50">
+                    <Dialog.Title
+                      as="h3"
+                      className="text-lg font-semibold leading-6 text-cyan-100 mb-4"
+                    >
+                      Confirmar Envio de SMS
+                    </Dialog.Title>
+                    <div className="mb-6">
+                      <p className="text-gray-300 mb-2">
+                        Tem certeza que deseja enviar um SMS para esta credencial?
+                      </p>
+                      <p className="text-white font-medium">
+                        {selectedCredentialForSMS?.agent_name || selectedCredentialForSMS?.instance_name || 'Sem nome'}
+                      </p>
+                      <div className="mt-4 p-3 bg-yellow-800/20 border border-yellow-700/50 rounded-lg">
+                        <p className="text-yellow-200 text-sm font-medium mb-1">⚠️ Importante:</p>
+                        <p className="text-yellow-100 text-xs">
+                          • Esta ação não pode ser desfeita<br/>
+                          • Um SMS será enviado para o número registrado<br/>
+                          • A Meta API tem limites de solicitações por dia<br/>
+                          • Use com moderação para evitar bloqueios
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex justify-end space-x-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowSMSConfirmation(false)}
+                        className="px-4 py-2 rounded-md bg-slate-700 text-white hover:bg-slate-600 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmSMS}
+                        className="px-4 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors"
+                        disabled={loading}
+                      >
+                        {loading ? 'Enviando...' : 'Enviar SMS'}
                       </button>
                     </div>
                   </Dialog.Panel>

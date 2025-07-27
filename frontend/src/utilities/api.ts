@@ -24,6 +24,10 @@ export interface EvolutionCredential {
   status?: string;
   status_description?: string;
   connection_type?: 'whatsapp_business' | 'ads';
+  // Campos específicos para Meta API (ads)
+  wpp_access_token?: string;
+  wpp_number_id?: string;
+  wpp_business_account_id?: string;
 }
 
 // Tipos para credenciais de parceiros
