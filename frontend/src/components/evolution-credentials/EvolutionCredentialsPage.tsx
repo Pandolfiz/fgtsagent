@@ -50,6 +50,13 @@ export function EvolutionCredentialsPage() {
   const [showMetaPhoneModal, setShowMetaPhoneModal] = useState(false);
   const [metaPhoneNumbers, setMetaPhoneNumbers] = useState([]);
 
+  // Estados para verificação de números WhatsApp
+  const [verificationStep, setVerificationStep] = useState<'input' | 'pending' | 'verify' | 'success'>('input');
+  const [phoneNumberId, setPhoneNumberId] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [verificationError, setVerificationError] = useState<string>('');
+
   // Adicionar novo número na Meta
   const handleAddMetaPhoneNumber = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -283,11 +290,6 @@ export function EvolutionCredentialsPage() {
     }));
   };
 
-  // Estados para verificação
-  const [verificationStep, setVerificationStep] = useState<'input' | 'pending' | 'verify' | 'success'>('input');
-  const [phoneNumberId, setPhoneNumberId] = useState('');
-  const [verificationCode, setVerificationCode] = useState('');
-
   // Enviar formulário de anúncios e salvar no Supabase
   const handleAdsFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -313,7 +315,8 @@ export function EvolutionCredentialsPage() {
         phoneNumber: adsFormData.phone,
         businessAccountId: metaPhoneData.businessAccountId,
         accessToken: metaPhoneData.accessToken,
-        displayName: adsFormData.agent_name,
+        wppName: adsFormData.agent_name, // nome do agente
+        displayName: currentUser?.full_name || currentUser?.displayName || currentUser?.name || currentUser?.email?.split('@')[0] || 'Usuario', // nome do usuário autenticado
         timezone: 'America/Sao_Paulo',
         category: 'BUSINESS',
         businessDescription: 'Conta criada automaticamente via sistema.'
@@ -336,36 +339,129 @@ export function EvolutionCredentialsPage() {
       });
       const response = await api.evolution.createWhatsAppAccount(payload);
       const result = await response.json();
-      if (result.success && result.data) {
-        setPhoneNumberId(result.data.phoneNumberId);
-        setVerificationStep('pending');
-        // Salvar credencial no banco com status pendente
-        const credentialData = {
-          agent_name: adsFormData.agent_name,
-          phone: adsFormData.phone,
-          connection_type: 'ads' as const,
-          instance_name: `${currentUser?.full_name || 'Usuario'} - ${adsFormData.agent_name} - Anúncios`,
-          wpp_number_id: result.data.phoneNumberId,
-          metadata: {
-            created_via: 'ads_form',
-            form_data: adsFormData,
-            status: 'pending_verification',
-            verificationMethod: result.data.verificationMethod
-          }
-        };
-        const createRes = await api.evolution.create(credentialData);
-        if (createRes.success && createRes.data) {
-          setCredentials(prev => [...prev, createRes.data!]);
-        }
-        setShowAdsModal(false);
-      } else {
-        setError(result.error || 'Erro ao criar conta WhatsApp na Meta');
-      }
+                  if (result.success && result.data) {
+              console.log('✅ Resposta do backend:', result.data);
+
+              // A credencial já foi salva no backend
+              if (result.data.credentialId) {
+                console.log('✅ Credencial salva no backend com ID:', result.data.credentialId);
+
+                // Recarregar credenciais para mostrar a nova
+                await loadCredentials();
+              }
+
+              // Mostrar mensagem para o usuário
+              setShowAdsModal(false);
+              
+              if (result.data.requiresVerification) {
+                // Se precisa de verificação, abrir modal
+                setPhoneNumberId(result.data.phoneNumberId);
+                setVerificationStep('pending');
+                setShowVerificationModal(true);
+              } else {
+                // Mostrar mensagem baseada no status
+                alert(result.data.message);
+              }
+            } else {
+              // Erro específico - não salvou no Supabase
+              setShowAdsModal(false);
+              setError(result.error || 'Erro ao criar conta WhatsApp na Meta');
+            }
     } catch (err) {
       console.error('Erro ao criar conta WhatsApp na Meta:', err);
       setError('Erro ao criar conta WhatsApp: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
+    }
+  };
+      
+  // Função para verificar código de verificação
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setVerificationStep('verify');
+    setVerificationError('');
+
+    try {
+      const response = await api.evolution.verifyWhatsAppCode({
+        phoneNumberId: phoneNumberId,
+        verificationCode: verificationCode,
+        accessToken: metaPhoneData.accessToken
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setVerificationStep('success');
+        setShowVerificationModal(false);
+        setVerificationCode('');
+        setPhoneNumberId('');
+      
+        // Recarregar credenciais para atualizar status
+        await loadCredentials();
+        
+        // Mostrar mensagem de sucesso
+        alert('Número verificado com sucesso!');
+      } else {
+        setVerificationStep('input');
+        setVerificationError(result.error || 'Erro ao verificar código');
+      }
+    } catch (err) {
+      console.error('Erro ao verificar código:', err);
+      setVerificationStep('input');
+      setVerificationError('Erro ao verificar código: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  // Função para verificar status de verificação
+  const handleCheckVerificationStatus = async (phoneNumberId: string, accessToken: string) => {
+    try {
+      const response = await api.evolution.checkVerificationStatus({
+        phoneNumberId: phoneNumberId,
+        accessToken: accessToken
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('Status de verificação:', result.data);
+        return result.data;
+      } else {
+        console.error('Erro ao verificar status:', result.error);
+        return null;
+      }
+    } catch (err) {
+      console.error('Erro ao verificar status de verificação:', err);
+      return null;
+    }
+  };
+
+  // Função para solicitar código de verificação via SMS
+  const handleRequestVerificationCode = async (phoneNumberId: string, accessToken: string) => {
+    try {
+      console.log('📱 Solicitando código de verificação via SMS...');
+      
+      const response = await api.evolution.requestVerificationCode({
+        phoneNumberId: phoneNumberId,
+        accessToken: accessToken,
+        codeMethod: 'SMS',
+        language: 'pt_BR'
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Código de verificação solicitado com sucesso');
+        alert('Código de verificação enviado via SMS! Verifique seu telefone.');
+        return true;
+      } else {
+        console.error('❌ Erro ao solicitar código:', result.error);
+        alert('Erro ao solicitar código: ' + result.error);
+        return false;
+      }
+    } catch (err) {
+      console.error('❌ Erro ao solicitar código de verificação:', err);
+      alert('Erro ao solicitar código: ' + (err instanceof Error ? err.message : String(err)));
+      return false;
     }
   };
 
@@ -631,7 +727,7 @@ export function EvolutionCredentialsPage() {
               console.log('🔄 Configurando instância para ID:', createRes.data!.id);
               const setupRes = await api.evolution.setupInstance(createRes.data!.id);
               
-              if (setupRes.success && setupRes.data) {
+        if (setupRes.success && setupRes.data) {
                 console.log('✅ Instância configurada com sucesso:', setupRes.data);
                 
                 // Atualizar credencial com dados reais
@@ -643,27 +739,27 @@ export function EvolutionCredentialsPage() {
                 
                 // Buscar QR Code em background
                 console.log('🔄 Solicitando QR Code para ID:', setupRes.data.id);
-                const qrRes = await api.evolution.getQrCode(setupRes.data.id);
+          const qrRes = await api.evolution.getQrCode(setupRes.data.id);
                 
-                if (qrRes.success && qrRes.data) {
+          if (qrRes.success && qrRes.data) {
                   console.log('✅ QR Code obtido com sucesso');
-                  setQrData(qrRes.data);
-                  setSelectedCredential(setupRes.data!);
-                  setShowQrModal(true);
+            setQrData(qrRes.data);
+            setSelectedCredential(setupRes.data!);
+            setShowQrModal(true);
                 } else {
                   console.error('❌ Erro ao obter QR Code:', qrRes.message);
                   setError(qrRes.message || 'Erro ao obter QR Code');
-                }
-              } else {
+          }
+        } else {
                 console.error('❌ Erro ao configurar instância:', setupRes.message);
-                setError(setupRes.message || 'Erro ao configurar instância');
-              }
+          setError(setupRes.message || 'Erro ao configurar instância');
+        }
             } catch (err) {
               console.error('❌ Erro no background:', err);
               setError('Erro ao configurar instância: ' + (err instanceof Error ? err.message : String(err)));
             }
           })();
-        } else {
+      } else {
           // Para credenciais 'ads', apenas atualizar o status
           setCredentials(prev => 
             prev.map(cred => 
@@ -1107,12 +1203,12 @@ export function EvolutionCredentialsPage() {
               <FaSync className={loading ? 'animate-spin' : ''} />
               <span>Verificar Todos</span>
             </button>
-            <button
-              onClick={handleAddNew}
-              className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 text-white font-medium shadow-md hover:shadow-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 flex items-center"
-            >
-              <FaPlus className="mr-2" /> Nova Credencial
-            </button>
+          <button
+            onClick={handleAddNew}
+            className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 text-white font-medium shadow-md hover:shadow-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 flex items-center"
+          >
+            <FaPlus className="mr-2" /> Nova Credencial
+          </button>
           </div>
         </div>
 
@@ -1152,106 +1248,112 @@ export function EvolutionCredentialsPage() {
                 credentials: credentials.map(c => ({ id: c.id, instance_name: c.instance_name, status: c.status }))
               });
               return credentials.map((credential) => (
-                <div
-                  key={credential.id}
-                  className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg border border-cyan-800/30 hover:border-cyan-600/50 transition-all duration-300 overflow-hidden"
-                >
-                  {/* Header compacto com nome, telefone, tipo e status */}
-                  <div className="p-3 border-b border-cyan-800/30">
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center flex-1">
-                        <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
-                          credential.connection_type === 'ads' 
-                            ? 'bg-purple-600/20 text-purple-400' 
-                            : 'bg-emerald-600/20 text-emerald-400'
-                        }`}>
-                          {credential.connection_type === 'ads' ? (
-                            <FaBroadcastTower className="text-sm" />
-                          ) : (
-                            <FaWhatsapp className="text-sm" />
-                          )}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <h3 className="text-base font-semibold text-white truncate">{credential.agent_name || credential.instance_name || 'Sem nome'}</h3>
-                          <p className="text-cyan-300 text-xs truncate">{credential.phone || 'Sem número'}</p>
-                        </div>
+              <div
+                key={credential.id}
+                className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg border border-cyan-800/30 hover:border-cyan-600/50 transition-all duration-300 overflow-hidden"
+              >
+                {/* Header compacto com nome, telefone, tipo e status */}
+                <div className="p-3 border-b border-cyan-800/30">
+                  <div className="flex justify-between items-start">
+                    <div className="flex items-center flex-1">
+                      <div className={`w-8 h-8 rounded-full flex items-center justify-center mr-3 ${
+                        credential.connection_type === 'ads' 
+                          ? 'bg-purple-600/20 text-purple-400' 
+                          : 'bg-emerald-600/20 text-emerald-400'
+                      }`}>
+                        {credential.connection_type === 'ads' ? (
+                          <FaBroadcastTower className="text-sm" />
+                        ) : (
+                          <FaWhatsapp className="text-sm" />
+                        )}
                       </div>
-                      
-                      {/* Lado direito: Tipo e Status */}
-                      <div className="flex flex-col items-end space-y-1 ml-3">
-                        <ConnectionTypeBadge connectionType={credential.connection_type} />
-                        <StatusBadge status={credential.status} size="sm" />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Body compacto */}
-                  <div className="p-3">
-                    {/* Status da conexão - mais compacto */}
-                    <div className="p-2 rounded-lg bg-white/5 border border-cyan-800/20 mb-3">
-                      <div className="flex justify-between items-center">
-                        <div>
-                          <p className="text-xs text-cyan-300 font-medium">STATUS DA CONEXÃO</p>
-                          <p className="text-white font-medium text-sm">
-                            {credential.status === 'connected' || credential.status === 'open' ? 'Conectado' : 
-                             credential.status === 'connecting' ? 'Conectando...' : 
-                             credential.status === 'disconnected' ? 'Desconectado' : 'Aguardando Conexão'}
-                          </p>
-                        </div>
-                        <StatusIcon status={credential.status} />
+                      <div className="flex-1 min-w-0">
+                        <h3 className="text-base font-semibold text-white truncate">{credential.agent_name || credential.instance_name || 'Sem nome'}</h3>
+                        <p className="text-cyan-300 text-xs truncate">{credential.phone || 'Sem número'}</p>
                       </div>
                     </div>
                     
-                    {/* Info grid mais compacto */}
-                    <div className="grid grid-cols-2 gap-2 mb-3">
-                      <div className="text-center p-2 rounded-lg bg-white/5">
-                        <p className="text-xs text-cyan-300 mb-1">Instância</p>
-                        <p className="font-medium text-white truncate text-xs">{credential.instance_name || '-'}</p>
-                      </div>
-                      <div className="text-center p-2 rounded-lg bg-white/5">
-                        <p className="text-xs text-cyan-300 mb-1">Criado em</p>
-                        <p className="font-medium text-white truncate text-xs">
-                          {credential.created_at ? new Date(credential.created_at).toLocaleDateString('pt-BR') : '-'}
-                        </p>
-                      </div>
+                    {/* Lado direito: Tipo e Status */}
+                    <div className="flex flex-col items-end space-y-1 ml-3">
+                      <ConnectionTypeBadge connectionType={credential.connection_type} />
+                      <StatusBadge status={credential.status} size="sm" />
                     </div>
+                  </div>
+                </div>
 
-                    {/* Botões de ação - grid mais compacto */}
-                    <div className="grid grid-cols-2 gap-2">
-                      <button
-                        onClick={() => handleEdit(credential)}
-                        className="px-2 py-1.5 rounded-md bg-white/10 text-white text-xs hover:bg-white/20 transition-colors flex items-center justify-center"
-                      >
-                        <FaEdit className="mr-1" /> Editar
-                      </button>
+                {/* Body compacto */}
+                <div className="p-3">
+                  {/* Status da conexão - mais compacto */}
+                  <div className="p-2 rounded-lg bg-white/5 border border-cyan-800/20 mb-3">
+                    <div className="flex justify-between items-center">
+                      <div className="flex-1">
+                        <p className="text-xs text-cyan-300 font-medium">STATUS DA CONEXÃO</p>
+                        <p className="text-white font-medium text-sm">
+                          {credential.status === 'connected' || credential.status === 'open' ? 'Conectado' : 
+                           credential.status === 'connecting' ? 'Conectando...' : 
+                           credential.status === 'disconnected' ? 'Desconectado' : 'Aguardando Conexão'}
+                        </p>
+                        {/* Exibir status_description quando disponível */}
+                        {credential.status_description && (
+                          <p className="text-xs text-cyan-200 mt-1 opacity-80">
+                            {credential.status_description}
+                          </p>
+                        )}
+                      </div>
+                      <StatusIcon status={credential.status} />
+                    </div>
+                  </div>
+                  
+                  {/* Info grid mais compacto */}
+                  <div className="grid grid-cols-2 gap-2 mb-3">
+                    <div className="text-center p-2 rounded-lg bg-white/5">
+                      <p className="text-xs text-cyan-300 mb-1">Instância</p>
+                      <p className="font-medium text-white truncate text-xs">{credential.instance_name || '-'}</p>
+                    </div>
+                    <div className="text-center p-2 rounded-lg bg-white/5">
+                      <p className="text-xs text-cyan-300 mb-1">Criado em</p>
+                      <p className="font-medium text-white truncate text-xs">
+                        {credential.created_at ? new Date(credential.created_at).toLocaleDateString('pt-BR') : '-'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Botões de ação - grid mais compacto */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => handleEdit(credential)}
+                      className="px-2 py-1.5 rounded-md bg-white/10 text-white text-xs hover:bg-white/20 transition-colors flex items-center justify-center"
+                    >
+                      <FaEdit className="mr-1" /> Editar
+                    </button>
                       
                       {/* Botão Reiniciar - apenas para WhatsApp Business */}
                       {credential.connection_type === 'whatsapp_business' && (
-                        <button
-                          onClick={() => handleRestartInstance(credential)}
-                          className="px-2 py-1.5 rounded-md bg-white/10 text-white text-xs hover:bg-white/20 transition-colors flex items-center justify-center"
-                        >
-                          <FaSync className="mr-1" /> Reiniciar
-                        </button>
+                    <button
+                      onClick={() => handleRestartInstance(credential)}
+                      className="px-2 py-1.5 rounded-md bg-white/10 text-white text-xs hover:bg-white/20 transition-colors flex items-center justify-center"
+                    >
+                      <FaSync className="mr-1" /> Reiniciar
+                    </button>
                       )}
                       
                       {/* Botão Conectar/Desconectar - apenas para WhatsApp Business */}
                       {credential.connection_type === 'whatsapp_business' && (
-                        <button
-                          onClick={() => credential.status?.toLowerCase() === 'connected' || credential.status?.toLowerCase() === 'open'
-                            ? handleDisconnect(credential)
-                            : handleShowQrCode(credential)
-                          }
-                          className={`px-2 py-1.5 rounded-md text-xs flex items-center justify-center ${
-                            credential.status?.toLowerCase() === 'connected' || credential.status?.toLowerCase() === 'open'
-                              ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30'
-                              : 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
-                          }`}
-                        >
-                          {credential.status?.toLowerCase() === 'connected' || credential.status?.toLowerCase() === 'open'
-                            ? 'Desconectar'
-                            : 'Conectar'}
-                        </button>
+                    <button
+                      onClick={() => credential.status?.toLowerCase() === 'connected' || credential.status?.toLowerCase() === 'open'
+                        ? handleDisconnect(credential)
+                        : handleShowQrCode(credential)
+                      }
+                      className={`px-2 py-1.5 rounded-md text-xs flex items-center justify-center ${
+                        credential.status?.toLowerCase() === 'connected' || credential.status?.toLowerCase() === 'open'
+                          ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30'
+                          : 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30'
+                      }`}
+                    >
+                      {credential.status?.toLowerCase() === 'connected' || credential.status?.toLowerCase() === 'open'
+                        ? 'Desconectar'
+                        : 'Conectar'}
+                    </button>
                       )}
                       
                       {/* Botão Verificar Status - função específica para cada tipo */}
@@ -1265,15 +1367,15 @@ export function EvolutionCredentialsPage() {
                         <FaSync className="mr-1" /> Verificar Status
                       </button>
                       
-                      <button
-                        onClick={() => handleDelete(credential)}
-                        className="px-2 py-1.5 rounded-md bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30 transition-colors flex items-center justify-center"
-                      >
-                        <FaTrash className="mr-1" /> Excluir
-                      </button>
-                    </div>
+                    <button
+                      onClick={() => handleDelete(credential)}
+                      className="px-2 py-1.5 rounded-md bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30 transition-colors flex items-center justify-center"
+                    >
+                      <FaTrash className="mr-1" /> Excluir
+                    </button>
                   </div>
                 </div>
+              </div>
               ));
             })()}
           </div>
@@ -1712,68 +1814,68 @@ export function EvolutionCredentialsPage() {
                         if (qrData?.base64) {
                           console.log('📱 Exibindo QR Code como imagem base64');
                           return (
-                            <div className="bg-white p-4 rounded-lg shadow-inner">
-                              <img
-                                src={qrData.base64.startsWith('data:') ? qrData.base64 : `data:image/png;base64,${qrData.base64}`}
-                                alt="QR Code para conexão"
-                                className="w-64 h-64"
-                              />
-                            </div>
+                        <div className="bg-white p-4 rounded-lg shadow-inner">
+                          <img
+                            src={qrData.base64.startsWith('data:') ? qrData.base64 : `data:image/png;base64,${qrData.base64}`}
+                            alt="QR Code para conexão"
+                            className="w-64 h-64"
+                          />
+                        </div>
                           );
                         } else if (qrData?.code) {
                           console.log('📱 Exibindo QR Code como SVG');
                           return (
-                            <div className="bg-white p-4 rounded-lg shadow-inner">
-                              <QRCodeSVG value={qrData.code} size={256} style={{ width: '100%', height: '100%' }} />
-                            </div>
+                        <div className="bg-white p-4 rounded-lg shadow-inner">
+                          <QRCodeSVG value={qrData.code} size={256} style={{ width: '100%', height: '100%' }} />
+                        </div>
                           );
                         } else if (loading) {
                           console.log('⏳ Exibindo loading');
                           return (
-                            <div className="flex flex-col items-center">
-                              <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-cyan-400 mb-4"></div>
-                              <p className="text-cyan-300 text-lg font-medium">Gerando QR Code...</p>
-                              <p className="text-gray-400 text-sm mt-2">Isso pode levar até 10 segundos</p>
-                            </div>
+                        <div className="flex flex-col items-center">
+                          <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-cyan-400 mb-4"></div>
+                          <p className="text-cyan-300 text-lg font-medium">Gerando QR Code...</p>
+                          <p className="text-gray-400 text-sm mt-2">Isso pode levar até 10 segundos</p>
+                        </div>
                           );
                         } else if (error) {
                           console.log('❌ Exibindo erro:', error);
                           return (
-                            <div className="text-center">
-                              <div className="bg-red-900/50 p-6 rounded-lg mb-4 border border-red-700">
-                                <FaExclamation className="text-4xl text-red-400 mx-auto mb-2" />
-                                <p className="text-red-300 font-medium mb-2">Erro ao gerar QR Code</p>
-                                <p className="text-red-200 text-sm">{error}</p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => selectedCredential && handleShowQrCode(selectedCredential)}
-                                className="px-4 py-2 rounded-md bg-cyan-600 text-white hover:bg-cyan-700 transition-colors flex items-center gap-2 mx-auto"
-                                disabled={loading}
-                              >
-                                <FaSync className={loading ? 'animate-spin' : ''} />
-                                Tentar Novamente
-                              </button>
-                            </div>
+                        <div className="text-center">
+                          <div className="bg-red-900/50 p-6 rounded-lg mb-4 border border-red-700">
+                            <FaExclamation className="text-4xl text-red-400 mx-auto mb-2" />
+                            <p className="text-red-300 font-medium mb-2">Erro ao gerar QR Code</p>
+                            <p className="text-red-200 text-sm">{error}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => selectedCredential && handleShowQrCode(selectedCredential)}
+                            className="px-4 py-2 rounded-md bg-cyan-600 text-white hover:bg-cyan-700 transition-colors flex items-center gap-2 mx-auto"
+                            disabled={loading}
+                          >
+                            <FaSync className={loading ? 'animate-spin' : ''} />
+                            Tentar Novamente
+                          </button>
+                        </div>
                           );
                         } else {
                           console.log('❓ Exibindo estado vazio');
                           return (
-                            <div className="text-center">
-                              <div className="bg-gray-800 p-8 rounded-lg mb-4">
-                                <FaQuestionCircle className="text-6xl text-gray-500 mx-auto mb-2" />
-                                <p className="text-gray-400">QR Code não disponível</p>
-                              </div>
-                              <button
-                                type="button"
-                                onClick={() => selectedCredential && handleShowQrCode(selectedCredential)}
-                                className="px-4 py-2 rounded-md bg-cyan-600 text-white hover:bg-cyan-700 transition-colors flex items-center gap-2 mx-auto"
-                                disabled={loading}
-                              >
-                                <FaSync className={loading ? 'animate-spin' : ''} />
-                                {loading ? 'Atualizando...' : 'Atualizar QR Code'}
-                              </button>
-                            </div>
+                        <div className="text-center">
+                          <div className="bg-gray-800 p-8 rounded-lg mb-4">
+                            <FaQuestionCircle className="text-6xl text-gray-500 mx-auto mb-2" />
+                            <p className="text-gray-400">QR Code não disponível</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => selectedCredential && handleShowQrCode(selectedCredential)}
+                            className="px-4 py-2 rounded-md bg-cyan-600 text-white hover:bg-cyan-700 transition-colors flex items-center gap-2 mx-auto"
+                            disabled={loading}
+                          >
+                            <FaSync className={loading ? 'animate-spin' : ''} />
+                            {loading ? 'Atualizando...' : 'Atualizar QR Code'}
+                          </button>
+                        </div>
                           );
                         }
                       })()}
@@ -1936,6 +2038,104 @@ export function EvolutionCredentialsPage() {
                         >
                           {loading ? 'Processando...' : 'Criar'}
                         </button>
+                      </div>
+                    </form>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition>
+
+        {/* Modal de Verificação de Código WhatsApp */}
+        <Transition appear show={showVerificationModal} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={() => setShowVerificationModal(false)}>
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0"
+              enterTo="opacity-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100"
+              leaveTo="opacity-0"
+            >
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
+            </Transition.Child>
+
+            <div className="fixed inset-0 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0 scale-95"
+                  enterTo="opacity-100 scale-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100 scale-100"
+                  leaveTo="opacity-0 scale-95"
+                >
+                  <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-lg bg-gradient-to-b from-blue-900 to-slate-900 p-6 text-left align-middle shadow-xl transition-all border border-blue-700/50">
+                    <Dialog.Title
+                      as="h3"
+                      className="text-lg font-semibold leading-6 text-blue-100 mb-4 text-center"
+                    >
+                      Verificar Número WhatsApp
+                    </Dialog.Title>
+                    
+                    <div className="mb-4">
+                      <p className="text-gray-300 text-sm mb-3 text-center">
+                        Um código de verificação foi enviado via SMS para o número registrado. 
+                        Digite o código para completar a verificação:
+                      </p>
+                      
+                      {verificationError && (
+                        <div className="bg-red-800/20 border border-red-700/50 p-3 rounded-lg mb-4">
+                          <p className="text-red-200 text-sm">{verificationError}</p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <form onSubmit={handleVerifyCode}>
+                      <div className="mb-4">
+                        <label htmlFor="verificationCode" className="block text-sm font-medium text-blue-200 mb-2">
+                          Código de Verificação
+                        </label>
+                        <input
+                          type="text"
+                          id="verificationCode"
+                          value={verificationCode}
+                          onChange={(e) => setVerificationCode(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Digite o código de 6 dígitos"
+                          maxLength={6}
+                          required
+                        />
+                      </div>
+                      
+                      <div className="flex justify-between items-center">
+                        <button
+                          type="button"
+                          onClick={() => handleRequestVerificationCode(phoneNumberId, metaPhoneData.accessToken)}
+                          className="px-3 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors text-sm"
+                        >
+                          📱 Solicitar SMS
+                        </button>
+                        
+                        <div className="flex space-x-3">
+                          <button
+                            type="button"
+                            onClick={() => setShowVerificationModal(false)}
+                            className="px-4 py-2 rounded-md bg-slate-700 text-white hover:bg-slate-600 transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-4 py-2 rounded-md bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 transition-colors"
+                            disabled={verificationStep === 'verify'}
+                          >
+                            {verificationStep === 'verify' ? 'Verificando...' : 'Verificar'}
+                          </button>
+                        </div>
                       </div>
                     </form>
                   </Dialog.Panel>

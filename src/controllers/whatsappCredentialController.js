@@ -192,8 +192,21 @@ class WhatsappCredentialController {
         instance_name: instanceName,
         agent_name: req.body.agent_name,
         connection_type: req.body.connection_type || 'whatsapp_business',
+        wpp_number_id: req.body.wpp_number_id || null,
+        wpp_access_token: req.body.wpp_access_token || null,
+        wpp_business_account_id: req.body.wpp_business_account_id || null,
         metadata: req.body.metadata || {}
       };
+      
+      logger.info(`[CREATE] Salvando credencial no banco:`, {
+        agent_name: payload.agent_name,
+        phone: payload.phone,
+        connection_type: payload.connection_type,
+        wpp_number_id: payload.wpp_number_id,
+        wpp_access_token: payload.wpp_access_token ? `${payload.wpp_access_token.substring(0, 10)}...` : 'null',
+        wpp_business_account_id: payload.wpp_business_account_id,
+        has_metadata: !!payload.metadata
+      });
       const { data: saved, error } = await supabaseAdmin
         .from('whatsapp_credentials')
         .insert([payload])
@@ -701,17 +714,21 @@ class WhatsappCredentialController {
       
       if (statusResult.success) {
         // Atualizar status no banco de dados
-        const { error: updateError } = await supabaseAdmin
+        const { data: updateResult, error: updateError } = await supabaseAdmin
           .from('whatsapp_credentials')
-          .update({ 
+          .update({
             status: statusResult.status,
+            status_description: `Status verificado via Meta API: ${statusResult.status}`,
             metadata: {
               ...credential.metadata,
               last_status_check: new Date().toISOString(),
-              meta_status: statusResult.data
+              meta_api_status: statusResult.status,
+              meta_api_status_code: statusResult.status_code
             }
           })
-          .eq('id', id);
+          .eq('id', credential.id)
+          .select()
+          .single();
         
         if (updateError) {
           logger.warn(`[STATUS] Erro ao atualizar status no banco: ${updateError.message}`);
@@ -962,6 +979,7 @@ class WhatsappCredentialController {
         phoneNumber,
         businessAccountId,
         accessToken,
+        wppName,
         displayName,
         timezone = 'America/Sao_Paulo',
         category = 'BUSINESS',
@@ -1022,7 +1040,7 @@ class WhatsappCredentialController {
 
       // 1. Verificar disponibilidade do número
       logger.info(`[CREATE_WHATSAPP_ACCOUNT] Verificando disponibilidade do número ${phoneNumber}`);
-      const availabilityResult = await WhatsappService.checkPhoneNumberAvailability(phoneNumber, accessToken);
+      const availabilityResult = await WhatsappService.checkPhoneNumberAvailability(phoneNumber, accessToken, wppName);
       
       if (!availabilityResult.success) {
         logger.error(`[CREATE_WHATSAPP_ACCOUNT] Erro ao verificar disponibilidade: ${availabilityResult.error}`);
@@ -1053,33 +1071,347 @@ class WhatsappCredentialController {
 
       // 2. Adicionar número à conta de negócios
       logger.info(`[CREATE_WHATSAPP_ACCOUNT] Adicionando número ${phoneNumber} à conta de negócios`);
-      const addResult = await WhatsappService.addPhoneNumber(phoneNumber, accessToken, businessAccountId);
+      const addResult = await WhatsappService.addPhoneNumber(phoneNumber, accessToken, businessAccountId, wppName);
       
-      if (!addResult.success) {
-        logger.error(`[CREATE_WHATSAPP_ACCOUNT] Erro ao adicionar número: ${addResult.error}`);
-        return res.status(400).json({
-          success: false,
-          error: `Erro ao adicionar número: ${addResult.error}`
+      let phoneNumberId = null;
+      let metaApiSuccess = false;
+      let metaApiError = null;
+      let shouldSaveToSupabase = true;
+      let errorStatus = 'meta_api_error';
+      
+      if (addResult.success) {
+        phoneNumberId = addResult.phone_number_id;
+        metaApiSuccess = true;
+        logger.info(`[CREATE_WHATSAPP_ACCOUNT] Número adicionado com ID: ${phoneNumberId}`);
+      } else {
+        metaApiError = addResult.error;
+        logger.error(`[CREATE_WHATSAPP_ACCOUNT] Erro ao adicionar número na Meta API: ${addResult.error}`);
+        logger.info(`[CREATE_WHATSAPP_ACCOUNT] Detalhes do erro:`, {
+          error: addResult.error,
+          code: addResult.code,
+          details: addResult.details
+        });
+        
+        // SEMPRE salvar no Supabase quando há erro na Meta API, exceto para erros críticos
+        // Casos que NÃO devem salvar no Supabase:
+        if (addResult.code === 'NUMBER_ALREADY_REGISTERED') {
+          shouldSaveToSupabase = false;
+          logger.info(`[CREATE_WHATSAPP_ACCOUNT] Número já registrado, não salvando no Supabase`);
+        } else if (addResult.error.includes('access token') || addResult.error.includes('Token de acesso')) {
+          shouldSaveToSupabase = false;
+          logger.info(`[CREATE_WHATSAPP_ACCOUNT] Token de acesso inválido, não salvando no Supabase`);
+        } else if (addResult.error.includes('business') || addResult.error.includes('Business Account')) {
+          shouldSaveToSupabase = false;
+          logger.info(`[CREATE_WHATSAPP_ACCOUNT] Business ID inválido, não salvando no Supabase`);
+        } else {
+          // Casos que DEVEM salvar no Supabase:
+          if (addResult.code === 'VERIFIED_NAME_REQUIRED') {
+            errorStatus = 'pending_verification';
+          } else if (addResult.error.includes('verificação de nome já está em andamento')) {
+            errorStatus = 'name_verification_in_progress';
+          } else {
+            // Para qualquer outro erro, salvar com status de erro
+            errorStatus = 'meta_api_error';
+          }
+          logger.info(`[CREATE_WHATSAPP_ACCOUNT] Erro na Meta API: ${addResult.error}, salvando credencial com status: ${errorStatus}`);
+        }
+        
+        logger.info(`[CREATE_WHATSAPP_ACCOUNT] Decisão de salvamento:`, {
+          shouldSaveToSupabase,
+          errorStatus,
+          metaApiError
         });
       }
 
-      const phoneNumberId = addResult.phone_number_id;
-      logger.info(`[CREATE_WHATSAPP_ACCOUNT] Número adicionado com ID: ${phoneNumberId}`);
+      // 3. Configurar informações do negócio (apenas se a Meta API foi bem-sucedida)
+      if (metaApiSuccess && phoneNumberId) {
+        logger.info(`[CREATE_WHATSAPP_ACCOUNT] Configurando informações do negócio`);
+        const businessInfo = {
+          messaging_product: 'whatsapp',
+          display_name: displayName,
+          timezone: timezone,
+          category: category,
+          business_description: businessDescription
+        };
 
-      // 3. Configurar informações do negócio
-      logger.info(`[CREATE_WHATSAPP_ACCOUNT] Configurando informações do negócio`);
-      const businessInfo = {
-        messaging_product: 'whatsapp',
-        display_name: displayName,
-        timezone: timezone,
-        category: category,
-        business_description: businessDescription
-      };
+        try {
+          const businessConfigResponse = await axios.post(
+            `https://graph.facebook.com/v18.0/${phoneNumberId}`,
+            businessInfo,
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
 
+          logger.info(`[CREATE_WHATSAPP_ACCOUNT] Informações do negócio configuradas:`, businessConfigResponse.data);
+        } catch (businessErr) {
+          logger.warn(`[CREATE_WHATSAPP_ACCOUNT] Erro ao configurar informações do negócio: ${businessErr.message}`);
+          // Não falhar se a configuração do negócio falhar
+        }
+
+        // 4. Iniciar processo de verificação (apenas se a Meta API foi bem-sucedida)
+        logger.info(`[CREATE_WHATSAPP_ACCOUNT] Iniciando processo de verificação`);
+        try {
+          const verificationResponse = await axios.post(
+            `https://graph.facebook.com/v18.0/${phoneNumberId}/request_code`,
+            {
+              code_method: 'SMS',
+              language: 'pt_BR'
+            },
+            {
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json'
+              }
+            }
+          );
+
+          logger.info(`[CREATE_WHATSAPP_ACCOUNT] Verificação iniciada:`, verificationResponse.data);
+        } catch (verificationErr) {
+          logger.warn(`[CREATE_WHATSAPP_ACCOUNT] Erro ao iniciar verificação: ${verificationErr.message}`);
+          // Não falhar se a verificação falhar
+        }
+      } else {
+        logger.info(`[CREATE_WHATSAPP_ACCOUNT] Pulando configuração do negócio e verificação devido a erro na Meta API`);
+      }
+
+      // 5. Salvar credencial no Supabase (condicional)
+      let savedCredential = null;
+      
+      logger.info(`[CREATE_WHATSAPP_ACCOUNT] Verificando se deve salvar no Supabase:`, {
+        metaApiSuccess,
+        shouldSaveToSupabase,
+        condition: metaApiSuccess || shouldSaveToSupabase
+      });
+      
+      if (metaApiSuccess || shouldSaveToSupabase) {
+        logger.info(`[CREATE_WHATSAPP_ACCOUNT] Salvando credencial no Supabase`);
+        
+        // Debug: verificar dados do usuário
+        logger.info(`[CREATE_WHATSAPP_ACCOUNT] Dados do usuário:`, {
+          user: req.user,
+          full_name: req.user?.full_name,
+          name: req.user?.name,
+          email: req.user?.email,
+          user_metadata: req.user?.user_metadata
+        });
+        
+        // Tentar obter o nome do usuário de diferentes formas
+        let userName = 'Usuario';
+        if (req.user?.full_name) {
+          userName = req.user.full_name;
+        } else if (req.user?.name) {
+          userName = req.user.name;
+        } else if (req.user?.user_metadata?.full_name) {
+          userName = req.user.user_metadata.full_name;
+        } else if (req.user?.user_metadata?.name) {
+          userName = req.user.user_metadata.name;
+        } else if (req.user?.email) {
+          userName = req.user.email.split('@')[0]; // Usar parte do email
+        }
+        
+        // Usar displayName como nome do usuário e wppName como nome do agente
+        const instanceName = `${displayName} - ${wppName} - Anúncios`;
+        
+        // Determinar status final baseado no resultado da Meta API
+        let finalStatus = 'pending_verification';
+        if (!metaApiSuccess) {
+          finalStatus = errorStatus || 'meta_api_error';
+        }
+
+        const credentialPayload = {
+          client_id: req.clientId,
+          phone: phoneNumber,
+          instance_name: instanceName,
+          agent_name: wppName,
+          connection_type: 'ads',
+          wpp_number_id: phoneNumberId,
+          wpp_access_token: accessToken,
+          wpp_business_account_id: businessAccountId,
+          status: finalStatus,
+          status_description: metaApiError || addResult?.error || null,
+          metadata: {
+            created_via: 'ads_form',
+            meta_api_success: metaApiSuccess,
+            meta_api_error: metaApiError,
+            meta_api_error_code: addResult?.code || null,
+            business_account_id: businessAccountId,
+            access_token: accessToken ? `${accessToken.substring(0, 10)}...` : null,
+            phone_number_id: phoneNumberId,
+            verification_method: metaApiSuccess ? 'SMS' : null,
+            display_name: wppName,
+            timezone: timezone,
+            category: category,
+            business_description: businessDescription,
+            error_details: addResult?.details || null
+          }
+        };
+        
+        logger.info(`[CREATE_WHATSAPP_ACCOUNT] Payload da credencial:`, {
+          agent_name: credentialPayload.agent_name,
+          phone: credentialPayload.phone,
+          connection_type: credentialPayload.connection_type,
+          wpp_number_id: credentialPayload.wpp_number_id,
+          wpp_access_token: credentialPayload.wpp_access_token ? `${credentialPayload.wpp_access_token.substring(0, 10)}...` : 'null',
+          wpp_business_account_id: credentialPayload.wpp_business_account_id,
+          status: credentialPayload.status,
+          status_description: credentialPayload.status_description,
+          meta_api_success: credentialPayload.metadata.meta_api_success,
+          meta_api_error: credentialPayload.metadata.meta_api_error
+        });
+        
+        const { data: savedCredentialData, error: saveError } = await supabaseAdmin
+          .from('whatsapp_credentials')
+          .insert(credentialPayload)
+          .select()
+          .single();
+        
+        if (saveError) {
+          logger.error(`[CREATE_WHATSAPP_ACCOUNT] Erro ao salvar credencial no Supabase:`, saveError);
+          return res.status(500).json({
+            success: false,
+            error: 'Erro ao salvar credencial no banco de dados',
+            details: saveError
+          });
+        }
+        
+        savedCredential = savedCredentialData;
+        logger.info(`[CREATE_WHATSAPP_ACCOUNT] Credencial salva com sucesso:`, savedCredential.id);
+      } else {
+        logger.info(`[CREATE_WHATSAPP_ACCOUNT] Não salvando credencial no Supabase devido ao tipo de erro`);
+      }
+      
+      // 6. Retornar resposta baseada no resultado da Meta API
+      if (metaApiSuccess) {
+        return res.json({
+          success: true,
+          data: {
+            phoneNumberId: phoneNumberId,
+            phoneNumber: phoneNumber,
+            verificationMethod: 'SMS',
+            message: 'Conta WhatsApp criada com sucesso. Verifique o código SMS enviado para completar a verificação.',
+            requiresVerification: true,
+            credentialId: savedCredential?.id
+          }
+        });
+      } else {
+        // Verificar se a credencial foi salva
+        if (savedCredential) {
+          // Determinar mensagem baseada no tipo de erro
+          let userMessage = 'Credencial salva com sucesso.';
+          if (finalStatus === 'name_verification_in_progress') {
+            userMessage = 'Credencial salva. O número já possui verificação de nome em andamento.';
+          } else if (finalStatus === 'meta_api_error') {
+            userMessage = `Credencial salva. Erro na Meta API: ${metaApiError}. Tente novamente mais tarde.`;
+          }
+
+          return res.json({
+            success: true,
+            data: {
+              phoneNumberId: phoneNumberId,
+              phoneNumber: phoneNumber,
+              verificationMethod: null,
+              message: userMessage,
+              requiresVerification: false,
+              credentialId: savedCredential.id,
+              metaApiError: metaApiError,
+              status: finalStatus
+            }
+          });
+        } else {
+          // Credencial não foi salva - retornar erro específico
+          let errorMessage = 'Erro ao criar conta WhatsApp.';
+          if (addResult.code === 'NUMBER_ALREADY_REGISTERED') {
+            errorMessage = 'Este número já está registrado em outra conta WhatsApp.';
+          } else if (addResult.error.includes('access token') || addResult.error.includes('Token de acesso')) {
+            errorMessage = 'Token de acesso inválido ou expirado. Verifique suas credenciais.';
+          } else if (addResult.error.includes('business') || addResult.error.includes('Business Account')) {
+            errorMessage = 'Business Account ID inválido. Verifique suas credenciais.';
+          }
+
+          return res.status(400).json({
+            success: false,
+            error: errorMessage,
+            details: addResult.details
+          });
+        }
+      }
+
+    } catch (error) {
+      logger.error(`[CREATE_WHATSAPP_ACCOUNT] Erro interno: ${error.message}`);
+      
+      // Log detalhado do erro
+      if (error.response) {
+        logger.error(`[CREATE_WHATSAPP_ACCOUNT] Resposta de erro da API:`, {
+          status: error.response.status,
+          data: error.response.data,
+          headers: error.response.headers
+        });
+        
+        // Se for erro da Meta API, retornar erro mais específico
+        if (error.response.status === 400) {
+          return res.status(400).json({
+            success: false,
+            error: `Erro na Meta API: ${error.response.data.error?.message || error.response.data.error || 'Parâmetros inválidos'}`,
+            details: error.response.data
+          });
+        }
+        
+        if (error.response.status === 401) {
+          return res.status(401).json({
+            success: false,
+            error: 'Token de acesso inválido ou expirado',
+            details: error.response.data
+          });
+        }
+      }
+      
+      return res.status(500).json({
+        success: false,
+        error: `Erro interno ao criar conta WhatsApp: ${error.message}`
+      });
+    }
+  }
+
+  // Novo método para verificar código de verificação
+  async verifyWhatsAppCode(req, res) {
+    try {
+      const { phoneNumberId, verificationCode, accessToken } = req.body;
+
+      logger.info(`[VERIFY_WHATSAPP_CODE] Verificando código para ${phoneNumberId}`);
+
+      // Validar dados obrigatórios
+      if (!phoneNumberId) {
+        return res.status(400).json({
+          success: false,
+          error: 'phoneNumberId é obrigatório'
+        });
+      }
+
+      if (!verificationCode) {
+        return res.status(400).json({
+          success: false,
+          error: 'verificationCode é obrigatório'
+        });
+      }
+
+      if (!accessToken) {
+        return res.status(400).json({
+          success: false,
+          error: 'accessToken é obrigatório'
+        });
+      }
+
+      // Verificar código na Meta API
       try {
-        const businessConfigResponse = await axios.post(
-          `https://graph.facebook.com/v18.0/${phoneNumberId}`,
-          businessInfo,
+        const verifyResponse = await axios.post(
+          `https://graph.facebook.com/v18.0/${phoneNumberId}/verify_code`,
+          {
+            code: verificationCode
+          },
           {
             headers: {
               'Authorization': `Bearer ${accessToken}`,
@@ -1088,47 +1420,281 @@ class WhatsappCredentialController {
           }
         );
 
-        logger.info(`[CREATE_WHATSAPP_ACCOUNT] Informações do negócio configuradas:`, businessConfigResponse.data);
-      } catch (businessErr) {
-        logger.warn(`[CREATE_WHATSAPP_ACCOUNT] Erro ao configurar informações do negócio: ${businessErr.message}`);
-        // Não falhar se a configuração do negócio falhar
-      }
+        logger.info(`[VERIFY_WHATSAPP_CODE] Código verificado com sucesso:`, verifyResponse.data);
 
-      // 4. Iniciar processo de verificação
-      logger.info(`[CREATE_WHATSAPP_ACCOUNT] Iniciando processo de verificação`);
-      const verificationResponse = await axios.post(
-        `https://graph.facebook.com/v18.0/${phoneNumberId}/request_code`,
-        {
-          code_method: 'SMS',
-          language: 'pt_BR'
-        },
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
+        // Atualizar status da credencial no banco
+        const { data: { user } } = req;
+        const credential = await supabaseAdmin
+          .from('whatsapp_credentials')
+          .select('*')
+          .eq('wpp_number_id', phoneNumberId)
+          .eq('client_id', user.id)
+          .single();
+
+        if (credential.data) {
+          await supabaseAdmin
+            .from('whatsapp_credentials')
+            .update({
+              status: 'verified',
+              status_description: 'Número verificado com sucesso via Meta API',
+              metadata: {
+                ...credential.data.metadata,
+                verification_completed: true,
+                verification_date: new Date().toISOString(),
+                verification_method: 'SMS'
+              }
+            })
+            .eq('id', credential.data.id);
+        }
+
+        return res.status(200).json({
+          success: true,
+          data: {
+            phoneNumberId: phoneNumberId,
+            status: 'verified',
+            message: 'Número verificado com sucesso!'
+          }
+        });
+
+      } catch (verifyError) {
+        logger.error(`[VERIFY_WHATSAPP_CODE] Erro ao verificar código: ${verifyError.message}`);
+        
+        if (verifyError.response?.data?.error) {
+          const errorData = verifyError.response.data.error;
+          
+          // Atualizar status da credencial com erro
+          if (credential.data) {
+            await supabaseAdmin
+              .from('whatsapp_credentials')
+              .update({
+                status: 'meta_api_error',
+                status_description: errorData.message || 'Erro na verificação do código',
+                metadata: {
+                  ...credential.data.metadata,
+                  verification_error: errorData.message,
+                  verification_error_code: errorData.code,
+                  verification_error_subcode: errorData.error_subcode
+                }
+              })
+              .eq('id', credential.data.id);
+          }
+          
+          if (errorData.code === 100 && errorData.error_subcode === 2388003) {
+            return res.status(400).json({
+              success: false,
+              error: 'Código de verificação inválido. Verifique o código SMS e tente novamente.',
+              code: 'INVALID_VERIFICATION_CODE'
+            });
           }
         }
-      );
 
-      logger.info(`[CREATE_WHATSAPP_ACCOUNT] Verificação iniciada:`, verificationResponse.data);
-
-      // 5. Retornar sucesso com dados para verificação
-      return res.json({
-        success: true,
-        data: {
-          phoneNumberId: phoneNumberId,
-          phoneNumber: phoneNumber,
-          verificationMethod: 'SMS',
-          message: 'Conta WhatsApp criada com sucesso. Verifique o código SMS enviado para completar a verificação.',
-          requiresVerification: true
-        }
-      });
+        return res.status(400).json({
+          success: false,
+          error: 'Erro ao verificar código. Tente novamente.'
+        });
+      }
 
     } catch (error) {
-      logger.error(`[CREATE_WHATSAPP_ACCOUNT] Erro interno: ${error.message}`);
+      logger.error(`[VERIFY_WHATSAPP_CODE] Erro interno: ${error.message}`);
       return res.status(500).json({
         success: false,
-        error: `Erro interno ao criar conta WhatsApp: ${error.message}`
+        error: 'Erro interno do servidor'
+      });
+    }
+  }
+
+  // Novo método para verificar status de verificação
+  async checkVerificationStatus(req, res) {
+    try {
+      const { phoneNumberId, accessToken } = req.body;
+
+      logger.info(`[CHECK_VERIFICATION_STATUS] Verificando status para ${phoneNumberId}`);
+
+      // Validar dados obrigatórios
+      if (!phoneNumberId) {
+        return res.status(400).json({
+          success: false,
+          error: 'phoneNumberId é obrigatório'
+        });
+      }
+
+      if (!accessToken) {
+        return res.status(400).json({
+          success: false,
+          error: 'accessToken é obrigatório'
+        });
+      }
+
+      // Verificar status na Meta API
+      try {
+        const statusResponse = await axios.get(
+          `https://graph.facebook.com/v18.0/${phoneNumberId}`,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+
+        logger.info(`[CHECK_VERIFICATION_STATUS] Status obtido:`, statusResponse.data);
+
+        const status = statusResponse.data.verified_name ? 'verified' : 'pending_verification';
+
+        return res.status(200).json({
+          success: true,
+          data: {
+            phoneNumberId: phoneNumberId,
+            status: status,
+            verified_name: statusResponse.data.verified_name,
+            code_verification_status: statusResponse.data.code_verification_status,
+            quality_rating: statusResponse.data.quality_rating
+          }
+        });
+
+      } catch (statusError) {
+        logger.error(`[CHECK_VERIFICATION_STATUS] Erro ao verificar status: ${statusError.message}`);
+        return res.status(400).json({
+          success: false,
+          error: 'Erro ao verificar status de verificação'
+        });
+      }
+
+    } catch (error) {
+      logger.error(`[CHECK_VERIFICATION_STATUS] Erro interno: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
+      });
+    }
+  }
+
+  // Novo método para solicitar código de verificação via SMS
+  async requestVerificationCode(req, res) {
+    try {
+      const { phoneNumberId, accessToken, codeMethod = 'SMS', language = 'pt_BR' } = req.body;
+
+      logger.info(`[REQUEST_VERIFICATION_CODE] Solicitando código para ${phoneNumberId} via ${codeMethod}`);
+
+      // Validar dados obrigatórios
+      if (!phoneNumberId) {
+        return res.status(400).json({
+          success: false,
+          error: 'phoneNumberId é obrigatório'
+        });
+      }
+
+      if (!accessToken) {
+        return res.status(400).json({
+          success: false,
+          error: 'accessToken é obrigatório'
+        });
+      }
+
+      // Solicitar código na Meta API
+      try {
+        const requestResponse = await axios.post(
+          `https://graph.facebook.com/v18.0/${phoneNumberId}/request_code`,
+          {
+            code_method: codeMethod,
+            language: language
+          },
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+
+        logger.info(`[REQUEST_VERIFICATION_CODE] Código solicitado com sucesso:`, requestResponse.data);
+
+        // Atualizar status da credencial no banco
+        const { data: { user } } = req;
+        const credential = await supabaseAdmin
+          .from('whatsapp_credentials')
+          .select('*')
+          .eq('wpp_number_id', phoneNumberId)
+          .eq('client_id', user.id)
+          .single();
+
+        if (credential.data) {
+          await supabaseAdmin
+            .from('whatsapp_credentials')
+            .update({
+              status: 'pending_verification',
+              status_description: 'Código de verificação solicitado via SMS',
+              metadata: {
+                ...credential.data.metadata,
+                sms_requested: true,
+                sms_request_date: new Date().toISOString(),
+                verification_method: 'SMS'
+              }
+            })
+            .eq('id', credential.data.id);
+        }
+
+        return res.status(200).json({
+          success: true,
+          data: {
+            phoneNumberId: phoneNumberId,
+            message: 'Código de verificação enviado com sucesso via SMS',
+            code_method: codeMethod,
+            language: language
+          }
+        });
+
+      } catch (requestError) {
+        logger.error(`[REQUEST_VERIFICATION_CODE] Erro ao solicitar código: ${requestError.message}`);
+        
+        if (requestError.response?.data?.error) {
+          const errorData = requestError.response.data.error;
+          
+          // Atualizar status da credencial com erro
+          if (credential.data) {
+            await supabaseAdmin
+              .from('whatsapp_credentials')
+              .update({
+                status: 'meta_api_error',
+                status_description: errorData.message || 'Erro ao solicitar código de verificação',
+                metadata: {
+                  ...credential.data.metadata,
+                  sms_request_error: errorData.message,
+                  sms_request_error_code: errorData.code,
+                  sms_request_error_subcode: errorData.error_subcode
+                }
+              })
+              .eq('id', credential.data.id);
+          }
+          
+          if (errorData.code === 100 && errorData.error_subcode === 2388004) {
+            return res.status(400).json({
+              success: false,
+              error: 'Código já foi solicitado. Aguarde alguns minutos antes de solicitar novamente.',
+              code: 'CODE_ALREADY_REQUESTED'
+            });
+          }
+          
+          if (errorData.code === 100 && errorData.error_subcode === 2388005) {
+            return res.status(400).json({
+              success: false,
+              error: 'Número não está pendente de verificação.',
+              code: 'NUMBER_NOT_PENDING_VERIFICATION'
+            });
+          }
+        }
+
+        return res.status(400).json({
+          success: false,
+          error: 'Erro ao solicitar código de verificação. Tente novamente.'
+        });
+      }
+
+    } catch (error) {
+      logger.error(`[REQUEST_VERIFICATION_CODE] Erro interno: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro interno do servidor'
       });
     }
   }
