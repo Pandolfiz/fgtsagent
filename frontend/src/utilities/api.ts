@@ -22,6 +22,7 @@ export interface EvolutionCredential {
   updated_at: string;
   agent_name?: string;
   status?: string;
+  status_description?: string;
   connection_type?: 'whatsapp_business' | 'ads';
 }
 
@@ -259,6 +260,51 @@ export const evolutionCredentialsApi = {
       businessDescription?: string;
     }) => {
       const response = await apiFetch('/api/whatsapp-credentials/create-whatsapp-account', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+
+    verifyWhatsAppCode: async (data: {
+      phoneNumberId: string;
+      verificationCode: string;
+      accessToken: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/verify-whatsapp-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+
+    checkVerificationStatus: async (data: {
+      phoneNumberId: string;
+      accessToken: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/check-verification-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+
+    requestVerificationCode: async (data: {
+      phoneNumberId: string;
+      accessToken: string;
+      codeMethod?: 'SMS' | 'VOICE';
+      language?: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/request-verification-code', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'

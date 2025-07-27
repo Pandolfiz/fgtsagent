@@ -543,33 +543,104 @@ class WhatsappService {
    * @param {string} businessAccountId - ID da conta de negócios
    * @returns {Promise<object>} - Resposta da API
    */
-  async addPhoneNumber(phoneNumber, accessToken, businessAccountId) {
+  async addPhoneNumber(phoneNumber, accessToken, businessAccountId, verifiedName = 'Business Name') {
     try {
       logger.info(`[WHATSAPP] Adicionando número ${phoneNumber} à conta ${businessAccountId}`);
+      
+      // Validar parâmetros
+      if (!phoneNumber) {
+        return {
+          success: false,
+          error: 'phoneNumber é obrigatório'
+        };
+      }
+      
+      if (!accessToken) {
+        return {
+          success: false,
+          error: 'accessToken é obrigatório'
+        };
+      }
+      
+      if (!businessAccountId) {
+        return {
+          success: false,
+          error: 'businessAccountId é obrigatório'
+        };
+      }
+      
+      // Validar formato do businessAccountId (deve ser um número)
+      if (isNaN(businessAccountId)) {
+        return {
+          success: false,
+          error: 'businessAccountId deve ser um número válido'
+        };
+      }
+      
+      // Limpar e validar verifiedName
+      let cleanVerifiedName = verifiedName || 'Business';
+      // Remover caracteres especiais e limitar a 25 caracteres (limite da Meta API)
+      cleanVerifiedName = cleanVerifiedName
+        .replace(/[^\w\s]/g, '') // Remove caracteres especiais exceto letras, números e espaços
+        .replace(/\s+/g, ' ') // Remove espaços múltiplos
+        .trim() // Remove espaços no início e fim
+        .substring(0, 25); // Limita a 25 caracteres
+      
+      // Se ficou vazio após limpeza, usar valor padrão
+      if (!cleanVerifiedName) {
+        cleanVerifiedName = 'Business';
+      }
+      
+      logger.info(`[WHATSAPP] Parâmetros validados:`, {
+        phoneNumber: phoneNumber,
+        businessAccountId: businessAccountId,
+        accessToken: accessToken ? `${accessToken.substring(0, 10)}...` : 'undefined',
+        verifiedName: verifiedName,
+        cleanVerifiedName: cleanVerifiedName
+      });
       
       // Separar código do país e número
       let cc = '55'; // Brasil por padrão
       let number = phoneNumber;
       
+      // Remover caracteres especiais e espaços
+      const cleanNumber = phoneNumber.replace(/[^\d]/g, '');
+      
       // Se o número começa com código do país, extrair
-      if (phoneNumber.startsWith('55')) {
+      if (cleanNumber.startsWith('55')) {
         cc = '55';
-        number = phoneNumber.substring(2);
-      } else if (phoneNumber.startsWith('+55')) {
+        number = cleanNumber.substring(2);
+      } else if (cleanNumber.startsWith('+55')) {
         cc = '55';
-        number = phoneNumber.substring(3);
+        number = cleanNumber.substring(3);
+      } else {
+        // Se não tem código do país, assumir que é um número brasileiro
+        cc = '55';
+        number = cleanNumber;
+      }
+      
+      // Validar se o número tem pelo menos 8 dígitos
+      if (number.length < 8) {
+        return {
+          success: false,
+          error: 'Número de telefone inválido. Deve ter pelo menos 8 dígitos.'
+        };
       }
       
       logger.info(`[WHATSAPP] Código do país: ${cc}, Número: ${number}`);
       
+      const payload = {
+        cc: cc,
+        phone_number: number,
+        verified_name: cleanVerifiedName // Campo obrigatório da Meta API (limpo)
+      };
+      
+      logger.info(`[WHATSAPP] Enviando requisição para: https://graph.facebook.com/v21.0/${businessAccountId}/phone_numbers`);
+      logger.info(`[WHATSAPP] Payload: cc=${cc}, phone_number=${number}, verified_name=${cleanVerifiedName}`);
+      
       const response = await axios.post(
-        `https://graph.facebook.com/v18.0/${businessAccountId}/phone_numbers`,
-        {
-          cc: cc,
-          phone_number: number,
-          verified_name: 'Business Name', // Pode ser personalizado
-          code_verification_status: 'NOT_VERIFIED'
-        },
+        `https://graph.facebook.com/v21.0/${businessAccountId}/phone_numbers`,
+        payload,
         {
           headers: {
             'Authorization': `Bearer ${accessToken}`,
@@ -591,7 +662,8 @@ class WhatsappService {
       logger.error(`[WHATSAPP] Erro ao adicionar número ${phoneNumber}: ${error.message}`);
       
       if (error.response) {
-        logger.error(`[WHATSAPP] Resposta de erro da API:`, error.response.data);
+        logger.error(`[WHATSAPP] Status da resposta: ${error.response.status}`);
+        logger.error(`[WHATSAPP] Erro da API: ${error.response.data?.error?.message || 'Erro desconhecido'}`);
         
         // Verificar erros específicos da Meta
         const errorData = error.response.data;
@@ -599,14 +671,28 @@ class WhatsappService {
           const errorCode = errorData.error.code;
           const errorMessage = errorData.error.message;
           const errorSubcode = errorData.error.error_subcode;
+          const errorUserMsg = errorData.error.error_user_msg; // Mensagem descritiva para o usuário
+          
+          // Usar a mensagem descritiva quando disponível, senão usar a mensagem padrão
+          const displayMessage = errorUserMsg || errorMessage;
           
           // Erro específico para número já registrado (código 100, subcódigo 2388002)
           if (errorCode === 100 && errorSubcode === 2388002) {
             return {
               success: false,
-              error: 'Número de telefone já está registrado em uma conta do WhatsApp. Para usar este número, desconecte-o da conta existente e tente novamente em até 3 minutos.',
+              error: errorUserMsg || 'Número de telefone já está registrado em uma conta do WhatsApp. Para usar este número, desconecte-o da conta existente e tente novamente em até 3 minutos.',
               details: errorData,
               code: 'NUMBER_ALREADY_REGISTERED'
+            };
+          }
+          
+          // Erro específico para verified_name obrigatório
+          if (errorCode === 100 && errorMessage.includes('verified_name is required')) {
+            return {
+              success: false,
+              error: errorUserMsg || 'Nome de verificação é obrigatório para registrar o número',
+              details: errorData,
+              code: 'VERIFIED_NAME_REQUIRED'
             };
           }
           
@@ -614,7 +700,7 @@ class WhatsappService {
           if (errorCode === 100 || errorMessage.includes('phone number')) {
             return {
               success: false,
-              error: 'Número de telefone não está disponível para registro',
+              error: errorUserMsg || 'Número de telefone não está disponível para registro',
               details: errorData
             };
           }
@@ -623,7 +709,7 @@ class WhatsappService {
           if (errorCode === 190 || errorMessage.includes('access token')) {
             return {
               success: false,
-              error: 'Token de acesso inválido ou expirado',
+              error: errorUserMsg || 'Token de acesso inválido ou expirado',
               details: errorData
             };
           }
@@ -632,15 +718,22 @@ class WhatsappService {
           if (errorCode === 200 || errorMessage.includes('permission')) {
             return {
               success: false,
-              error: 'Token não tem permissões suficientes para WhatsApp Business API',
+              error: errorUserMsg || 'Token não tem permissões suficientes para WhatsApp Business API',
               details: errorData
             };
           }
+          
+          // Para outros erros, usar a mensagem descritiva quando disponível
+          return {
+            success: false,
+            error: displayMessage,
+            details: errorData
+          };
         }
         
         return {
           success: false,
-          error: errorData.error?.message || 'Erro na API da Meta',
+          error: errorData.error?.error_user_msg || errorData.error?.message || 'Erro na API da Meta',
           details: errorData
         };
       }
@@ -658,12 +751,29 @@ class WhatsappService {
    * @param {string} accessToken - Token de acesso da Meta
    * @returns {Promise<object>} - Resposta da API
    */
-  async checkPhoneNumberAvailability(phoneNumber, accessToken) {
+  async checkPhoneNumberAvailability(phoneNumber, accessToken, verifiedName = 'Business') {
     try {
       logger.info(`[WHATSAPP] Verificando disponibilidade do número ${phoneNumber}`);
+      
+      // Limpar e validar verifiedName
+      let cleanVerifiedName = verifiedName || 'Business';
+      // Remover caracteres especiais e limitar a 25 caracteres (limite da Meta API)
+      cleanVerifiedName = cleanVerifiedName
+        .replace(/[^\w\s]/g, '') // Remove caracteres especiais exceto letras, números e espaços
+        .replace(/\s+/g, ' ') // Remove espaços múltiplos
+        .trim() // Remove espaços no início e fim
+        .substring(0, 25); // Limita a 25 caracteres
+      
+      // Se ficou vazio após limpeza, usar valor padrão
+      if (!cleanVerifiedName) {
+        cleanVerifiedName = 'Business';
+      }
+      
       logger.info(`[WHATSAPP] Parâmetros recebidos:`, {
         phoneNumber: phoneNumber,
         accessToken: accessToken ? `${accessToken.substring(0, 10)}...` : 'undefined',
+        verifiedName: verifiedName,
+        cleanVerifiedName: cleanVerifiedName,
         phoneNumberType: typeof phoneNumber,
         accessTokenType: typeof accessToken
       });
@@ -692,51 +802,131 @@ class WhatsappService {
       
       logger.info(`[WHATSAPP] Código do país: ${cc}, Número: ${number}`);
       
-      // De acordo com a documentação da Meta, não existe um endpoint específico para verificar disponibilidade
-      // Vamos tentar adicionar o número diretamente e ver se funciona
-      // Se der erro específico de número não disponível, saberemos que não está disponível
-      
-      // Primeiro, vamos verificar se o token é válido fazendo uma requisição simples
-      const testResponse = await axios.get(
-        `https://graph.facebook.com/v18.0/me`,
-        {
-          headers: {
-            'Authorization': `Bearer ${accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          timeout: 10000
-        }
-      );
-      
-      logger.info(`[WHATSAPP] Token válido, usuário:`, testResponse.data);
-      
-      // Por enquanto, vamos assumir que o número está disponível
-      // A verificação real será feita quando tentarmos adicionar o número
-      return {
-        success: true,
-        available: true,
-        data: { message: 'Token válido, número será verificado na adição' }
+      // Fazer uma verificação real tentando adicionar o número temporariamente
+      // Se der erro específico de número já registrado, saberemos que não está disponível
+      const testPayload = {
+        cc: cc,
+        phone_number: number,
+        verified_name: cleanVerifiedName
       };
+      
+      logger.info(`[WHATSAPP] Testando adição do número para verificar disponibilidade`);
+      
+      try {
+        const response = await axios.post(
+          'https://graph.facebook.com/v21.0/me/phone_numbers',
+          testPayload,
+          {
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            }
+          }
+        );
+        
+        // Se chegou aqui, o número está disponível
+        logger.info(`[WHATSAPP] Número está disponível para registro`);
+        return {
+          success: true,
+          available: true,
+          data: response.data
+        };
+        
+      } catch (testError) {
+        logger.info(`[WHATSAPP] Erro no teste de disponibilidade: ${testError.response?.data?.error?.message || testError.message}`);
+        
+        const errorData = testError.response?.data;
+        if (errorData?.error) {
+          const errorCode = errorData.error.code;
+          const errorSubcode = errorData.error.error_subcode;
+          const errorUserMsg = errorData.error.error_user_msg;
+          
+          // Erro específico para número já registrado
+          if (errorCode === 100 && errorSubcode === 2388002) {
+            logger.info(`[WHATSAPP] Número já está registrado em uma conta do WhatsApp`);
+            return {
+              success: false,
+              available: false,
+              error: errorUserMsg || 'Número de telefone já está registrado em uma conta do WhatsApp',
+              code: 'NUMBER_ALREADY_REGISTERED',
+              details: errorData
+            };
+          }
+          
+          // Para outros erros, assumir que o número está disponível
+          // (pode ser erro de permissão, token, etc.)
+          logger.info(`[WHATSAPP] Erro não relacionado à disponibilidade do número, assumindo disponível`);
+          return {
+            success: true,
+            available: true,
+            data: { message: 'Número será verificado na adição real' }
+          };
+        }
+        
+        // Para erros sem detalhes, assumir disponível
+        logger.info(`[WHATSAPP] Erro sem detalhes, assumindo número disponível`);
+        return {
+          success: true,
+          available: true,
+          data: { message: 'Número será verificado na adição real' }
+        };
+      }
       
     } catch (error) {
       logger.error(`[WHATSAPP] Erro ao verificar disponibilidade do número ${phoneNumber}: ${error.message}`);
       
       if (error.response) {
-        logger.error(`[WHATSAPP] Resposta de erro da API:`, error.response.data);
+        logger.error(`[WHATSAPP] Status da resposta: ${error.response.status}`);
+        logger.error(`[WHATSAPP] Erro da API: ${error.response.data?.error?.message || 'Erro desconhecido'}`);
         
-        // Se o erro for de token inválido, retornar erro específico
-        if (error.response.status === 401) {
+        const errorData = error.response.data;
+        if (errorData.error) {
+          const errorCode = errorData.error.code;
+          const errorMessage = errorData.error.message;
+          const errorUserMsg = errorData.error.error_user_msg; // Mensagem descritiva para o usuário
+          
+          // Usar a mensagem descritiva quando disponível
+          const displayMessage = errorUserMsg || errorMessage;
+          
+          // Erro específico para número já registrado
+          if (errorCode === 100 && errorData.error.error_subcode === 2388002) {
+            return {
+              success: false,
+              available: false,
+              error: errorUserMsg || 'Número de telefone já está registrado em uma conta do WhatsApp',
+              code: 'NUMBER_ALREADY_REGISTERED'
+            };
+          }
+          
+          // Erro de token inválido
+          if (errorCode === 190 || errorMessage.includes('access token')) {
+            return {
+              success: false,
+              error: errorUserMsg || 'Token de acesso inválido ou expirado',
+              code: 'INVALID_ACCESS_TOKEN'
+            };
+          }
+          
+          // Erro de permissões
+          if (errorCode === 200 || errorMessage.includes('permission')) {
+            return {
+              success: false,
+              error: errorUserMsg || 'Token não tem permissões suficientes para WhatsApp Business API',
+              code: 'INSUFFICIENT_PERMISSIONS'
+            };
+          }
+          
+          // Para outros erros, usar a mensagem descritiva quando disponível
           return {
             success: false,
-            error: 'Token de acesso inválido ou expirado',
-            details: error.response.data
+            error: displayMessage,
+            code: errorCode
           };
         }
         
         return {
           success: false,
-          error: error.response.data.error?.message || 'Erro na API da Meta',
-          details: error.response.data
+          error: errorData.error?.error_user_msg || errorData.error?.message || 'Erro na API da Meta'
         };
       }
       

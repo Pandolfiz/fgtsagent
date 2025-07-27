@@ -26,6 +26,11 @@ router.post('/remove-phone-number', requireAuth, whatsappCredentialController.re
 // Rota para criar conta WhatsApp na API oficial da Meta (fluxo automatizado)
 router.post('/create-whatsapp-account', requireAuth, whatsappCredentialController.createWhatsAppAccount);
 
+// Rotas para verificação de números WhatsApp
+router.post('/verify-whatsapp-code', requireAuth, whatsappCredentialController.verifyWhatsAppCode);
+router.post('/check-verification-status', requireAuth, whatsappCredentialController.checkVerificationStatus);
+router.post('/request-verification-code', requireAuth, whatsappCredentialController.requestVerificationCode);
+
 // Obter credencial por ID
 router.get('/:id', whatsappCredentialController.getById);
 
