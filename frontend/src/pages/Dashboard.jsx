@@ -37,6 +37,7 @@ import { Dialog, Transition } from '@headlessui/react'
 import ReactDOM from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import supabase from '../lib/supabaseClient'
+import { cachedFetch } from '../utils/authCache'
 
 ChartJS.register(
   CategoryScale,
@@ -332,20 +333,19 @@ export default function Dashboard() {
           headers['Authorization'] = `Bearer ${authToken}`;
         }
         
-        // Fazer a requisição de verificação
-        const response = await fetch('/api/auth/me', {
+        // Fazer a requisição de verificação usando cache
+        const data = await cachedFetch('/api/auth/me', {
           method: 'GET',
           credentials: 'include',
           headers
         });
 
-        if (!response.ok) {
-          console.error('Erro de autenticação:', response.status, response.statusText);
-          const responseText = await response.text();
-          console.log('Detalhes da resposta:', responseText);
+        if (!data || !data.success) {
+          console.error('Erro de autenticação:', data);
+          console.log('Detalhes da resposta:', data);
           
           // Se o erro for de autenticação, limpar tokens e redirecionar para login
-          if (response.status === 401) {
+          if (data && data.status === 401) {
             // Limpar tokens armazenados
             localStorage.removeItem('authToken');
             document.cookie = `supabase-auth-token=; path=/; max-age=0`;
@@ -657,22 +657,22 @@ export default function Dashboard() {
   }
 
   const cards = [
-    { title: 'Leads Novos', value: stats.newLeadsCount, icon: <FaUserPlus className="text-green-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-green-400' },
-    { title: 'Leads Antigos Ativos', value: stats.returningLeadsCount, icon: <FaUserPlus className="text-purple-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-purple-400' },
-    { title: 'Porcentagem de Consultas', value: `${stats.consultationPercentage || '0'}%`, icon: <FaPercentage className="text-blue-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-blue-400' },
-    { title: 'Consultas Válidas', value: `${stats.validConsultationsPercentage || '0'}%`, icon: <FaPercentage className="text-teal-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-teal-400' },
-    { title: 'Saldo Total Consultado', value: stats.totalBalance, icon: <FaDollarSign className="text-emerald-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-emerald-400' },
-    { title: 'Saldo Simulado Total', value: stats.totalSimulation, icon: <FaDollarSign className="text-emerald-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-emerald-400' },
-    { title: 'Propostas Criadas', value: stats.totalProposals, icon: <FaFileSignature className="text-cyan-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-cyan-400' },
-    { title: 'Valor Total de Propostas', value: stats.totalProposalsValue, icon: <FaMoneyBillWave className="text-cyan-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-cyan-400' },
-    { title: 'Propostas em Formalização', value: stats.totalFormalizationProposals, icon: <FaFileSignature className="text-blue-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-blue-400' },
-    { title: 'Valor em Formalização', value: stats.totalFormalizationProposalsValue, icon: <FaMoneyBillWave className="text-blue-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-blue-400' },
-    { title: 'Propostas Pagas', value: stats.totalPaidProposals, icon: <FaCheckCircle className="text-teal-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-teal-400' },
-    { title: 'Valor Propostas Pagas', value: stats.totalPaidProposalsValue, icon: <FaDollarSign className="text-teal-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-teal-400' },
-    { title: 'Conversão de Pagamentos', value: stats.conversionRate, icon: <FaChartLine className="text-purple-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-purple-400' },
-    { title: 'Propostas Pendentes', value: stats.totalPendingProposals, icon: <FaHourglassHalf className="text-yellow-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-yellow-400' },
-    { title: 'Valor Pendentes', value: stats.totalPendingProposalsValue, icon: <FaMoneyBillWave className="text-yellow-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-yellow-400' },
-    { title: 'Propostas Canceladas', value: stats.totalCancelledProposals, icon: <FaTimesCircle className="text-red-500" />, bgClass: 'bg-white/10 backdrop-blur-sm', titleColor: 'text-red-400' }
+    { title: 'Leads Novos', value: stats.newLeadsCount, icon: <FaUserPlus className="text-green-500" />, bgClass: 'bg-white/10', titleColor: 'text-green-400' },
+    { title: 'Leads Antigos Ativos', value: stats.returningLeadsCount, icon: <FaUserPlus className="text-purple-500" />, bgClass: 'bg-white/10', titleColor: 'text-purple-400' },
+    { title: 'Porcentagem de Consultas', value: `${stats.consultationPercentage || '0'}%`, icon: <FaPercentage className="text-blue-500" />, bgClass: 'bg-white/10', titleColor: 'text-blue-400' },
+    { title: 'Consultas Válidas', value: `${stats.validConsultationsPercentage || '0'}%`, icon: <FaPercentage className="text-teal-500" />, bgClass: 'bg-white/10', titleColor: 'text-teal-400' },
+    { title: 'Saldo Total Consultado', value: stats.totalBalance, icon: <FaDollarSign className="text-emerald-500" />, bgClass: 'bg-white/10', titleColor: 'text-emerald-400' },
+    { title: 'Saldo Simulado Total', value: stats.totalSimulation, icon: <FaDollarSign className="text-emerald-500" />, bgClass: 'bg-white/10', titleColor: 'text-emerald-400' },
+    { title: 'Propostas Criadas', value: stats.totalProposals, icon: <FaFileSignature className="text-cyan-500" />, bgClass: 'bg-white/10', titleColor: 'text-cyan-400' },
+    { title: 'Valor Total de Propostas', value: stats.totalProposalsValue, icon: <FaMoneyBillWave className="text-cyan-500" />, bgClass: 'bg-white/10', titleColor: 'text-cyan-400' },
+    { title: 'Propostas em Formalização', value: stats.totalFormalizationProposals, icon: <FaFileSignature className="text-blue-500" />, bgClass: 'bg-white/10', titleColor: 'text-blue-400' },
+    { title: 'Valor em Formalização', value: stats.totalFormalizationProposalsValue, icon: <FaMoneyBillWave className="text-blue-500" />, bgClass: 'bg-white/10', titleColor: 'text-blue-400' },
+    { title: 'Propostas Pagas', value: stats.totalPaidProposals, icon: <FaCheckCircle className="text-teal-500" />, bgClass: 'bg-white/10', titleColor: 'text-teal-400' },
+    { title: 'Valor Propostas Pagas', value: stats.totalPaidProposalsValue, icon: <FaDollarSign className="text-teal-500" />, bgClass: 'bg-white/10', titleColor: 'text-teal-400' },
+    { title: 'Conversão de Pagamentos', value: stats.conversionRate, icon: <FaChartLine className="text-purple-500" />, bgClass: 'bg-white/10', titleColor: 'text-purple-400' },
+    { title: 'Propostas Pendentes', value: stats.totalPendingProposals, icon: <FaHourglassHalf className="text-yellow-500" />, bgClass: 'bg-white/10', titleColor: 'text-yellow-400' },
+    { title: 'Valor Pendentes', value: stats.totalPendingProposalsValue, icon: <FaMoneyBillWave className="text-yellow-500" />, bgClass: 'bg-white/10', titleColor: 'text-yellow-400' },
+    { title: 'Propostas Canceladas', value: stats.totalCancelledProposals, icon: <FaTimesCircle className="text-red-500" />, bgClass: 'bg-white/10', titleColor: 'text-red-400' }
   ]
 
   // Configurações comuns para os gráficos
@@ -751,7 +751,7 @@ export default function Dashboard() {
               <div className="flex items-center">
                 <button
                   type="button"
-                  className={`px-3 py-2 rounded-lg border text-sm transition-colors duration-200 ${period === 'custom' ? 'bg-white/5 backdrop-blur border-cyan-500 text-cyan-100' : 'border-transparent bg-cyan-700/40 text-white'}`}
+                  className={`px-3 py-2 rounded-lg border text-sm transition-colors duration-200 ${period === 'custom' ? 'bg-white/5 border-cyan-500 text-cyan-100' : 'border-transparent bg-cyan-700/40 text-white'}`}
                   onClick={() => {
                     updateCalendarPosition();
                     setIsCalendarOpen(true);
@@ -792,7 +792,7 @@ export default function Dashboard() {
                 <div className="flex items-center flex-1">
                   <button
                     type="button"
-                    className={`px-3 py-2 rounded-lg border text-sm transition-colors duration-200 ${period === 'custom' ? 'bg-white/5 backdrop-blur border-cyan-500 text-cyan-100' : 'border-transparent bg-cyan-700/40 text-white'} flex-1`}
+                    className={`px-3 py-2 rounded-lg border text-sm transition-colors duration-200 ${period === 'custom' ? 'bg-white/5 border-cyan-500 text-cyan-100' : 'border-transparent bg-cyan-700/40 text-white'} flex-1`}
                     onClick={() => {
                       updateCalendarPosition();
                       setIsCalendarOpen(true);
@@ -984,7 +984,7 @@ export default function Dashboard() {
 
         {/* Gráficos */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg p-4">
+          <div className="bg-white/10 rounded-lg shadow-lg p-4">
             <h2 className="text-lg font-semibold mb-4 text-white">{period === 'daily' ? 'Propostas por Hora' : period === 'weekly' ? 'Propostas por Dia' : 'Propostas'}</h2>
             <div className="h-64 w-full">
               <Line
@@ -1010,7 +1010,7 @@ export default function Dashboard() {
               />
             </div>
           </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg p-4">
+          <div className="bg-white/10 rounded-lg shadow-lg p-4">
             <h2 className="text-lg font-semibold mb-4 text-white">{period === 'daily' ? 'Valor das Propostas por Hora' : period === 'weekly' ? 'Valor das Propostas por Dia' : 'Valor das Propostas'}</h2>
             <div className="h-64 w-full">
               <Line
@@ -1059,7 +1059,7 @@ export default function Dashboard() {
         </div>
 
         {/* Propostas Recentes */}
-        <div className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg p-4 mb-8">
+        <div className="bg-white/10 rounded-lg shadow-lg p-4 mb-8">
           <div className="flex flex-col md:flex-row md:items-start md:justify-between mb-2 gap-2">
             <h2 className="text-xl font-semibold text-white mb-2 md:mb-0">Propostas Recentes</h2>
             <Listbox value={statusFilter} onChange={setStatusFilter}>
@@ -1080,13 +1080,13 @@ export default function Dashboard() {
                 }, [open])
                 return (
                   <div className="relative w-48">
-                    <Listbox.Button ref={buttonRef} className="w-full px-3 py-2 rounded-lg bg-white/5 backdrop-blur border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner flex items-center justify-between">
+                    <Listbox.Button ref={buttonRef} className="w-full px-3 py-2 rounded-lg bg-transparent border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner flex items-center justify-between">
                       {statusOptions.find(opt => opt.value === statusFilter)?.label}
                       <ChevronUpDownIcon className="w-5 h-5 text-cyan-300 ml-2" />
                     </Listbox.Button>
                     {open && (
                       <Portal>
-                        <Listbox.Options style={dropdownStyle} className="rounded-lg bg-cyan-950/95 border border-cyan-700 shadow-lg ring-1 ring-cyan-800/30 focus:outline-none">
+                        <Listbox.Options style={dropdownStyle} className="rounded-lg bg-cyan-950 border border-cyan-700 shadow-xl focus:outline-none">
                           {statusOptions.map(option => (
                             <Listbox.Option
                               key={option.value}
@@ -1158,7 +1158,7 @@ export default function Dashboard() {
 
         {/* Leads: Consultas e Simulações */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg p-4">
+          <div className="bg-white/10 rounded-lg shadow-lg p-4">
             <h2 className="text-lg font-semibold mb-4 text-white">Consultas de Saldo</h2>
             <div className="h-64 w-full">
               <Line
@@ -1182,7 +1182,7 @@ export default function Dashboard() {
               />
             </div>
           </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg p-4">
+          <div className="bg-white/10 rounded-lg shadow-lg p-4">
             <h2 className="text-lg font-semibold mb-4 text-white">Simulações de Saque</h2>
             <div className="h-64 w-full">
               <Line
@@ -1209,7 +1209,7 @@ export default function Dashboard() {
         </div>
 
         {/* Lista de Leads */}
-        <div className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg p-4">
+        <div className="bg-white/10 rounded-lg shadow-lg p-4">
           <h2 className="text-xl font-semibold mb-4 text-white">Leads que tentaram consultar/simular</h2>
           <div className="overflow-x-auto">
             <table className="min-w-full text-left text-white">

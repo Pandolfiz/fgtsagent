@@ -395,7 +395,7 @@ export default function Leads() {
   return (
     <>
       <Navbar />
-      <div className="p-6 bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 min-h-screen">
+      <div className="p-6 bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 min-h-screen leads-page">
         <div className="w-full">
         {/* Cabeçalho */}
         <div className="mb-8">
@@ -457,14 +457,14 @@ export default function Leads() {
                 placeholder="Buscar por nome, CPF ou telefone..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 bg-white/5 backdrop-blur border border-cyan-500 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200"
+                className="w-full pl-10 pr-4 py-2 bg-transparent backdrop-blur border border-cyan-500 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200"
               />
             </div>
 
             {/* Filtro de Status */}
             <Listbox value={statusFilter} onChange={setStatusFilter}>
               <div className="relative">
-                <Listbox.Button className="w-full px-3 py-2 rounded-lg bg-white/5 backdrop-blur border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner flex items-center justify-between">
+                <Listbox.Button className="w-full px-3 py-2 rounded-lg bg-transparent backdrop-blur border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner flex items-center justify-between">
                   {statusOptions.find(opt => opt.value === statusFilter)?.label || 'Todos os Status'}
                   <ChevronUpDownIcon className="w-5 h-5 text-cyan-300 ml-2" />
                 </Listbox.Button>
@@ -489,7 +489,7 @@ export default function Leads() {
             {/* Ordenação */}
             <Listbox value={sortField} onChange={setSortField}>
               <div className="relative">
-                <Listbox.Button className="w-full px-3 py-2 rounded-lg bg-white/5 backdrop-blur border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner flex items-center justify-between">
+                <Listbox.Button className="w-full px-3 py-2 rounded-lg bg-transparent backdrop-blur border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner flex items-center justify-between">
                   <span>Ordenar por: {sortOptions.find(opt => opt.value === sortField)?.label}</span>
                   <FaSort className="w-4 h-4 text-cyan-300 ml-2" />
                 </Listbox.Button>

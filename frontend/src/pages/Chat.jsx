@@ -4,6 +4,7 @@ import { FaSearch, FaEllipsisV, FaPaperclip, FaMicrophone, FaSmile, FaPhone, FaV
 import { IoSend } from 'react-icons/io5'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../utilities/apiFetch';
+import { cachedFetch } from '../utils/authCache'
 
 // Função auxiliar para gerar IDs de mensagem únicos
 function generateMessageId() {
@@ -361,23 +362,20 @@ export default function Chat() {
   const fetchUserFromApi = async () => {
     try {
       console.log("Iniciando fetchUserFromApi...");
-      const response = await fetch('/api/auth/me', {
+      const data = await cachedFetch('/api/auth/me', {
         credentials: 'include'
       });
       
-      if (!response.ok) {
-        if (response.status === 401) {
+      if (!data || !data.success) {
+        if (data && data.status === 401) {
           // Redirecionar para a página de login se não estiver autenticado
           navigate('/login?error=auth_required&message=Você precisa estar autenticado para acessar o chat.');
           return null;
         }
         
-        const errorText = await response.text();
-        console.error(`Erro HTTP ${response.status} ao buscar usuário:`, errorText);
-        throw new Error(`Erro ao buscar usuário: ${response.status} - ${errorText}`);
+        console.error(`Erro ao buscar usuário:`, data);
+        throw new Error(`Erro ao buscar usuário: ${data?.message || 'Erro desconhecido'}`);
       }
-      
-      const data = await response.json();
       console.log('Resposta completa da API /api/auth/me:', data);
       
       // Verificar e extrair o objeto user da resposta
