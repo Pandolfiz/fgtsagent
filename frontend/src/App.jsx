@@ -8,6 +8,7 @@ import SignupSuccess from './pages/SignupSuccess.jsx';
 import Profile from './pages/Profile.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Chat from './pages/Chat.jsx';
+import Leads from './pages/Leads.jsx';
 import EvolutionCredentialsRoute from './pages/whatsapp-credentials';
 import PartnerCredentialsRoute from './pages/partner-credentials';
 import AuthCallback from './pages/AuthCallback.jsx';
@@ -30,6 +31,7 @@ export default function App() {
       <Route path="/signup-success" element={<SignupSuccess />} />
       <Route path="/dashboard" element={<Dashboard />} />
       <Route path="/chat" element={<Chat />} />
+      <Route path="/leads" element={<Leads />} />
       <Route path="/whatsapp-credentials" element={<EvolutionCredentialsRoute />} />
       <Route path="/partner-credentials" element={<PartnerCredentialsRoute />} />
       <Route path="/agents" element={<AgentsConfigPage />} />

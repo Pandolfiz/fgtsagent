@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react'
-import { FaGlobe, FaRobot, FaComments, FaWhatsapp, FaKey, FaUser, FaCog, FaSignOutAlt, FaBars, FaTimes } from 'react-icons/fa'
+import { FaGlobe, FaRobot, FaComments, FaWhatsapp, FaKey, FaUser, FaCog, FaSignOutAlt, FaBars, FaTimes, FaUsers } from 'react-icons/fa'
 import { Menu } from '@headlessui/react'
 import { ChevronUpDownIcon } from '@heroicons/react/24/solid'
 import supabase from '../lib/supabaseClient'
@@ -11,6 +11,7 @@ export default function Navbar({ fullWidth }) {
   const brand = { label: 'FgtsAgent', icon: <FaRobot /> }
   const links = [
     { label: 'Dashboard', icon: <FaGlobe />, href: '/dashboard' },
+    { label: 'Leads', icon: <FaUsers />, href: '/leads' },
     { label: 'Agente', icon: <FaRobot />, href: '/agents' },
     { label: 'Chat', icon: <FaComments />, href: '/chat' },
     { label: 'WhatsApp', icon: <FaWhatsapp />, href: '/whatsapp-credentials' },
