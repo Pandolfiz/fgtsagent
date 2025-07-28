@@ -340,6 +340,9 @@ app.use('/api', credentialsRoutes);
 app.use('/api/chat', requireAuth, chatRoutes);
 app.use('/api/admin', adminRoutes);
 
+// Rotas de leads
+app.use('/api/leads', require('./routes/leadRoutes'));
+
 // Novas rotas para gerenciamento de contatos e mensagens
 // app.use('/api/contacts', requireAuth, contactsRoutes); // Moved up
 // app.use('/api/messages', requireAuth, messagesRoutes); // Moved up
