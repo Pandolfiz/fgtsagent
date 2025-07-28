@@ -572,39 +572,13 @@ class AuthService {
         logger.warn(`Exceção ao atualizar perfil do usuário ${userId}: ${profileError.message}`);
       }
 
-      // Tente criar uma sessão usando a API Admin mais recente do Supabase
-      try {
-        // logger.info(`Tentando criar sessão para o usuário ${userId} via API Admin`);
-        
-        // Na versão 2.49.4 do Supabase, o método correto é createSession
-        const { data, error } = await supabaseAdmin.auth.admin.createSession({
-          userId: userId,
-          expiresIn: expiresIn
-        });
-        
-        if (error) {
-          throw new Error(`Erro ao criar sessão via API Admin: ${error.message}`);
-        }
-        
-        return {
-          access_token: data.session.access_token,
-          refresh_token: data.session.refresh_token,
-          expires_in: expiresIn,
-          expires_at: Math.floor(Date.now() / 1000) + expiresIn,
-          user: {
-            id: authUser.user.id,
-            email: authUser.user.email,
-            app_metadata: authUser.user.app_metadata,
-            user_metadata: authUser.user.user_metadata
-          }
-        };
-      } catch (adminApiError) {
-        logger.warn(`Não foi possível criar sessão via API Admin: ${adminApiError.message}`);
-        logger.info('Usando método alternativo para criar sessão JWT...');
-        
-        // Se falhar, use o método personalizado que gera um JWT válido
-        return await this.createAdminSession(userId, expiresIn);
-      }
+      // Para usuários finais, não devemos criar sessões administrativas
+      // Este método deve ser usado apenas para automações/admin
+      logger.info('Usando método customizado para criar sessão JWT (apenas para admin/automação)...');
+      
+      // Usar o método personalizado que gera um JWT válido
+      return await this.createAdminSession(userId, expiresIn);
+      
     } catch (error) {
       logger.error('Erro no createAdminSessionViaApi:', error);
       throw error;
