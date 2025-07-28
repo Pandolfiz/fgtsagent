@@ -22,7 +22,12 @@ export interface EvolutionCredential {
   updated_at: string;
   agent_name?: string;
   status?: string;
+  status_description?: string;
   connection_type?: 'whatsapp_business' | 'ads';
+  // Campos específicos para Meta API (ads)
+  wpp_access_token?: string;
+  wpp_number_id?: string;
+  wpp_business_account_id?: string;
 }
 
 // Tipos para credenciais de parceiros
@@ -177,7 +182,141 @@ export const evolutionCredentialsApi = {
       method: 'GET'
     });
     return response.json();
-  }
+  },
+
+  // Verificar status de um número
+  checkStatus: async (id: string): Promise<ApiResponse<{ credential_id: string; phone: string; wpp_number_id: string; status: string; meta_data: any }>> => {
+    const response = await apiFetch(`${API_URL}/whatsapp-credentials/${id}/check-status`);
+    return response.json();
+  },
+
+  // Verificar status de todos os números
+  checkAllStatus: async (): Promise<ApiResponse<Array<{ credential_id: string; phone: string; wpp_number_id: string; status: string; success: boolean; error?: string }>>> => {
+    const response = await apiFetch(`${API_URL}/whatsapp-credentials/check-all-status`);
+    return response.json();
+  },
+
+    // Gerenciamento de números na API oficial da Meta
+    addPhoneNumber: async (data: {
+      phoneNumber: string;
+      businessAccountId: string;
+      accessToken: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/add-phone-number', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+
+    checkPhoneAvailability: async (data: {
+      phoneNumber: string;
+      accessToken: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/check-phone-availability', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+
+    listPhoneNumbers: async (data: {
+      businessAccountId: string;
+      accessToken: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/list-phone-numbers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+
+    removePhoneNumber: async (data: {
+      phoneNumberId: string;
+      accessToken: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/remove-phone-number', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+
+    createWhatsAppAccount: async (data: {
+      phoneNumber: string;
+      businessAccountId: string;
+      accessToken: string;
+      displayName: string;
+      timezone?: string;
+      category?: string;
+      businessDescription?: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/create-whatsapp-account', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+
+    verifyWhatsAppCode: async (data: {
+      phoneNumberId: string;
+      verificationCode: string;
+      accessToken: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/verify-whatsapp-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+
+    checkVerificationStatus: async (data: {
+      phoneNumberId: string;
+      accessToken: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/check-verification-status', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      return response;
+    },
+
+    requestVerificationCode: async (data: {
+      phoneNumberId: string;
+      accessToken: string;
+      codeMethod?: 'SMS' | 'VOICE';
+      language?: string;
+    }) => {
+      const response = await apiFetch('/api/whatsapp-credentials/request-verification-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(data)
+      });
+      return response;
+    }
 };
 
 // API para usuários
@@ -185,7 +324,17 @@ export const userApi = {
   // Obter usuário atual
   getCurrentUser: async (): Promise<ApiResponse<{ id: string; full_name?: string; email: string; [key: string]: any }>> => {
     const response = await apiFetch(`${API_URL}/auth/me`);
-    return response.json();
+    const data = await response.json();
+    // O backend retorna { success: true, user: {...} } mas a interface espera { success: true, data: {...} }
+    // Vamos ajustar a estrutura para manter compatibilidade
+    if (data.success && data.user) {
+      return {
+        success: true,
+        data: data.user,
+        message: data.message
+      };
+    }
+    return data;
   }
 };
 

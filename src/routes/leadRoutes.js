@@ -11,6 +11,12 @@ router.use(clientContext);
 // Listar leads do cliente
 router.get('/', leadController.list);
 
+// Listar leads completos com dados de balance e proposals
+router.get('/complete', leadController.listComplete);
+
+// Repetir consulta para um lead
+router.post('/:id/repeat-query', leadController.repeatQuery);
+
 // Obter lead por ID
 router.get('/:id', leadController.getById);
 

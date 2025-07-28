@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react'
-import { FaGlobe, FaRobot, FaComments, FaWhatsapp, FaKey, FaUser, FaCog, FaSignOutAlt, FaBars, FaTimes } from 'react-icons/fa'
+import { FaGlobe, FaRobot, FaComments, FaWhatsapp, FaKey, FaUser, FaCog, FaSignOutAlt, FaBars, FaTimes, FaUsers } from 'react-icons/fa'
 import { Menu } from '@headlessui/react'
 import { ChevronUpDownIcon } from '@heroicons/react/24/solid'
+import { cachedFetch } from '../utils/authCache'
 import supabase from '../lib/supabaseClient'
 import { useNavigate } from 'react-router-dom'
 
@@ -11,6 +12,7 @@ export default function Navbar({ fullWidth }) {
   const brand = { label: 'FgtsAgent', icon: <FaRobot /> }
   const links = [
     { label: 'Dashboard', icon: <FaGlobe />, href: '/dashboard' },
+    { label: 'Leads', icon: <FaUsers />, href: '/leads' },
     { label: 'Agente', icon: <FaRobot />, href: '/agents' },
     { label: 'Chat', icon: <FaComments />, href: '/chat' },
     { label: 'WhatsApp', icon: <FaWhatsapp />, href: '/whatsapp-credentials' },
@@ -22,8 +24,51 @@ export default function Navbar({ fullWidth }) {
   const [displayName, setDisplayName] = useState('Usuário')
   const [isLoading, setIsLoading] = useState(true)
   const [auth, setAuth] = useState(false)
+  const [responsiveName, setResponsiveName] = useState('Usuário')
+
+  // Hook para detectar o tamanho da tela
+  const [screenSize, setScreenSize] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth;
+    }
+    return 1024; // Default para desktop
+  });
+
+  // Função para truncar o nome responsivamente
+  const getResponsiveName = (fullName) => {
+    if (!fullName) return 'Usuário';
+    
+    const words = fullName.trim().split(' ');
+    if (words.length <= 1) return fullName;
+    
+    // Em telas pequenas, mostrar apenas a primeira palavra
+    if (screenSize < 768) {
+      return words[0];
+    }
+    
+    // Em telas médias, mostrar até 2 palavras
+    if (screenSize < 1024) {
+      return words.slice(0, 2).join(' ');
+    }
+    
+    // Em telas grandes, mostrar o nome completo
+    return fullName;
+  };
 
   useEffect(() => {
+    let isMounted = true;
+    
+    // Listener para redimensionamento da janela com debounce
+    let resizeTimeout;
+    const handleResize = () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(() => {
+        setScreenSize(window.innerWidth);
+      }, 100);
+    };
+    
+    window.addEventListener('resize', handleResize);
+    
     async function fetchUserProfile() {
       try {
         setIsLoading(true);
@@ -71,8 +116,8 @@ export default function Navbar({ fullWidth }) {
           console.log('Token encontrado no cookie authToken');
         }
         
-        // Tentar fazer a requisição para obter o perfil
-        const response = await fetch('/api/auth/me', {
+        // Tentar fazer a requisição para obter o perfil usando cache
+        const data = await cachedFetch('/api/auth/me', {
           method: 'GET',
           headers: {
             'Content-Type': 'application/json',
@@ -82,11 +127,10 @@ export default function Navbar({ fullWidth }) {
           credentials: 'include' // Incluir cookies na requisição
         });
         
-        console.log('Resposta da API /api/auth/me:', response.status);
+        console.log('Dados recebidos da API /api/auth/me (com cache):', data);
         
         // Se a resposta for bem-sucedida, processar os dados do usuário
-        if (response.ok) {
-          const data = await response.json();
+        if (data && data.success) {
           console.log('Dados recebidos da API /api/auth/me:', data);
           
           // Log detalhado para depuração - Mostrar todos os campos disponíveis
@@ -113,26 +157,41 @@ export default function Navbar({ fullWidth }) {
                             'Usuário';
             
             console.log('Nome extraído:', userName);
-            setDisplayName(userName);
-            setAuth(true);
+            if (isMounted) {
+              setDisplayName(userName);
+              setAuth(true);
+            }
           } else {
             console.log('Resposta da API não contém dados de usuário válidos');
             setAuth(false);
           }
         } else {
-          console.log('Falha ao obter perfil do usuário. Status:', response.status);
-          setAuth(false);
+          console.log('Falha ao obter perfil do usuário');
+          if (isMounted) setAuth(false);
         }
       } catch (error) {
         console.error('Erro ao buscar perfil do usuário:', error);
-        setAuth(false);
+        if (isMounted) setAuth(false);
       } finally {
-        setIsLoading(false);
+        if (isMounted) setIsLoading(false);
       }
     }
 
     fetchUserProfile();
+    
+    return () => {
+      isMounted = false;
+      window.removeEventListener('resize', handleResize);
+      if (resizeTimeout) {
+        clearTimeout(resizeTimeout);
+      }
+    };
   }, []);
+
+  // useEffect para atualizar o nome responsivo quando screenSize ou displayName mudarem
+  useEffect(() => {
+    setResponsiveName(getResponsiveName(displayName));
+  }, [screenSize, displayName]);
 
   // Função para fazer logout
   const handleLogout = async () => {
@@ -196,7 +255,7 @@ export default function Navbar({ fullWidth }) {
               <a
                 href={link.href}
                 className={
-                  `flex items-center justify-between space-x-2 px-3 py-2 rounded-lg bg-white/5 backdrop-blur border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner ` +
+                  `flex items-center justify-between space-x-2 px-3 py-2 rounded-lg bg-white/5 border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner ` +
                   (isActive
                     ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-white border-transparent'
                     : 'hover:bg-white/10 hover:border-cyan-400')
@@ -214,7 +273,7 @@ export default function Navbar({ fullWidth }) {
         {/* Mobile Hamburger */}
         <button
           onClick={() => setMobileMenuOpen(open => !open)}
-          className="md:hidden flex items-center justify-center px-3 py-2 rounded-lg bg-white/5 backdrop-blur border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner"
+          className="md:hidden flex items-center justify-center px-3 py-2 rounded-lg bg-white/5 border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner"
         >
           {mobileMenuOpen ? <FaTimes className="w-5 h-5" /> : <FaBars className="w-5 h-5" />}
         </button>
@@ -222,18 +281,18 @@ export default function Navbar({ fullWidth }) {
         <div className="relative">
           <Menu>
             <div>
-              <Menu.Button className="inline-flex items-center justify-between space-x-2 px-3 py-2 rounded-lg bg-white/5 backdrop-blur border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner hover:bg-white/10 hover:border-cyan-400">
+              <Menu.Button className="inline-flex items-center justify-between space-x-2 px-3 py-2 rounded-lg bg-white/5 border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner hover:bg-white/10 hover:border-cyan-400">
                 <span className="mr-2">
                   {isLoading ? (
                     <span className="animate-pulse">Carregando...</span>
                   ) : (
-                    <span className="font-medium">{displayName}</span>
+                    <span className="font-medium">{responsiveName || displayName || 'Usuário'}</span>
                   )}
                 </span>
                 <ChevronUpDownIcon className="h-5 w-5" />
               </Menu.Button>
             </div>
-            <Menu.Items className="absolute right-0 z-50 mt-1 w-56 rounded-lg bg-white/5 backdrop-blur border border-cyan-500 shadow-lg ring-1 ring-cyan-800/30 focus:outline-none">
+            <Menu.Items className="absolute right-0 z-50 mt-1 w-56 rounded-lg bg-gradient-to-br from-emerald-950/95 via-cyan-950/95 to-blue-950/95 backdrop-blur-sm border border-cyan-500 shadow-lg focus:outline-none">
               {[
                 { icon: <FaUser className="mr-2 h-5 w-5" />, label: 'Perfil', onClick: () => navigate('/profile') },
                 { icon: <FaCog className="mr-2 h-5 w-5" />, label: 'Configurações', onClick: () => navigate('/settings') },
@@ -259,7 +318,7 @@ export default function Navbar({ fullWidth }) {
       </div>
       {/* Mobile menu */}
       {mobileMenuOpen && (
-        <div className="md:hidden absolute top-full left-0 right-0 bg-gradient-to-br from-emerald-950/95 via-cyan-950/95 to-blue-950/95 backdrop-blur-sm border-t border-cyan-900/50 z-50">
+        <div className="md:hidden absolute top-full left-0 right-0 bg-gradient-to-br from-emerald-950/95 via-cyan-950/95 to-blue-950/95 border-t border-cyan-900/50 z-50">
           <ul className="p-2 space-y-2">
             {links.map((link) => {
               const isActive = currentPath === link.href;

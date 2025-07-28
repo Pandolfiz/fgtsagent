@@ -58,16 +58,45 @@ button:focus-visible {
   outline: 4px auto -webkit-focus-ring-color;
 }
 
-@media (prefers-color-scheme: light) {
-  :root {
-    color: #213547;
-    background-color: #ffffff;
+/* Removida media query prefers-color-scheme para manter consistência de cores */
+
+/* Garantir transparência consistente apenas para campos específicos da página de Leads */
+.leads-page input[type="text"], 
+.leads-page input[type="search"],
+.leads-page .bg-transparent {
+  background-color: transparent !important;
+}
+
+/* Reduzir intensidade do backdrop-blur no mobile para melhor performance e aparência */
+@media (max-width: 768px) {
+  .backdrop-blur,
+  .backdrop-blur-sm,
+  .backdrop-blur-md,
+  .backdrop-blur-lg {
+    backdrop-filter: blur(2px) !important;
+    -webkit-backdrop-filter: blur(2px) !important;
   }
-  a:hover {
-    color: #747bff;
+  
+  /* Reduzir ainda mais para elementos específicos */
+  input,
+  button,
+  .bg-transparent {
+    backdrop-filter: blur(1px) !important;
+    -webkit-backdrop-filter: blur(1px) !important;
   }
-  button {
-    background-color: #f9f9f9;
+  
+  /* Reduzir grayscale e outros filtros problemáticos no mobile */
+  .backdrop-grayscale,
+  .backdrop-grayscale-0,
+  .backdrop-grayscale-50,
+  .backdrop-grayscale-75,
+  .backdrop-grayscale-90,
+  .backdrop-grayscale-95,
+  .backdrop-grayscale-100 {
+    backdrop-filter: blur(1px) !important;
+    -webkit-backdrop-filter: blur(1px) !important;
+    filter: grayscale(0) !important;
+    -webkit-filter: grayscale(0) !important;
   }
 }
 
