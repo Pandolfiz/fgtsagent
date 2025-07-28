@@ -298,63 +298,12 @@ const requireAuth = async (req, res, next) => {
                 const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
                 
                 if (!userError && userData && userData.user) {
-                  // Gerar token JWT manualmente
-                  const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.admin.createSession({
-                    user_id: userId
-                  });
-                  
-                  // Corrigir a API para usar a versão correta do Supabase
-                  try {
-                    // Verificar qual API está disponível e usar a correta
-                    let newSession = null;
-                    let newSessionError = null;
-                    
-                    // Tentativa 1: Nova API (v2.x)
-                    if (typeof supabaseAdmin.auth.admin.createSession === 'function') {
-                      const result = await supabaseAdmin.auth.admin.createSession({
-                        user_id: userId
-                      });
-                      newSession = result.data;
-                      newSessionError = result.error;
-                    } 
-                    // Tentativa 2: Método alternativo - criar um JWT manualmente
-                    else if (typeof supabaseAdmin.auth.createSession === 'function') {
-                      const result = await supabaseAdmin.auth.createSession({
-                        userId: userId,
-                        expiresIn: 3600 // 1 hora
-                      });
-                      newSession = result.data;
-                      newSessionError = result.error;
-                    }
-                    // Tentativa 3: Método alternativo - signInById
-                    else if (typeof supabaseAdmin.auth.signInWithId === 'function') {
-                      const result = await supabaseAdmin.auth.signInWithId(userId);
-                      newSession = result.data;
-                      newSessionError = result.error;
-                    }
-                    
-                    if (newSessionError) {
-                      logger.error(`Erro ao gerar novo token: ${newSessionError.message}`);
-                      throw new Error('Não foi possível renovar o token');
-                    } else if (newSession && newSession.access_token) {
-                      // logger.info(`Novo token gerado com sucesso para usuário ${userId}`);
-                      // Definir novo token e continuar
-                      token = newSession.access_token;
-                      res.cookie('authToken', token, {
-                        httpOnly: true,
-                        secure: process.env.NODE_ENV === 'production',
-                        maxAge: 24 * 60 * 60 * 1000 // 1 dia
-                      });
-                      // Continuar com o token renovado
-                    } else {
-                      throw new Error('Falha ao gerar novo token');
-                    }
-                  } catch (retryError) {
-                    logger.error(`Erro nas tentativas adicionais: ${retryError.message}`);
-                    throw new Error('Não foi possível renovar o token');
-                  }
+                  // Seguindo a melhor prática: não tentar criar sessão administrativa
+                  // Se o token expirou, o usuário deve fazer login novamente
+                  logger.warn(`Token expirado para usuário ${userId}. Usuário deve fazer login novamente.`);
+                  throw new Error('Token expirado. Faça login novamente.');
                 } else {
-                  logger.error(`Usuário não encontrado: ${userError?.message || 'ID inválido'}`);
+                  logger.error(`Erro ao recuperar usuário por ID: ${userError?.message || 'Usuário não encontrado'}`);
                   throw new Error('Usuário não encontrado');
                 }
               } else {
@@ -425,24 +374,10 @@ const requireAuth = async (req, res, next) => {
               // logger.info(`Usuário recuperado com sucesso: ${userData.user.email}`);
               user = userData.user;
               
-              // Gerar novo token
-              const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.admin.createSession({
-                user_id: userId
-              });
-              
-              if (!sessionError && sessionData) {
-                token = sessionData.access_token;
-                // logger.info(`Novo token gerado com sucesso para usuário ${userId}`);
-                
-                // Definir cookie com o novo token
-                res.cookie('authToken', token, {
-                  httpOnly: true,
-                  secure: process.env.NODE_ENV === 'production',
-                  maxAge: 24 * 60 * 60 * 1000 // 1 dia
-                });
-              } else {
-                logger.error(`Erro ao gerar novo token: ${sessionError?.message || 'Erro desconhecido'}`);
-              }
+              // Seguindo a melhor prática: não tentar criar sessão administrativa
+              // Se o token expirou, o usuário deve fazer login novamente
+              logger.warn(`Token expirado para usuário ${userId}. Usuário deve fazer login novamente.`);
+              throw new Error('Token expirado. Faça login novamente.');
             } else {
               logger.error(`Erro ao recuperar usuário por ID: ${userError?.message || 'Usuário não encontrado'}`);
               throw new Error('Usuário não encontrado');
