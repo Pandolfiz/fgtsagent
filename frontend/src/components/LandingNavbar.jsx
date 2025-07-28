@@ -39,7 +39,7 @@ export default function LandingNavbar({ isLoggedIn = false }) {
         </div>
         {/* Menu mobile */}
         <div className="md:hidden flex items-center">
-          <button id="menu-btn" onClick={() => setMenuOpen(!menuOpen)} className="text-cyan-200 focus:outline-none">
+          <button id="menu-btn" onClick={() => setMenuOpen(!menuOpen)} className="text-cyan-100 focus:outline-none">
             <motion.svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"
               animate={{ rotate: menuOpen ? 90 : 0 }} transition={{ type: 'spring', stiffness: 300, damping: 20 }}>
               <motion.path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
