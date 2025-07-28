@@ -645,31 +645,7 @@ export default function Leads() {
           </div>
         </div>
 
-        {/* Estatísticas */}
-        <div className="mt-6 grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-white">{filteredLeads.length}</div>
-            <div className="text-cyan-200 text-sm">Total de Leads</div>
-          </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-white">
-              {filteredLeads.filter(lead => getLeadStatus(lead) === 'proposta_paga').length}
-            </div>
-            <div className="text-emerald-200 text-sm">Propostas Pagas</div>
-          </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-white">
-              {filteredLeads.filter(lead => getLeadStatus(lead) === 'proposta_pendente').length}
-            </div>
-            <div className="text-yellow-200 text-sm">Propostas Pendentes</div>
-          </div>
-          <div className="bg-white/10 backdrop-blur-sm rounded-lg p-4 text-center">
-            <div className="text-2xl font-bold text-white">
-              {filteredLeads.filter(lead => lead.error_reason).length}
-            </div>
-            <div className="text-red-200 text-sm">Com Erros</div>
-          </div>
-        </div>
+
         </div> {/* fecha max-w-7xl mx-auto */}
       </div>   {/* fecha p-6 bg-gradient-to-br ... */}
       {/* Toast de erro para repetir consulta */}
