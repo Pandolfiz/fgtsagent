@@ -8,13 +8,15 @@ module.exports = (req, res, next) => {
     // req.user deve ter sido definido pelo requireAuth
     const appMeta = req.user?.app_metadata;
     const clientId = appMeta?.client_id || req.user?.id;
+    
     if (!clientId) {
-      logger.warn('clientContext: client_id ausente e fallback falhou');
+      logger.warn('[clientContext] client_id ausente e fallback falhou');
     }
+    
     req.clientId = clientId;
     next();
   } catch (err) {
-    logger.error('Erro em clientContext:', err.message || err);
+    logger.error('[clientContext] Erro:', err.message || err);
     return res.status(500).json({ success: false, message: 'Erro ao extrair client_id' });
   }
 }; 

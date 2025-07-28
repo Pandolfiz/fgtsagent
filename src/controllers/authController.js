@@ -474,59 +474,26 @@ const logout = async (req, res) => {
 /**
  * Obter informações do usuário atual (versão direta)
  */
-const getMe = async (req, res) => {
-  try {
-    // Verificar se temos um usuário autenticado do middleware
+    const getMe = async (req, res) => {
+      try {
+        logger.info(`[getMe] Buscando dados do usuário: ${req.user?.id}`);
+    
+    // Verificar se o usuário está autenticado
     if (!req.user) {
-      // Se não temos, tentar obter token diretamente do request
-      let token = null;
-      
-      // 1. Verificar nos headers de autorização
-      if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-        token = req.headers.authorization.substring(7);
-        logger.info('Token encontrado no header Authorization');
-      } 
-      // 2. Verificar nos cookies
-      else if (req.cookies && (req.cookies.authToken || req.cookies['supabase-auth-token'] || req.cookies['js-auth-token'])) {
-        token = req.cookies.authToken || req.cookies['supabase-auth-token'] || req.cookies['js-auth-token'];
-        logger.info('Token encontrado nos cookies');
-      }
-      
-      if (token) {
-        // Tentar obter o usuário com o token encontrado
-        try {
-          const { data: userResponse, error: userError } = await supabase.auth.getUser(token);
-          
-          if (userError) {
-            logger.error(`Erro ao obter usuário a partir do token: ${userError.message}`);
-            return res.status(401).json({
-              success: false,
-              message: 'Não autenticado - Token inválido'
-            });
-          }
-          
-          if (userResponse && userResponse.user) {
-            // Usar o usuário obtido
-            req.user = userResponse.user;
-            logger.info(`Usuário autenticado manualmente: ${req.user.id}`);
-          }
-        } catch (tokenError) {
-          logger.error(`Erro ao processar token manual: ${tokenError.message}`);
-          return res.status(401).json({
-            success: false,
-            message: 'Não autenticado - Erro ao processar token'
-          });
-        }
-      }
-      
-      // Se ainda não temos usuário, retornar erro de autenticação
-      if (!req.user) {
-        logger.warn('Acesso não autorizado - Usuário não encontrado');
-        return res.status(401).json({
-          success: false,
-          message: 'Não autenticado'
-        });
-      }
+      logger.warn('[getMe] Usuário não autenticado');
+      return res.status(401).json({
+        success: false,
+        message: 'Não autenticado'
+      });
+    }
+    
+    // Se ainda não temos usuário, retornar erro de autenticação
+    if (!req.user) {
+      logger.warn('Acesso não autorizado - Usuário não encontrado');
+      return res.status(401).json({
+        success: false,
+        message: 'Não autenticado'
+      });
     }
     
     try {
@@ -536,6 +503,12 @@ const getMe = async (req, res) => {
         .select('*')
         .eq('id', req.user.id)
         .order('updated_at', { ascending: false });
+        
+      logger.info(`[getMe] Resultado da busca de perfil:`, {
+        hasError: !!error,
+        errorMessage: error?.message,
+        profilesCount: profilesData?.length || 0
+      });
         
       if (error) {
         logger.error(`Erro ao buscar perfil do usuário: ${error.message}`);
@@ -567,6 +540,14 @@ const getMe = async (req, res) => {
       
       // Usar o primeiro registro (mais recente) ou um objeto vazio se não houver registros
       const profile = (profilesData && profilesData.length > 0) ? profilesData[0] : {};
+      
+      logger.info(`[getMe] Perfil encontrado:`, {
+        hasProfile: !!profile,
+        profileFields: profile ? Object.keys(profile) : [],
+        full_name: profile?.full_name,
+        first_name: profile?.first_name,
+        last_name: profile?.last_name
+      });
       
       // Se houver múltiplos perfis, registrar para análise posterior
       if (profilesData && profilesData.length > 1) {
@@ -622,6 +603,14 @@ const getMe = async (req, res) => {
           role: req.user.app_metadata?.role || 'user'
         }
       };
+      
+      logger.info(`[getMe] Resposta final:`, {
+        success: response.success,
+        userId: response.user.id,
+        full_name: response.user.full_name,
+        displayName: response.user.displayName,
+        name: response.user.name
+      });
       
       logger.info(`Tamanho da resposta: ${JSON.stringify(response).length} bytes`);
       

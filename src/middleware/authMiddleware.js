@@ -46,7 +46,7 @@ async function ensureUserProfile(user) {
   const releaseLock = await acquireUserProfileLock(user.id);
 
   try {
-    // logger.info(`Verificando perfil de usuário para ${user.id}`);
+    logger.info(`[ensureUserProfile] Verificando perfil de usuário para ${user.id}`);
     
     // Verificar se o perfil já existe (usando transação para consistência)
     const { data: existingProfile, error: profileError } = await supabaseAdmin
@@ -74,6 +74,8 @@ async function ensureUserProfile(user) {
     const needsProfile = !existingProfile;
     const needsClient = !existingClient;
     
+
+    
     if (needsProfile || needsClient) {
       // logger.info(`Usuário ${user.id} precisa: ${needsProfile ? 'perfil' : ''} ${needsProfile && needsClient ? 'e' : ''} ${needsClient ? 'cliente' : ''}`);
       
@@ -82,6 +84,8 @@ async function ensureUserProfile(user) {
       const fullName = userMetadata.full_name || 
                       userMetadata.name || 
                       `${userMetadata.first_name || userMetadata.given_name || ''} ${userMetadata.last_name || userMetadata.family_name || ''}`.trim();
+      
+
       
       // Preparar dados
       const profileData = needsProfile ? {
@@ -103,6 +107,14 @@ async function ensureUserProfile(user) {
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       } : null;
+      
+      if (needsProfile) {
+        logger.info(`[ensureUserProfile] Criando perfil com dados:`, profileData);
+      }
+      
+      if (needsClient) {
+        logger.info(`[ensureUserProfile] Criando cliente com dados:`, clientData);
+      }
       
       // Executar operações em paralelo (agora que temos lock)
       const operations = [];
@@ -138,17 +150,28 @@ async function ensureUserProfile(user) {
           logger.error(`Erro ao criar ${value.type}: ${value.result.error.message}`);
           hasErrors = true;
         } else {
-          // logger.info(`${value.type} criado/atualizado com sucesso para usuário ${user.id}`);
+          logger.info(`[ensureUserProfile] ${value.type} criado/atualizado com sucesso`);
         }
       }
       
-      return !hasErrors;
+      if (hasErrors) {
+        logger.error(`[ensureUserProfile] Erros encontrados durante criação de perfil/cliente`);
+        return false;
+      }
+      
+      // Atualizar o objeto user com os dados do perfil criado
+      if (needsProfile && profileData) {
+        user.profile = profileData;
+        logger.info(`[ensureUserProfile] Perfil adicionado ao objeto user:`, profileData);
+      }
+      
+      return true;
     } else {
-      // logger.info(`Perfil e cliente já existem para o usuário ${user.id}`);
+      logger.info(`[ensureUserProfile] Usuário ${user.id} já possui perfil e cliente`);
       return true;
     }
-  } catch (err) {
-    logger.error(`Erro ao processar perfil do usuário: ${err.message}`);
+  } catch (error) {
+    logger.error(`[ensureUserProfile] Erro geral: ${error.message}`);
     return false;
   } finally {
     // Sempre liberar o lock
@@ -275,63 +298,12 @@ const requireAuth = async (req, res, next) => {
                 const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
                 
                 if (!userError && userData && userData.user) {
-                  // Gerar token JWT manualmente
-                  const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.admin.createSession({
-                    user_id: userId
-                  });
-                  
-                  // Corrigir a API para usar a versão correta do Supabase
-                  try {
-                    // Verificar qual API está disponível e usar a correta
-                    let newSession = null;
-                    let newSessionError = null;
-                    
-                    // Tentativa 1: Nova API (v2.x)
-                    if (typeof supabaseAdmin.auth.admin.createSession === 'function') {
-                      const result = await supabaseAdmin.auth.admin.createSession({
-                        user_id: userId
-                      });
-                      newSession = result.data;
-                      newSessionError = result.error;
-                    } 
-                    // Tentativa 2: Método alternativo - criar um JWT manualmente
-                    else if (typeof supabaseAdmin.auth.createSession === 'function') {
-                      const result = await supabaseAdmin.auth.createSession({
-                        userId: userId,
-                        expiresIn: 3600 // 1 hora
-                      });
-                      newSession = result.data;
-                      newSessionError = result.error;
-                    }
-                    // Tentativa 3: Método alternativo - signInById
-                    else if (typeof supabaseAdmin.auth.signInWithId === 'function') {
-                      const result = await supabaseAdmin.auth.signInWithId(userId);
-                      newSession = result.data;
-                      newSessionError = result.error;
-                    }
-                    
-                    if (newSessionError) {
-                      logger.error(`Erro ao gerar novo token: ${newSessionError.message}`);
-                      throw new Error('Não foi possível renovar o token');
-                    } else if (newSession && newSession.access_token) {
-                      // logger.info(`Novo token gerado com sucesso para usuário ${userId}`);
-                      // Definir novo token e continuar
-                      token = newSession.access_token;
-                      res.cookie('authToken', token, {
-                        httpOnly: true,
-                        secure: process.env.NODE_ENV === 'production',
-                        maxAge: 24 * 60 * 60 * 1000 // 1 dia
-                      });
-                      // Continuar com o token renovado
-                    } else {
-                      throw new Error('Falha ao gerar novo token');
-                    }
-                  } catch (retryError) {
-                    logger.error(`Erro nas tentativas adicionais: ${retryError.message}`);
-                    throw new Error('Não foi possível renovar o token');
-                  }
+                  // Seguindo a melhor prática: não tentar criar sessão administrativa
+                  // Se o token expirou, o usuário deve fazer login novamente
+                  logger.warn(`Token expirado para usuário ${userId}. Usuário deve fazer login novamente.`);
+                  throw new Error('Token expirado. Faça login novamente.');
                 } else {
-                  logger.error(`Usuário não encontrado: ${userError?.message || 'ID inválido'}`);
+                  logger.error(`Erro ao recuperar usuário por ID: ${userError?.message || 'Usuário não encontrado'}`);
                   throw new Error('Usuário não encontrado');
                 }
               } else {
@@ -402,24 +374,10 @@ const requireAuth = async (req, res, next) => {
               // logger.info(`Usuário recuperado com sucesso: ${userData.user.email}`);
               user = userData.user;
               
-              // Gerar novo token
-              const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.admin.createSession({
-                user_id: userId
-              });
-              
-              if (!sessionError && sessionData) {
-                token = sessionData.access_token;
-                // logger.info(`Novo token gerado com sucesso para usuário ${userId}`);
-                
-                // Definir cookie com o novo token
-                res.cookie('authToken', token, {
-                  httpOnly: true,
-                  secure: process.env.NODE_ENV === 'production',
-                  maxAge: 24 * 60 * 60 * 1000 // 1 dia
-                });
-              } else {
-                logger.error(`Erro ao gerar novo token: ${sessionError?.message || 'Erro desconhecido'}`);
-              }
+              // Seguindo a melhor prática: não tentar criar sessão administrativa
+              // Se o token expirou, o usuário deve fazer login novamente
+              logger.warn(`Token expirado para usuário ${userId}. Usuário deve fazer login novamente.`);
+              throw new Error('Token expirado. Faça login novamente.');
             } else {
               logger.error(`Erro ao recuperar usuário por ID: ${userError?.message || 'Usuário não encontrado'}`);
               throw new Error('Usuário não encontrado');
@@ -629,40 +587,50 @@ const requireAuth = async (req, res, next) => {
       const metadata = user.user_metadata || {};
       const profile = user.profile || {};
       
+      logger.info(`[requireAuth] Definindo displayName para usuário ${user.id}:`, {
+        metadata_full_name: metadata.full_name,
+        metadata_first_name: metadata.first_name,
+        metadata_last_name: metadata.last_name,
+        profile_full_name: profile.full_name,
+        profile_first_name: profile.first_name,
+        profile_last_name: profile.last_name,
+        user_email: user.email
+      });
+      
       // Obter o nome completo de metadados ou perfil
       if (metadata.full_name) {
         user.displayName = metadata.full_name;
-        // logger.info(`Usando full_name dos metadados para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando full_name dos metadados para displayName: ${user.displayName}`);
       } else if (profile.full_name) {
         user.displayName = profile.full_name;
-        // logger.info(`Usando full_name do perfil para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando full_name do perfil para displayName: ${user.displayName}`);
       } 
       // Tentar construir a partir de first_name + last_name
       else if (metadata.first_name && metadata.last_name) {
         user.displayName = `${metadata.first_name} ${metadata.last_name}`;
-        // logger.info(`Usando first_name + last_name dos metadados para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando first_name + last_name dos metadados para displayName: ${user.displayName}`);
       } else if (profile.first_name && profile.last_name) {
         user.displayName = `${profile.first_name} ${profile.last_name}`;
-        // logger.info(`Usando first_name + last_name do perfil para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando first_name + last_name do perfil para displayName: ${user.displayName}`);
       }
       // Usar apenas first_name
       else if (metadata.first_name) {
         user.displayName = metadata.first_name;
-        // logger.info(`Usando first_name dos metadados para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando first_name dos metadados para displayName: ${user.displayName}`);
       } else if (profile.first_name) {
         user.displayName = profile.first_name;
-        // logger.info(`Usando first_name do perfil para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando first_name do perfil para displayName: ${user.displayName}`);
       }
       // Usar email como último recurso antes do genérico
       else if (user.email) {
         // Tentar extrair um nome do email, por exemplo luizfiorimr@email.com -> Luizfiorimr
         const emailName = user.email.split('@')[0];
         user.displayName = emailName.charAt(0).toUpperCase() + emailName.slice(1);
-        // logger.info(`Usando email para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando email para displayName: ${user.displayName}`);
       } else {
         // Último recurso - nome genérico
         user.displayName = 'Usuário';
-        // logger.info(`Usando nome genérico para displayName: ${user.displayName}`);
+        logger.info(`[requireAuth] Usando nome genérico para displayName: ${user.displayName}`);
       }
       
       // Verificar se o displayName está vazio por algum motivo e definir um fallback
@@ -671,16 +639,16 @@ const requireAuth = async (req, res, next) => {
         if (user.email) {
           const emailName = user.email.split('@')[0];
           user.displayName = emailName.charAt(0).toUpperCase() + emailName.slice(1);
-          // logger.info(`Definindo displayName a partir do email como fallback: ${user.displayName}`);
+          logger.info(`[requireAuth] Definindo displayName a partir do email como fallback: ${user.displayName}`);
         } else {
           user.displayName = 'Usuário';
-          // logger.info(`Definindo displayName genérico como último recurso`);
+          logger.info(`[requireAuth] Definindo displayName genérico como último recurso`);
         }
       }
     }
     
     // Log para debugging do displayName
-    // logger.info(`Usuário final: ID=${user.id}, Email=${user.email}, DisplayName="${user.displayName}"`);
+    logger.info(`[requireAuth] Usuário final: ID=${user.id}, Email=${user.email}, DisplayName="${user.displayName}"`);
     
     // Usuário está autenticado, adicionar ao objeto de requisição para uso posterior
     req.user = user;

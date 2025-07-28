@@ -105,78 +105,17 @@ const refreshToken = async (req, res) => {
         }
       });
     } catch (refreshError) {
-      logger.warn('Erro ao atualizar token, tentando criar nova sessão admin:', refreshError);
+      logger.warn('Erro ao renovar token via Supabase:', refreshError.message);
       
-      try {
-        // Se não conseguir atualizar, tentar extrair o ID do usuário do token antigo
-        const payload = JSON.parse(Buffer.from(oldToken.split('.')[1], 'base64').toString('utf-8'));
-        const userId = payload.sub;
-        
-        if (!userId) {
-          return res.status(401).json({
-            success: false,
-            message: 'Token inválido'
-          });
-        }
-        
-        // Criar nova sessão usando o método admin
-        const sessionData = await authService.createAdminSessionViaApi(userId);
-        
-        // Definir cookie seguro com o token
-        res.cookie('supabase-auth-token', sessionData.access_token, {
-          httpOnly: true,
-          secure: process.env.NODE_ENV === 'production',
-          maxAge: sessionData.expires_in * 1000,
-          sameSite: 'strict'
-        });
-        
-        return res.status(200).json({
-          success: true,
-          data: {
-            user: sessionData.user,
-            token: sessionData.access_token
-          }
-        });
-      } catch (error) {
-        logger.error('Erro ao criar nova sessão admin:', error);
-        
-        // Se o erro for de chave duplicada, podemos ignorar
-        // e tentar recuperar os dados do usuário existente
-        if (error.message && error.message.includes('duplicate key')) {
-          try {
-            logger.info(`Perfil já existe para o usuário ${userId}, tentando criar sessão novamente`);
-            
-            // Criar sessão diretamente
-            const sessionData = await authService.createAdminSession(userId);
-            
-            // Definir cookie seguro com o token
-            res.cookie('supabase-auth-token', sessionData.access_token, {
-              httpOnly: true,
-              secure: process.env.NODE_ENV === 'production',
-              maxAge: sessionData.expires_in * 1000,
-              sameSite: 'strict'
-            });
-            
-            return res.status(200).json({
-              success: true,
-              data: {
-                user: sessionData.user,
-                token: sessionData.access_token
-              }
-            });
-          } catch (retryError) {
-            logger.error('Falha na segunda tentativa de criar sessão:', retryError);
-          }
-        }
-        
-        return res.status(401).json({
-          success: false,
-          message: 'Falha na autenticação'
-        });
-      }
+      // Seguindo a melhor prática: se o refresh falhar, não tentar criar sessão administrativa
+      // O usuário deve fazer login novamente
+      return res.status(401).json({
+        success: false,
+        message: 'Sessão expirada. Por favor, faça login novamente.'
+      });
     }
   } catch (error) {
-    logger.error('Erro no refresh token:', error);
+    logger.error('Erro geral no refresh token:', error);
     return res.status(500).json({
       success: false,
       message: 'Erro interno do servidor'
@@ -785,149 +724,6 @@ router.get('/test-auth', async (req, res) => {
       title: 'Teste de Autenticação',
       isAuthenticated: false,
       error: `Erro inesperado: ${error.message}`
-    });
-  }
-});
-
-/**
- * Endpoint para trocar código de autorização por token (usado no OAuth2)
- * Este endpoint segue a recomendação da documentação do Supabase para o fluxo PKCE
- */
-router.post('/exchange-code', async (req, res) => {
-  try {
-    const { code } = req.body;
-    
-    if (!code) {
-      return res.status(400).json({
-        success: false,
-        message: 'Código de autorização é obrigatório'
-      });
-    }
-    
-    logger.info('Recebendo solicitação para trocar código por sessão');
-    
-    // Trocar o código por sessão através do Supabase
-    const { data, error } = await supabase.auth.exchangeCodeForSession(code);
-    
-    if (error) {
-      logger.error('Erro ao trocar código por sessão:', error.message);
-      return res.status(400).json({
-        success: false,
-        message: 'Erro ao trocar código: ' + error.message
-      });
-    }
-    
-    if (!data?.session) {
-      return res.status(400).json({
-        success: false,
-        message: 'Sessão não retornada pelo Supabase'
-      });
-    }
-    
-    logger.info('Código trocado por sessão com sucesso', { userEmail: data.user?.email });
-    
-    // Configurar cookie com token de autenticação
-    res.cookie('supabase-auth-token', data.session.access_token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 7 * 24 * 60 * 60 * 1000 // 7 dias
-    });
-    
-    // Retornar informações de sessão para o cliente
-    return res.status(200).json({
-      success: true,
-      message: 'Autenticação bem-sucedida',
-      data: {
-        user: {
-          id: data.user.id,
-          email: data.user.email
-        },
-        session: {
-          accessToken: data.session.access_token,
-          refreshToken: data.session.refresh_token,
-          expiresAt: data.session.expires_at
-        }
-      }
-    });
-  } catch (err) {
-    logger.error('Erro no endpoint exchange-code:', err);
-    return res.status(500).json({
-      success: false,
-      message: 'Erro interno do servidor: ' + err.message
-    });
-  }
-});
-
-/**
- * Endpoint para verificar se um token é válido
- */
-router.post('/verify-token', async (req, res) => {
-  try {
-    // Obter o token de autenticação
-    let token;
-
-    // Verificar nos cabeçalhos
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-      token = req.headers.authorization.split(' ')[1];
-    } 
-    // Verificar nos cookies
-    else if (req.cookies && (req.cookies.authToken || req.cookies['supabase-auth-token'])) {
-      token = req.cookies.authToken || req.cookies['supabase-auth-token'];
-    }
-    // Verificar no corpo da requisição
-    else if (req.body && req.body.token) {
-      token = req.body.token;
-    }
-
-    if (!token) {
-      return res.status(401).json({
-        success: false,
-        message: 'Token não fornecido'
-      });
-    }
-
-    // Verificar o token com o Supabase
-    const { data, error } = await supabaseAdmin.auth.getUser(token);
-    
-    if (error) {
-      logger.warn(`Token inválido: ${error.message}`);
-      return res.status(401).json({
-        success: false,
-        message: `Token inválido: ${error.message}`
-      });
-    }
-    
-    if (!data || !data.user) {
-      logger.warn('Token validado sem dados de usuário');
-      return res.status(401).json({
-        success: false,
-        message: 'Token validado sem dados de usuário'
-      });
-    }
-    
-    // Definir o cookie com o token validado
-    res.cookie('authToken', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 24 * 60 * 60 * 1000, // 24 horas
-      sameSite: 'lax'
-    });
-    
-    // Retornar sucesso com informações do usuário
-    return res.status(200).json({
-      success: true,
-      message: 'Token válido',
-      user: {
-        id: data.user.id,
-        email: data.user.email,
-        role: data.user.app_metadata?.role || 'user'
-      }
-    });
-  } catch (error) {
-    logger.error(`Erro ao verificar token: ${error.message}`);
-    return res.status(500).json({
-      success: false,
-      message: 'Erro ao verificar token'
     });
   }
 });

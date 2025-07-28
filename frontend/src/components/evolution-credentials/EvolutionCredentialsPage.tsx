@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { api, EvolutionCredential } from '../../utilities/api';
-import { FaWhatsapp, FaEdit, FaTrash, FaSync, FaPlus, FaCircle, FaCheck, FaExclamation, FaQuestionCircle, FaHourglass, FaBullhorn, FaPhone, FaBroadcastTower } from 'react-icons/fa';
+import { FaWhatsapp, FaEdit, FaTrash, FaSync, FaPlus, FaCircle, FaCheck, FaExclamation, FaQuestionCircle, FaHourglass, FaBullhorn, FaPhone, FaBroadcastTower, FaBan } from 'react-icons/fa';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import Navbar from '../Navbar';
@@ -39,19 +39,193 @@ export function EvolutionCredentialsPage() {
   });
   
   // Estado para informações do usuário atual
-  const [currentUser, setCurrentUser] = useState<{ id: string; full_name?: string; email: string } | null>(null);
+  const [currentUser, setCurrentUser] = useState<{ id: string; full_name?: string; email: string; displayName?: string; name?: string; user_metadata?: any } | null>(null);
 
-  // Carregar credenciais
-  const loadCredentials = async () => {
+  // Gerenciamento de números na API oficial da Meta
+  const [metaPhoneData, setMetaPhoneData] = useState({
+    phoneNumber: '',
+    businessAccountId: '',
+    accessToken: ''
+  });
+  const [showMetaPhoneModal, setShowMetaPhoneModal] = useState(false);
+  const [metaPhoneNumbers, setMetaPhoneNumbers] = useState([]);
+
+  // Estados para verificação de números WhatsApp
+  const [verificationStep, setVerificationStep] = useState<'input' | 'pending' | 'verify' | 'success'>('input');
+  const [phoneNumberId, setPhoneNumberId] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [showVerificationModal, setShowVerificationModal] = useState(false);
+  const [verificationError, setVerificationError] = useState<string>('');
+
+  // Estados para modal de confirmação de SMS
+  const [showSMSConfirmation, setShowSMSConfirmation] = useState(false);
+  const [selectedCredentialForSMS, setSelectedCredentialForSMS] = useState<EvolutionCredential | null>(null);
+
+  // Adicionar novo número na Meta
+  const handleAddMetaPhoneNumber = async (e: React.FormEvent) => {
+    e.preventDefault();
     setLoading(true);
+    setError(null);
+
     try {
-      const response = await api.evolution.getAll();
-      if (response.success && response.data) {
-        setCredentials(response.data);
+      const response = await api.evolution.addPhoneNumber(metaPhoneData);
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        console.log('✅ Número adicionado com sucesso:', result.data);
+        setShowMetaPhoneModal(false);
+        setMetaPhoneData({ phoneNumber: '', businessAccountId: '', accessToken: '' });
+        // Recarregar lista de números
+        await loadMetaPhoneNumbers();
       } else {
+        setError(result.message || 'Erro ao adicionar número');
+      }
+    } catch (err) {
+      console.error('❌ Erro ao adicionar número:', err);
+      setError('Erro ao adicionar número: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Verificar disponibilidade de número
+  const handleCheckPhoneAvailability = async (phoneNumber: string, accessToken: string) => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.evolution.checkPhoneAvailability({ phoneNumber, accessToken });
+      const result = await response.json();
+      
+      if (result.success) {
+        if (result.available) {
+          console.log('✅ Número disponível para registro');
+          // Mostrar modal para adicionar
+          setMetaPhoneData(prev => ({ ...prev, phoneNumber, accessToken }));
+          setShowMetaPhoneModal(true);
+        } else {
+          setError('Número não está disponível para registro');
+        }
+      } else {
+        setError(result.message || 'Erro ao verificar disponibilidade');
+      }
+    } catch (err) {
+      console.error('❌ Erro ao verificar disponibilidade:', err);
+      setError('Erro ao verificar disponibilidade: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Listar números da Meta
+  const loadMetaPhoneNumbers = async () => {
+    if (!metaPhoneData.businessAccountId || !metaPhoneData.accessToken) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.evolution.listPhoneNumbers({
+        businessAccountId: metaPhoneData.businessAccountId,
+        accessToken: metaPhoneData.accessToken
+      });
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        setMetaPhoneNumbers(result.data);
+        console.log('✅ Números da Meta carregados:', result.data);
+      } else {
+        setError(result.message || 'Erro ao carregar números');
+      }
+    } catch (err) {
+      console.error('❌ Erro ao carregar números da Meta:', err);
+      setError('Erro ao carregar números: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Remover número da Meta
+  const handleRemoveMetaPhoneNumber = async (phoneNumberId: string) => {
+    if (!metaPhoneData.accessToken) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.evolution.removePhoneNumber({
+        phoneNumberId,
+        accessToken: metaPhoneData.accessToken
+      });
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Número removido com sucesso');
+        // Recarregar lista
+        await loadMetaPhoneNumbers();
+      } else {
+        setError(result.message || 'Erro ao remover número');
+      }
+    } catch (err) {
+      console.error('❌ Erro ao remover número:', err);
+      setError('Erro ao remover número: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Carregar credenciais do usuário
+  const loadCredentials = async () => {
+    try {
+      console.log('🔄 Carregando credenciais...');
+      setLoading(true);
+      const response = await api.evolution.getAll();
+      console.log('📡 Resposta da API de credenciais:', response);
+      
+      if (response.success && response.data) {
+        console.log('✅ Credenciais carregadas:', response.data.length, 'itens');
+        console.log('📋 Lista de credenciais:', response.data);
+        
+        // Atualizar credenciais no estado
+        setCredentials(response.data);
+        
+        // Verificar se há credenciais ads que precisam de atualização de status
+        const adsCredentials = response.data.filter((cred: any) => cred.connection_type === 'ads');
+        if (adsCredentials.length > 0) {
+          console.log(`🔄 Encontradas ${adsCredentials.length} credenciais ads`);
+          
+          // TEMPORARIAMENTE DESABILITADO: Verificação automática de status
+          // Aguardar um pouco para não sobrecarregar a API
+          /*
+          setTimeout(async () => {
+            try {
+              const statusResponse = await api.evolution.checkAllStatus();
+              if (statusResponse.success && statusResponse.data) {
+                console.log('✅ Status das credenciais ads atualizado:', statusResponse.data);
+                
+                // Atualizar credenciais com novos status
+                setCredentials(prev => 
+                  prev.map(cred => {
+                    if (cred.connection_type === 'ads') {
+                      const statusResult = statusResponse.data!.find((result: any) => result.credential_id === cred.id);
+                      return statusResult ? { ...cred, status: statusResult.status } : cred;
+                    }
+                    return cred;
+                  })
+                );
+              }
+            } catch (statusErr) {
+              console.warn('⚠️ Erro ao atualizar status das credenciais ads:', statusErr);
+            }
+          }, 1000); // Aguardar 1 segundo antes de verificar status
+          */
+        }
+      } else {
+        console.error('❌ Erro ao carregar credenciais:', response.message);
         setError(response.message || 'Erro ao carregar credenciais');
       }
     } catch (err) {
+      console.error('❌ Erro geral ao carregar credenciais:', err);
       setError('Erro ao carregar credenciais: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
@@ -61,12 +235,24 @@ export function EvolutionCredentialsPage() {
   // Carregar dados do usuário atual
   const loadCurrentUser = async () => {
     try {
+      console.log('🔄 Carregando dados do usuário atual...');
       const response = await api.user.getCurrentUser();
+      console.log('📡 Resposta da API getCurrentUser:', response);
+      
       if (response.success && response.data) {
+        console.log('✅ Dados do usuário carregados:', response.data);
+        console.log('👤 Nome do usuário:', {
+          full_name: response.data.full_name,
+          displayName: response.data.displayName,
+          name: response.data.name,
+          user_metadata: response.data.user_metadata
+        });
         setCurrentUser(response.data);
+      } else {
+        console.error('❌ Erro na resposta da API:', response.message);
       }
     } catch (err) {
-      console.error('Erro ao carregar dados do usuário:', err);
+      console.error('💥 Erro ao carregar dados do usuário:', err);
     }
   };
 
@@ -115,7 +301,10 @@ export function EvolutionCredentialsPage() {
   const handleAdsFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    
+    setError(null);
+    setVerificationStep('input');
+    setPhoneNumberId('');
+    setVerificationCode('');
     try {
       // Validar dados obrigatórios
       if (!adsFormData.agent_name || !adsFormData.phone) {
@@ -123,63 +312,216 @@ export function EvolutionCredentialsPage() {
         return;
       }
       
-      // Preparar dados para salvar no Supabase
-      const credentialData = {
-        agent_name: adsFormData.agent_name,
-        phone: adsFormData.phone,
-        connection_type: 'ads' as const,
-        instance_name: `${currentUser?.full_name || 'Usuario'} - ${adsFormData.agent_name} - Anúncios`,
-        metadata: {
-          requires_configuration: true,
-          scheduled_setup: true,
-          created_via: 'ads_form',
-          form_data: adsFormData
-        }
+      // Validar dados da Meta
+      if (!metaPhoneData.businessAccountId || !metaPhoneData.accessToken) {
+        setError('Por favor, preencha o Business Account ID e Access Token da Meta');
+        return;
+      }
+      // Chamar backend para criar conta WhatsApp na Meta
+      const payload = {
+        phoneNumber: adsFormData.phone,
+        businessAccountId: metaPhoneData.businessAccountId,
+        accessToken: metaPhoneData.accessToken,
+        wppName: adsFormData.agent_name, // nome do agente
+        displayName: currentUser?.full_name || currentUser?.displayName || currentUser?.name || currentUser?.email?.split('@')[0] || 'Usuario', // nome do usuário autenticado
+        timezone: 'America/Sao_Paulo',
+        category: 'BUSINESS',
+        businessDescription: 'Conta criada automaticamente via sistema.'
       };
       
-      console.log('Salvando credencial de anúncios no Supabase:', credentialData);
+      console.log('📤 Enviando payload para criar conta WhatsApp:', {
+        phoneNumber: payload.phoneNumber,
+        businessAccountId: payload.businessAccountId,
+        accessToken: payload.accessToken ? `${payload.accessToken.substring(0, 10)}...` : 'undefined',
+        displayName: payload.displayName
+      });
       
-      // Criar registro no Supabase
-      const createRes = await api.evolution.create(credentialData);
-      if (!createRes.success) {
-        throw new Error(createRes.message || 'Erro ao salvar credencial de anúncios');
+      // Log detalhado do payload completo
+      console.log('📤 Payload completo:', JSON.stringify(payload, null, 2));
+      console.log('📤 Tipos dos dados:', {
+        phoneNumber: typeof payload.phoneNumber,
+        businessAccountId: typeof payload.businessAccountId,
+        accessToken: typeof payload.accessToken,
+        displayName: typeof payload.displayName
+      });
+      const response = await api.evolution.createWhatsAppAccount(payload);
+      const result = await response.json();
+                  if (result.success && result.data) {
+              console.log('✅ Resposta do backend:', result.data);
+
+              // A credencial já foi salva no backend
+              if (result.data.credentialId) {
+                console.log('✅ Credencial salva no backend com ID:', result.data.credentialId);
+      
+                // Recarregar credenciais para mostrar a nova
+                await loadCredentials();
       }
       
-      console.log('Credencial de anúncios salva com sucesso:', createRes.data);
-      
-      // Atualizar lista de credenciais
-      if (createRes.data) {
-        setCredentials(prev => [...prev, createRes.data!]);
-      }
-      
-      // Fechar modal do formulário
+              // Mostrar mensagem para o usuário
       setShowAdsModal(false);
       
-      // Mostrar modal do calendário
-      setShowCalendar(true);
-      
-      // Expor função globalmente para permitir retry
-      (window as any).loadGoogleCalendarScript = loadGoogleCalendarScript;
-      
-      // Carregar script do Google Calendar após um pequeno delay
-      setTimeout(() => {
-        loadGoogleCalendarScript();
-      }, 500);
-      
-      // Fallback para iframe após 10 segundos se o script não carregar
-      setTimeout(() => {
-        const targetElement = document.getElementById('google-calendar-target');
-        if (targetElement && targetElement.innerHTML.includes('Carregando calendário')) {
-          console.log('Script demorou muito, usando iframe como fallback');
-          tryIframeCalendar();
-        }
-      }, 10000);
-      
+              if (result.data.requiresVerification) {
+                // Perguntar se o usuário quer solicitar SMS agora
+                const shouldRequestSMS = confirm(
+                  'A credencial foi criada com sucesso! Deseja solicitar o código de verificação via SMS agora?\n\n' +
+                  '⚠️ Importante: A Meta API tem limites de solicitações por dia. Use com moderação.'
+                );
+                
+                if (shouldRequestSMS) {
+                  // Se precisa de verificação, abrir modal
+                  setPhoneNumberId(result.data.phoneNumberId);
+                  setVerificationStep('pending');
+                  setShowVerificationModal(true);
+                } else {
+                  // Mostrar mensagem de sucesso sem solicitar SMS
+                  alert('Credencial criada com sucesso! Você pode solicitar o código de verificação posteriormente através do botão "Enviar SMS" no card da credencial.');
+                }
+              } else {
+                // Mostrar mensagem baseada no status
+                alert(result.data.message);
+              }
+            } else {
+              // Erro específico - não salvou no Supabase
+              setShowAdsModal(false);
+              setError(result.error || 'Erro ao criar conta WhatsApp na Meta');
+            }
     } catch (err) {
-      console.error('Erro ao processar formulário de anúncios:', err);
-      setError('Erro ao salvar credencial: ' + (err instanceof Error ? err.message : String(err)));
+      console.error('Erro ao criar conta WhatsApp na Meta:', err);
+      setError('Erro ao criar conta WhatsApp: ' + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
+    }
+  };
+      
+  // Função para verificar código de verificação
+  const handleVerifyCode = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setVerificationStep('verify');
+    setVerificationError('');
+
+    try {
+      const response = await api.evolution.verifyWhatsAppCode({
+        phoneNumberId: phoneNumberId,
+        verificationCode: verificationCode,
+        accessToken: metaPhoneData.accessToken
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        setVerificationStep('success');
+        setShowVerificationModal(false);
+        setVerificationCode('');
+        setPhoneNumberId('');
+      
+        // Recarregar credenciais para atualizar status
+        await loadCredentials();
+        
+        // Mostrar mensagem de sucesso
+        alert('Número verificado com sucesso!');
+      } else {
+        setVerificationStep('input');
+        setVerificationError(result.error || 'Erro ao verificar código');
+      }
+    } catch (err) {
+      console.error('Erro ao verificar código:', err);
+      setVerificationStep('input');
+      setVerificationError('Erro ao verificar código: ' + (err instanceof Error ? err.message : String(err)));
+    }
+  };
+
+  // Função para verificar status de verificação
+  const handleCheckVerificationStatus = async (phoneNumberId: string, accessToken: string) => {
+    try {
+      const response = await api.evolution.checkVerificationStatus({
+        phoneNumberId: phoneNumberId,
+        accessToken: accessToken
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('Status de verificação:', result.data);
+        return result.data;
+      } else {
+        console.error('Erro ao verificar status:', result.error);
+        return null;
+      }
+    } catch (err) {
+      console.error('Erro ao verificar status de verificação:', err);
+      return null;
+    }
+  };
+
+  // Função para solicitar código de verificação via SMS
+  const handleRequestVerificationCode = async (phoneNumberId: string, accessToken: string) => {
+    try {
+      console.log('📱 Solicitando código de verificação via SMS...');
+      
+      const response = await api.evolution.requestVerificationCode({
+        phoneNumberId: phoneNumberId,
+        accessToken: accessToken,
+        codeMethod: 'SMS',
+        language: 'pt_BR'
+      });
+      
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Código de verificação solicitado com sucesso');
+        alert('Código de verificação enviado via SMS! Verifique seu telefone.');
+        return true;
+      } else {
+        console.error('❌ Erro ao solicitar código:', result.error);
+        alert('Erro ao solicitar código: ' + result.error);
+        return false;
+      }
+    } catch (err) {
+      console.error('❌ Erro ao solicitar código de verificação:', err);
+      alert('Erro ao solicitar código: ' + (err instanceof Error ? err.message : String(err)));
+      return false;
+    }
+  };
+
+  // Função para solicitar SMS de verificação para credencial 'ads'
+  const handleRequestSMS = async (credential: EvolutionCredential) => {
+    if (!credential.wpp_number_id || !credential.wpp_access_token) {
+      alert('Credencial não possui dados necessários para solicitar SMS. Verifique se o número foi registrado corretamente.');
+      return;
+    }
+
+    // Mostrar modal de confirmação
+    setSelectedCredentialForSMS(credential);
+    setShowSMSConfirmation(true);
+  };
+
+  // Função para confirmar e enviar SMS
+  const handleConfirmSMS = async () => {
+    if (!selectedCredentialForSMS) return;
+
+    try {
+      console.log('📱 Solicitando SMS para credencial:', selectedCredentialForSMS.id);
+      
+      const success = await handleRequestVerificationCode(
+        selectedCredentialForSMS.wpp_number_id!,
+        selectedCredentialForSMS.wpp_access_token!
+      );
+      
+      if (success) {
+        // Atualizar status da credencial para indicar que SMS foi solicitado
+        setCredentials(prev => prev.map(c => 
+          c.id === selectedCredentialForSMS.id 
+            ? { ...c, status: 'pending_verification', status_description: 'SMS enviado. Aguardando verificação.' }
+            : c
+        ));
+      }
+    } catch (err) {
+      console.error('❌ Erro ao solicitar SMS:', err);
+      alert('Erro ao solicitar SMS: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      // Fechar modal
+      setShowSMSConfirmation(false);
+      setSelectedCredentialForSMS(null);
     }
   };
 
@@ -398,7 +740,8 @@ export function EvolutionCredentialsPage() {
   // Salvar nova credencial
   const handleSaveNew = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
+    setError(null); // Limpar erros anteriores
+    
     try {
       // Preparar dados da credencial
       let credentialData = { 
@@ -408,7 +751,7 @@ export function EvolutionCredentialsPage() {
       
       // Se for WhatsApp Business, gerar nome da instância automaticamente
       if (connectionType === 'whatsapp_business') {
-        const userName = currentUser?.full_name || currentUser?.email?.split('@')[0] || 'Usuario';
+        const userName = currentUser?.full_name || currentUser?.displayName || currentUser?.name || currentUser?.email?.split('@')[0] || 'Usuario';
         const agentName = formData.agent_name || 'Agente';
         const phone = formData.phone || '';
         
@@ -416,33 +759,84 @@ export function EvolutionCredentialsPage() {
         credentialData.instance_name = `${userName}_${agentName}_${phone}`.replace(/\s+/g, '_');
       }
       
+      console.log('🔄 Criando credencial com dados:', credentialData);
+      
       // Criar registro de credencial
       const createRes = await api.evolution.create(credentialData);
+      
       if (createRes.success && createRes.data) {
-        // Fechar modal de criação
+        console.log('✅ Credencial criada com sucesso:', createRes.data);
+        
+        // Fechar modal de criação imediatamente
         setShowAddModal(false);
-        // Criar instância na Evolution API
-        const setupRes = await api.evolution.setupInstance(createRes.data.id);
+        
+        // Criar uma credencial temporária para mostrar instantaneamente
+        const tempCredential = {
+          ...createRes.data!,
+          status: 'pending',
+          instance_name: credentialData.instance_name
+        };
+        
+        // Mostrar card instantaneamente
+        setCredentials(prev => [...prev, tempCredential]);
+        
+        // Processar setup e QR Code em background APENAS para WhatsApp Business
+        if (connectionType === 'whatsapp_business') {
+          (async () => {
+            try {
+              console.log('🔄 Configurando instância para ID:', createRes.data!.id);
+              const setupRes = await api.evolution.setupInstance(createRes.data!.id);
+              
         if (setupRes.success && setupRes.data) {
-          // Atualizar lista de credenciais
-          setCredentials(prev => [...prev, setupRes.data!]);
-          // Exibir QR Code para configuração
+                console.log('✅ Instância configurada com sucesso:', setupRes.data);
+                
+                // Atualizar credencial com dados reais
+                setCredentials(prev => 
+                  prev.map(cred => 
+                    cred.id === createRes.data!.id ? setupRes.data! : cred
+                  )
+                );
+                
+                // Buscar QR Code em background
+                console.log('🔄 Solicitando QR Code para ID:', setupRes.data.id);
           const qrRes = await api.evolution.getQrCode(setupRes.data.id);
+                
           if (qrRes.success && qrRes.data) {
+                  console.log('✅ QR Code obtido com sucesso');
             setQrData(qrRes.data);
             setSelectedCredential(setupRes.data!);
             setShowQrModal(true);
+                } else {
+                  console.error('❌ Erro ao obter QR Code:', qrRes.message);
+                  setError(qrRes.message || 'Erro ao obter QR Code');
           }
         } else {
+                console.error('❌ Erro ao configurar instância:', setupRes.message);
           setError(setupRes.message || 'Erro ao configurar instância');
         }
+            } catch (err) {
+              console.error('❌ Erro no background:', err);
+              setError('Erro ao configurar instância: ' + (err instanceof Error ? err.message : String(err)));
+            }
+          })();
       } else {
+          // Para credenciais 'ads', apenas atualizar o status
+          setCredentials(prev => 
+            prev.map(cred => 
+              cred.id === createRes.data!.id 
+                ? { ...cred, status: 'aguardando_configuracao' }
+                : cred
+            )
+          );
+        }
+        
+      } else {
+        console.error('❌ Erro ao criar credencial:', createRes.message);
         setError(createRes.message || 'Erro ao salvar credencial');
       }
     } catch (err) {
+      console.error('❌ Erro geral:', err);
       setError('Erro ao salvar credencial: ' + (err instanceof Error ? err.message : String(err)));
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -510,6 +904,11 @@ export function EvolutionCredentialsPage() {
 
   // Reiniciar instância WhatsApp
   const handleRestartInstance = async (credential: EvolutionCredential) => {
+    if (credential.connection_type !== 'whatsapp_business') {
+      setError('Esta funcionalidade é apenas para credenciais WhatsApp Business');
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await api.evolution.restartInstance(credential.id);
@@ -527,6 +926,11 @@ export function EvolutionCredentialsPage() {
 
   // Desconectar instância WhatsApp
   const handleDisconnect = async (credential: EvolutionCredential) => {
+    if (credential.connection_type !== 'whatsapp_business') {
+      setError('Esta funcionalidade é apenas para credenciais WhatsApp Business');
+      return;
+    }
+
     setLoading(true);
     try {
       const response = await api.evolution.disconnect(credential.id);
@@ -544,6 +948,11 @@ export function EvolutionCredentialsPage() {
 
   // Exibir QR Code para reconectar instância
   const handleShowQrCode = async (credential: EvolutionCredential) => {
+    if (credential.connection_type !== 'whatsapp_business') {
+      setError('QR Code é apenas para credenciais WhatsApp Business. Para credenciais de ads, use "Verificar Status".');
+      return;
+    }
+
     // Limpar dados anteriores
     setQrData(null);
     setError(null);
@@ -555,12 +964,26 @@ export function EvolutionCredentialsPage() {
     
     try {
       console.log('🔄 Solicitando QR Code para credential:', credential.id);
+      console.log('📱 Dados da credencial:', {
+        id: credential.id,
+        instance_name: credential.instance_name,
+        phone: credential.phone,
+        status: credential.status
+      });
+      
       const response = await api.evolution.getQrCode(credential.id);
-      console.log('📱 Resposta do QR Code:', response);
+      console.log('📱 Resposta completa do QR Code:', response);
       
       if (response.success && response.data) {
+        console.log('✅ QR Code obtido com sucesso:', response.data);
+        console.log('🔍 Dados do QR Code:', {
+          hasBase64: !!response.data.base64,
+          hasCode: !!response.data.code,
+          hasPairingCode: !!response.data.pairingCode,
+          base64Length: response.data.base64?.length,
+          codeLength: response.data.code?.length
+        });
         setQrData(response.data);
-        console.log('✅ QR Code definido:', response.data);
       } else {
         console.error('❌ Erro na resposta:', response.message);
         setError(response.message || 'Erro ao obter QR Code');
@@ -573,24 +996,162 @@ export function EvolutionCredentialsPage() {
     }
   };
 
+  // Verificar status de um número específico (Meta API)
+  const handleCheckStatus = async (credential: EvolutionCredential) => {
+    if (credential.connection_type !== 'ads') {
+      setError('Esta funcionalidade é apenas para credenciais de ads');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await api.evolution.checkStatus(credential.id);
+      
+      if (response.success && response.data) {
+        // Atualizar a credencial na lista com o novo status
+        setCredentials(prev => 
+          prev.map(cred => 
+            cred.id === credential.id 
+              ? { ...cred, status: response.data!.status }
+              : cred
+          )
+        );
+        
+        console.log('✅ Status verificado:', response.data);
+      } else {
+        setError(response.message || 'Erro ao verificar status');
+      }
+    } catch (err) {
+      console.error('❌ Erro ao verificar status:', err);
+      setError('Erro ao verificar status: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Verificar status da Evolution API (WhatsApp Business)
+  const handleCheckEvolutionStatus = async (credential: EvolutionCredential) => {
+    if (credential.connection_type !== 'whatsapp_business') {
+      setError('Esta funcionalidade é apenas para credenciais WhatsApp Business');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Recarregar credenciais para obter status atualizado da Evolution API
+      await loadCredentials();
+      console.log('✅ Status da Evolution API atualizado');
+    } catch (err) {
+      console.error('❌ Erro ao verificar status da Evolution API:', err);
+      setError('Erro ao verificar status: ' + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Verificar status de todos os números
+  const handleCheckAllStatus = async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      // Separar credenciais por tipo
+      const adsCredentials = credentials.filter(cred => cred.connection_type === 'ads');
+      const whatsappBusinessCredentials = credentials.filter(cred => cred.connection_type === 'whatsapp_business');
+
+      console.log(`🔄 Verificando status de ${adsCredentials.length} credenciais ads e ${whatsappBusinessCredentials.length} credenciais WhatsApp Business`);
+
+      // Verificar status das credenciais ads via Meta API
+      if (adsCredentials.length > 0) {
+        try {
+          const response = await api.evolution.checkAllStatus();
+          
+          if (response.success && response.data) {
+            // Atualizar credenciais ads com os novos status
+            setCredentials(prev => 
+              prev.map(cred => {
+                if (cred.connection_type === 'ads') {
+                  const statusResult = response.data!.find((result: any) => result.credential_id === cred.id);
+                  return statusResult ? { ...cred, status: statusResult.status } : cred;
+                }
+                return cred;
+              })
+            );
+            
+            console.log('✅ Status das credenciais ads verificado:', response.data);
+          } else {
+            console.warn('⚠️ Erro ao verificar status das credenciais ads:', response.message);
+          }
+        } catch (error) {
+          console.error('❌ Erro ao verificar status das credenciais ads:', error);
+        }
+      }
+
+      // Verificar status das credenciais WhatsApp Business via Evolution API
+      if (whatsappBusinessCredentials.length > 0) {
+        try {
+          // Recarregar credenciais para obter status atualizado da Evolution API
+          await loadCredentials();
+          console.log('✅ Status das credenciais WhatsApp Business atualizado');
+        } catch (error) {
+          console.error('❌ Erro ao verificar status das credenciais WhatsApp Business:', error);
+        }
+      }
+
+      console.log('✅ Status de todos os números verificado com sucesso');
+    } catch (error) {
+      console.error('❌ Erro ao verificar status de todos os números:', error);
+      setError('Erro ao verificar status: ' + (error instanceof Error ? error.message : String(error)));
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Renderizar badge de status com a cor apropriada
   const StatusBadge = ({ status, size = 'sm' }: { status?: string, size?: 'sm' | 'lg' }) => {
     if (!status) return null;
     
     const getStatusConfig = (status: string) => {
       switch (status.toLowerCase()) {
+        // Status Evolution API (Baileys)
         case 'connected':
+        case 'open':
           return { color: 'bg-green-100 text-green-800 border-green-200', label: 'Conectado' };
         case 'connecting':
           return { color: 'bg-blue-100 text-blue-800 border-blue-200', label: 'Conectando' };
         case 'disconnected':
           return { color: 'bg-red-100 text-red-800 border-red-200', label: 'Desconectado' };
-        case 'open':
-          return { color: 'bg-green-100 text-green-800 border-green-200', label: 'Conectado' };
+        
+        // Status de configuração
         case 'aguardando_configuracao':
           return { color: 'bg-orange-100 text-orange-800 border-orange-200', label: 'Aguardando Configuração' };
         case 'configuracao_pendente':
           return { color: 'bg-yellow-100 text-yellow-800 border-yellow-200', label: 'Configuração Pendente' };
+        
+        // Status da Meta WhatsApp Business API
+        case 'verified':
+          return { color: 'bg-green-100 text-green-800 border-green-200', label: 'Verificado' };
+        case 'approved':
+          return { color: 'bg-green-100 text-green-800 border-green-200', label: 'Aprovado' };
+        case 'pending':
+          return { color: 'bg-yellow-100 text-yellow-800 border-yellow-200', label: 'Pendente' };
+        case 'in_review':
+          return { color: 'bg-blue-100 text-blue-800 border-blue-200', label: 'Em Revisão' };
+        case 'rejected':
+          return { color: 'bg-red-100 text-red-800 border-red-200', label: 'Rejeitado' };
+        case 'declined':
+          return { color: 'bg-red-100 text-red-800 border-red-200', label: 'Recusado' };
+        case 'disabled':
+          return { color: 'bg-gray-100 text-gray-800 border-gray-200', label: 'Desabilitado' };
+        case 'suspended':
+          return { color: 'bg-red-100 text-red-800 border-red-200', label: 'Suspenso' };
+        case 'unverified':
+          return { color: 'bg-orange-100 text-orange-800 border-orange-200', label: 'Não Verificado' };
+        
         default:
           return { color: 'bg-gray-100 text-gray-800 border-gray-200', label: status };
       }
@@ -612,17 +1173,28 @@ export function EvolutionCredentialsPage() {
     if (!status) return <FaQuestionCircle className="text-gray-400" />;
     
     switch (status.toLowerCase()) {
+      // Status Evolution API (Baileys)
       case 'connected':
       case 'open':
+      case 'verified':
+      case 'approved':
         return <FaCheck className="text-green-500" />;
       case 'connecting':
+      case 'pending':
+      case 'in_review':
         return <FaHourglass className="text-blue-500" />;
       case 'disconnected':
+      case 'rejected':
+      case 'declined':
+      case 'suspended':
         return <FaExclamation className="text-red-500" />;
       case 'aguardando_configuracao':
+      case 'unverified':
         return <FaHourglass className="text-orange-500" />;
       case 'configuracao_pendente':
         return <FaExclamation className="text-yellow-500" />;
+      case 'disabled':
+        return <FaBan className="text-gray-500" />;
       default:
         return <FaQuestionCircle className="text-gray-400" />;
     }
@@ -677,17 +1249,27 @@ export function EvolutionCredentialsPage() {
   return (
     <>
       <Navbar />
-      <div className="p-6 bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 min-h-screen">
-        <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6">
-          <h1 className="text-3xl font-bold mb-4 lg:mb-0 bg-clip-text text-transparent bg-gradient-to-r from-emerald-300 via-cyan-200 to-blue-300">
+      <div className="p-3 sm:p-6 bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 min-h-screen">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+          <h1 className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-300 via-cyan-200 to-blue-300">
             Credenciais WhatsApp
           </h1>
-          <button
-            onClick={handleAddNew}
-            className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 text-white font-medium shadow-md hover:shadow-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 flex items-center"
-          >
-            <FaPlus className="mr-2" /> Nova Credencial
-          </button>
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 w-full sm:w-auto">
+            <button
+              onClick={handleCheckAllStatus}
+              disabled={loading}
+              className="px-3 sm:px-4 py-2 bg-blue-600/20 text-blue-300 rounded-lg hover:bg-blue-600/30 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 text-sm sm:text-base"
+            >
+              <FaSync className={loading ? 'animate-spin' : ''} />
+              <span>Verificar Todos</span>
+            </button>
+            <button
+              onClick={handleAddNew}
+              className="px-3 sm:px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 text-white font-medium shadow-md hover:shadow-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 flex items-center justify-center text-sm sm:text-base"
+            >
+              <FaPlus className="mr-2" /> Nova Credencial
+            </button>
+          </div>
         </div>
 
         {error && (
@@ -719,8 +1301,13 @@ export function EvolutionCredentialsPage() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
-            {credentials.map((credential) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
+            {(() => {
+              console.log('🔄 Renderizando lista de credenciais:', {
+                totalCredentials: credentials.length,
+                credentials: credentials.map(c => ({ id: c.id, instance_name: c.instance_name, status: c.status }))
+              });
+              return credentials.map((credential) => (
               <div
                 key={credential.id}
                 className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg border border-cyan-800/30 hover:border-cyan-600/50 transition-all duration-300 overflow-hidden"
@@ -759,13 +1346,64 @@ export function EvolutionCredentialsPage() {
                   {/* Status da conexão - mais compacto */}
                   <div className="p-2 rounded-lg bg-white/5 border border-cyan-800/20 mb-3">
                     <div className="flex justify-between items-center">
-                      <div>
+                      <div className="flex-1">
                         <p className="text-xs text-cyan-300 font-medium">STATUS DA CONEXÃO</p>
                         <p className="text-white font-medium text-sm">
                           {credential.status === 'connected' || credential.status === 'open' ? 'Conectado' : 
                            credential.status === 'connecting' ? 'Conectando...' : 
                            credential.status === 'disconnected' ? 'Desconectado' : 'Aguardando Conexão'}
                         </p>
+                        {/* Exibir status_description quando disponível */}
+                        {credential.status_description && (
+                          <p className="text-xs text-cyan-200 mt-1 opacity-80">
+                            {credential.status_description}
+                          </p>
+                        )}
+                        
+                        {/* Mensagem informativa para credenciais 'ads' não verificadas */}
+                        {credential.connection_type === 'ads' && 
+                         credential.wpp_number_id && 
+                         credential.wpp_access_token && 
+                         credential.status !== 'CONNECTED' && 
+                         credential.status !== 'connected' && 
+                         credential.status !== 'VERIFIED' && 
+                         credential.status !== 'verified' && (
+                          <div className="mt-2 p-2 rounded-lg bg-blue-800/20 border border-blue-700/30">
+                            <p className="text-xs text-blue-200 font-medium mb-1">ℹ️ Número criado com sucesso!</p>
+                            <p className="text-xs text-blue-100">
+                              O número foi registrado na Meta API. Para completar a configuração, 
+                              solicite o código de verificação via SMS.
+                            </p>
+                          </div>
+                        )}
+                        
+                        {/* Mensagem de sucesso para credenciais 'ads' verificadas */}
+                        {credential.connection_type === 'ads' && 
+                         credential.wpp_number_id && 
+                         credential.wpp_access_token && 
+                         (credential.status === 'CONNECTED' || 
+                          credential.status === 'connected' || 
+                          credential.status === 'VERIFIED' || 
+                          credential.status === 'verified') && (
+                          <div className="mt-2 p-2 rounded-lg bg-green-800/20 border border-green-700/30">
+                            <p className="text-xs text-green-200 font-medium mb-1">✅ Número verificado e pronto!</p>
+                            <p className="text-xs text-green-100">
+                              O número foi verificado com sucesso na Meta API e está pronto para uso.
+                            </p>
+                          </div>
+                        )}
+                        
+                        {/* Mensagem para credenciais 'ads' sem dados da Meta API */}
+                        {credential.connection_type === 'ads' && 
+                         (!credential.wpp_number_id || !credential.wpp_access_token) && (
+                          <div className="mt-2 p-2 rounded-lg bg-yellow-800/20 border border-yellow-700/30">
+                            <p className="text-xs text-yellow-200 font-medium mb-1">⚠️ Configuração incompleta</p>
+                            <p className="text-xs text-yellow-100">
+                              Esta credencial precisa ser configurada com os dados da Meta API 
+                              (Business Account ID e Access Token).
+                            </p>
+                          </div>
+                        )}
                       </div>
                       <StatusIcon status={credential.status} />
                     </div>
@@ -793,12 +1431,19 @@ export function EvolutionCredentialsPage() {
                     >
                       <FaEdit className="mr-1" /> Editar
                     </button>
+                      
+                      {/* Botão Reiniciar - apenas para WhatsApp Business */}
+                      {credential.connection_type === 'whatsapp_business' && (
                     <button
                       onClick={() => handleRestartInstance(credential)}
                       className="px-2 py-1.5 rounded-md bg-white/10 text-white text-xs hover:bg-white/20 transition-colors flex items-center justify-center"
                     >
                       <FaSync className="mr-1" /> Reiniciar
                     </button>
+                      )}
+                      
+                      {/* Botão Conectar/Desconectar - apenas para WhatsApp Business */}
+                      {credential.connection_type === 'whatsapp_business' && (
                     <button
                       onClick={() => credential.status?.toLowerCase() === 'connected' || credential.status?.toLowerCase() === 'open'
                         ? handleDisconnect(credential)
@@ -814,6 +1459,48 @@ export function EvolutionCredentialsPage() {
                         ? 'Desconectar'
                         : 'Conectar'}
                     </button>
+                      )}
+                      
+                      {/* Botão SMS - apenas para credenciais 'ads' não verificadas */}
+                      {(() => {
+                        const shouldShowSMSButton = credential.connection_type === 'ads' && 
+                          credential.wpp_number_id && 
+                          credential.wpp_access_token && 
+                          credential.status !== 'CONNECTED' && 
+                          credential.status !== 'connected' && 
+                          credential.status !== 'VERIFIED' && 
+                          credential.status !== 'verified';
+                        
+                        console.log(`🔍 Debug SMS Button para credencial ${credential.id}:`, {
+                          connection_type: credential.connection_type,
+                          wpp_number_id: credential.wpp_number_id,
+                          wpp_access_token: credential.wpp_access_token ? 'presente' : 'ausente',
+                          status: credential.status,
+                          shouldShow: shouldShowSMSButton
+                        });
+                        
+                        return shouldShowSMSButton ? (
+                          <button
+                            onClick={() => handleRequestSMS(credential)}
+                            className="px-2 py-1.5 rounded-md bg-green-500/20 text-green-300 text-xs hover:bg-green-500/30 transition-colors flex items-center justify-center"
+                            title="Solicitar código de verificação via SMS"
+                          >
+                            <FaPhone className="mr-1" /> Enviar SMS
+                          </button>
+                        ) : null;
+                      })()}
+                      
+                      {/* Botão Verificar Status - função específica para cada tipo */}
+                      <button
+                        onClick={() => credential.connection_type === 'ads' 
+                          ? handleCheckStatus(credential)
+                          : handleCheckEvolutionStatus(credential)
+                        }
+                        className="px-2 py-1.5 rounded-md bg-blue-500/20 text-blue-300 text-xs hover:bg-blue-500/30 transition-colors flex items-center justify-center"
+                      >
+                        <FaSync className="mr-1" /> Verificar Status
+                      </button>
+                      
                     <button
                       onClick={() => handleDelete(credential)}
                       className="px-2 py-1.5 rounded-md bg-red-500/20 text-red-300 text-xs hover:bg-red-500/30 transition-colors flex items-center justify-center"
@@ -823,7 +1510,8 @@ export function EvolutionCredentialsPage() {
                   </div>
                 </div>
               </div>
-            ))}
+              ));
+            })()}
           </div>
         )}
 
@@ -1247,7 +1935,19 @@ export function EvolutionCredentialsPage() {
                       Conectar WhatsApp
                     </Dialog.Title>
                     <div className="flex flex-col items-center mb-6">
-                      {qrData?.base64 ? (
+                      {(() => {
+                        console.log('🔍 Renderizando QR Code modal:', {
+                          hasQrData: !!qrData,
+                          hasBase64: !!qrData?.base64,
+                          hasCode: !!qrData?.code,
+                          isLoading: loading,
+                          hasError: !!error,
+                          qrData: qrData
+                        });
+                        
+                        if (qrData?.base64) {
+                          console.log('📱 Exibindo QR Code como imagem base64');
+                          return (
                         <div className="bg-white p-4 rounded-lg shadow-inner">
                           <img
                             src={qrData.base64.startsWith('data:') ? qrData.base64 : `data:image/png;base64,${qrData.base64}`}
@@ -1255,17 +1955,26 @@ export function EvolutionCredentialsPage() {
                             className="w-64 h-64"
                           />
                         </div>
-                      ) : qrData?.code ? (
+                          );
+                        } else if (qrData?.code) {
+                          console.log('📱 Exibindo QR Code como SVG');
+                          return (
                         <div className="bg-white p-4 rounded-lg shadow-inner">
                           <QRCodeSVG value={qrData.code} size={256} style={{ width: '100%', height: '100%' }} />
                         </div>
-                      ) : loading ? (
+                          );
+                        } else if (loading) {
+                          console.log('⏳ Exibindo loading');
+                          return (
                         <div className="flex flex-col items-center">
                           <div className="animate-spin rounded-full h-16 w-16 border-t-4 border-b-4 border-cyan-400 mb-4"></div>
                           <p className="text-cyan-300 text-lg font-medium">Gerando QR Code...</p>
                           <p className="text-gray-400 text-sm mt-2">Isso pode levar até 10 segundos</p>
                         </div>
-                      ) : error ? (
+                          );
+                        } else if (error) {
+                          console.log('❌ Exibindo erro:', error);
+                          return (
                         <div className="text-center">
                           <div className="bg-red-900/50 p-6 rounded-lg mb-4 border border-red-700">
                             <FaExclamation className="text-4xl text-red-400 mx-auto mb-2" />
@@ -1282,7 +1991,10 @@ export function EvolutionCredentialsPage() {
                             Tentar Novamente
                           </button>
                         </div>
-                      ) : (
+                          );
+                        } else {
+                          console.log('❓ Exibindo estado vazio');
+                          return (
                         <div className="text-center">
                           <div className="bg-gray-800 p-8 rounded-lg mb-4">
                             <FaQuestionCircle className="text-6xl text-gray-500 mx-auto mb-2" />
@@ -1298,7 +2010,9 @@ export function EvolutionCredentialsPage() {
                             {loading ? 'Atualizando...' : 'Atualizar QR Code'}
                           </button>
                         </div>
-                      )}
+                          );
+                        }
+                      })()}
                       
                       {qrData?.pairingCode && (
                         <div className="mt-4 text-center">
@@ -1409,6 +2123,38 @@ export function EvolutionCredentialsPage() {
                             required
                           />
                         </div>
+                        
+                        <div>
+                          <label htmlFor="ads_business_account_id" className="block text-sm font-medium text-purple-200 mb-2">
+                            Business Account ID
+                          </label>
+                          <input
+                            type="text"
+                            id="ads_business_account_id"
+                            name="businessAccountId"
+                            value={metaPhoneData.businessAccountId}
+                            onChange={(e) => setMetaPhoneData(prev => ({ ...prev, businessAccountId: e.target.value }))}
+                            placeholder="Ex: 123456789012345"
+                            className="w-full px-3 py-2 bg-slate-800 border border-purple-700/50 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            required
+                          />
+                        </div>
+                        
+                        <div>
+                          <label htmlFor="ads_access_token" className="block text-sm font-medium text-purple-200 mb-2">
+                            Access Token
+                          </label>
+                          <input
+                            type="password"
+                            id="ads_access_token"
+                            name="accessToken"
+                            value={metaPhoneData.accessToken}
+                            onChange={(e) => setMetaPhoneData(prev => ({ ...prev, accessToken: e.target.value }))}
+                            placeholder="Ex: EAABwzLixnjYBO..."
+                            className="w-full px-3 py-2 bg-slate-800 border border-purple-700/50 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                            required
+                          />
+                        </div>
                       </div>
                       
                       <div className="flex justify-end space-x-3 mt-6">
@@ -1426,6 +2172,108 @@ export function EvolutionCredentialsPage() {
                         >
                           {loading ? 'Processando...' : 'Criar'}
                         </button>
+                      </div>
+                    </form>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition>
+
+        {/* Modal de Verificação de Código WhatsApp */}
+        <Transition appear show={showVerificationModal} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={() => setShowVerificationModal(false)}>
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0"
+              enterTo="opacity-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100"
+              leaveTo="opacity-0"
+            >
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
+            </Transition.Child>
+
+            <div className="fixed inset-0 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0 scale-95"
+                  enterTo="opacity-100 scale-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100 scale-100"
+                  leaveTo="opacity-0 scale-95"
+                >
+                  <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-lg bg-gradient-to-b from-blue-900 to-slate-900 p-6 text-left align-middle shadow-xl transition-all border border-blue-700/50">
+                    <Dialog.Title
+                      as="h3"
+                      className="text-lg font-semibold leading-6 text-blue-100 mb-4 text-center"
+                    >
+                      Verificar Número WhatsApp
+                    </Dialog.Title>
+                    
+                    <div className="mb-4">
+                      <p className="text-gray-300 text-sm mb-3 text-center">
+                        Um código de verificação foi enviado via SMS para o número registrado. 
+                        Digite o código para completar a verificação:
+                      </p>
+                      
+                      {verificationError && (
+                        <div className="bg-red-800/20 border border-red-700/50 p-3 rounded-lg mb-4">
+                          <p className="text-red-200 text-sm">{verificationError}</p>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <form onSubmit={handleVerifyCode}>
+                      <div className="mb-4">
+                        <label htmlFor="verificationCode" className="block text-sm font-medium text-blue-200 mb-2">
+                          Código de Verificação
+                        </label>
+                        <input
+                          type="text"
+                          id="verificationCode"
+                          value={verificationCode}
+                          onChange={(e) => setVerificationCode(e.target.value)}
+                          className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-md text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                          placeholder="Digite o código de 6 dígitos"
+                          maxLength={6}
+                          required
+                        />
+                      </div>
+                      
+                      <div className="flex justify-between items-center">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (confirm('Tem certeza que deseja enviar um novo SMS? Esta ação não pode ser desfeita.')) {
+                              handleRequestVerificationCode(phoneNumberId, metaPhoneData.accessToken);
+                            }
+                          }}
+                          className="px-3 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors text-sm"
+                        >
+                          📱 Solicitar SMS
+                        </button>
+                        
+                        <div className="flex space-x-3">
+                          <button
+                            type="button"
+                            onClick={() => setShowVerificationModal(false)}
+                            className="px-4 py-2 rounded-md bg-slate-700 text-white hover:bg-slate-600 transition-colors"
+                          >
+                            Cancelar
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-4 py-2 rounded-md bg-gradient-to-r from-blue-600 to-purple-600 text-white hover:from-blue-700 hover:to-purple-700 transition-colors"
+                            disabled={verificationStep === 'verify'}
+                          >
+                            {verificationStep === 'verify' ? 'Verificando...' : 'Verificar'}
+                          </button>
+                        </div>
                       </div>
                     </form>
                   </Dialog.Panel>
@@ -1525,6 +2373,80 @@ export function EvolutionCredentialsPage() {
                         className="px-4 py-1.5 text-sm rounded-md bg-slate-700 text-white hover:bg-slate-600 transition-colors"
                       >
                         Fechar
+                      </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition>
+
+        {/* Modal de Confirmação de SMS */}
+        <Transition appear show={showSMSConfirmation} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={() => setShowSMSConfirmation(false)}>
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0"
+              enterTo="opacity-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100"
+              leaveTo="opacity-0"
+            >
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
+            </Transition.Child>
+
+            <div className="fixed inset-0 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0 scale-95"
+                  enterTo="opacity-100 scale-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100 scale-100"
+                  leaveTo="opacity-0 scale-95"
+                >
+                  <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-lg bg-gradient-to-b from-cyan-900 to-slate-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700/50">
+                    <Dialog.Title
+                      as="h3"
+                      className="text-lg font-semibold leading-6 text-cyan-100 mb-4"
+                    >
+                      Confirmar Envio de SMS
+                    </Dialog.Title>
+                    <div className="mb-6">
+                      <p className="text-gray-300 mb-2">
+                        Tem certeza que deseja enviar um SMS para esta credencial?
+                      </p>
+                      <p className="text-white font-medium">
+                        {selectedCredentialForSMS?.agent_name || selectedCredentialForSMS?.instance_name || 'Sem nome'}
+                      </p>
+                      <div className="mt-4 p-3 bg-yellow-800/20 border border-yellow-700/50 rounded-lg">
+                        <p className="text-yellow-200 text-sm font-medium mb-1">⚠️ Importante:</p>
+                        <p className="text-yellow-100 text-xs">
+                          • Esta ação não pode ser desfeita<br/>
+                          • Um SMS será enviado para o número registrado<br/>
+                          • A Meta API tem limites de solicitações por dia<br/>
+                          • Use com moderação para evitar bloqueios
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex justify-end space-x-3">
+                      <button
+                        type="button"
+                        onClick={() => setShowSMSConfirmation(false)}
+                        className="px-4 py-2 rounded-md bg-slate-700 text-white hover:bg-slate-600 transition-colors"
+                      >
+                        Cancelar
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmSMS}
+                        className="px-4 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors"
+                        disabled={loading}
+                      >
+                        {loading ? 'Enviando...' : 'Enviar SMS'}
                       </button>
                     </div>
                   </Dialog.Panel>
