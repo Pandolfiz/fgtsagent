@@ -1249,26 +1249,26 @@ export function EvolutionCredentialsPage() {
   return (
     <>
       <Navbar />
-      <div className="p-6 bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 min-h-screen">
-        <div className="flex justify-between items-center mb-6">
-          <h1 className="text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-300 via-cyan-200 to-blue-300">
+      <div className="p-3 sm:p-6 bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 min-h-screen">
+        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+          <h1 className="text-2xl sm:text-3xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-emerald-300 via-cyan-200 to-blue-300">
             Credenciais WhatsApp
           </h1>
-          <div className="flex space-x-3">
+          <div className="flex flex-col sm:flex-row space-y-2 sm:space-y-0 sm:space-x-3 w-full sm:w-auto">
             <button
               onClick={handleCheckAllStatus}
               disabled={loading}
-              className="px-4 py-2 bg-blue-600/20 text-blue-300 rounded-lg hover:bg-blue-600/30 transition-colors flex items-center space-x-2 disabled:opacity-50"
+              className="px-3 sm:px-4 py-2 bg-blue-600/20 text-blue-300 rounded-lg hover:bg-blue-600/30 transition-colors flex items-center justify-center space-x-2 disabled:opacity-50 text-sm sm:text-base"
             >
               <FaSync className={loading ? 'animate-spin' : ''} />
               <span>Verificar Todos</span>
             </button>
-          <button
-            onClick={handleAddNew}
-            className="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 text-white font-medium shadow-md hover:shadow-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 flex items-center"
-          >
-            <FaPlus className="mr-2" /> Nova Credencial
-          </button>
+            <button
+              onClick={handleAddNew}
+              className="px-3 sm:px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 text-white font-medium shadow-md hover:shadow-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 flex items-center justify-center text-sm sm:text-base"
+            >
+              <FaPlus className="mr-2" /> Nova Credencial
+            </button>
           </div>
         </div>
 
@@ -1301,7 +1301,7 @@ export function EvolutionCredentialsPage() {
             </button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
             {(() => {
               console.log('🔄 Renderizando lista de credenciais:', {
                 totalCredentials: credentials.length,
