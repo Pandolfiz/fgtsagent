@@ -20,7 +20,15 @@ import {
   FaHourglassHalf,
   FaTimesCircle,
   FaUserPlus,
-  FaPercentage
+  FaPercentage,
+  FaEdit,
+  FaEye,
+  FaFileAlt,
+  FaRedo,
+  FaSpinner,
+  FaExclamationTriangle,
+  FaTimes,
+  FaChevronRight
 } from 'react-icons/fa'
 import { DateRange } from 'react-date-range'
 import 'react-date-range/dist/styles.css'
@@ -139,6 +147,21 @@ export default function Dashboard() {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
   const calendarPositionRef = useRef({ right: '0px', width: '650px' })
+
+  // Estados para modais de leads
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [editingLead, setEditingLead] = useState({})
+  const [isSavingLead, setIsSavingLead] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  const [viewLeadModalOpen, setViewLeadModalOpen] = useState(false)
+  const [selectedLead, setSelectedLead] = useState(null)
+  const [repeatingQuery, setRepeatingQuery] = useState(null)
+  const [repeatError, setRepeatError] = useState('')
+
+  // Estados para histórico de propostas
+  const [proposalsHistoryModalOpen, setProposalsHistoryModalOpen] = useState(false)
+  const [proposalsHistory, setProposalsHistory] = useState([])
+  const [isLoadingProposals, setIsLoadingProposals] = useState(false)
 
   // Função para calcular a posição do calendário
   const updateCalendarPosition = () => {
@@ -597,6 +620,44 @@ export default function Dashboard() {
     )
   }
 
+  // Funções auxiliares para formatação
+  const formatCurrency = (value) => {
+    if (!value && value !== 0) return '-'
+    const numValue = typeof value === 'string' ? parseFloat(value.replace(/[^\d,.-]/g, '').replace(',', '.')) : parseFloat(value)
+    if (isNaN(numValue)) return '-'
+    return new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(numValue)
+  }
+
+  const formatDate = (dateString) => {
+    if (!dateString) return '-'
+    try {
+      return new Date(dateString).toLocaleString('pt-BR')
+    } catch (error) {
+      return dateString
+    }
+  }
+
+  const formatParcelas = (parcelas) => {
+    if (!parcelas || !Array.isArray(parcelas)) return []
+    return parcelas.map(parcela => {
+      const match = parcela.match(/(\d+):\s*([\d,]+)/)
+      if (match) {
+        return {
+          ano: match[1],
+          valor: formatCurrency(match[2])
+        }
+      }
+      return { ano: '-', valor: parcela }
+    })
+  }
+
+  const getLeadStatus = (lead) => {
+    if (lead.ressaque_tag) return 'ressaque'
+    if (lead.proposal_value) return 'proposta'
+    if (lead.balance || lead.Simulation) return 'consultado'
+    return 'novo'
+  }
+
   async function handleDeleteProposal() {
     if (!proposalToDelete) return
     setIsDeleting(true)
@@ -637,6 +698,110 @@ export default function Dashboard() {
       setDetailsError('Erro ao carregar detalhes da proposta: ' + err.message)
     } finally {
       setIsLoadingDetails(false)
+    }
+  }
+
+  // Funções para manipular leads
+  const openEditModal = (lead) => {
+    setEditingLead({
+      // Campos básicos
+      name: lead.name || '',
+      cpf: lead.cpf || '',
+      email: lead.email || '',
+      phone: lead.phone || '',
+      status: lead.status || '',
+      // Campos de documento
+      rg: lead.rg || '',
+      nationality: lead.nationality || '',
+      is_pep: lead.is_pep || false,
+      birth: lead.birth || '',
+      marital_status: lead.marital_status || '',
+      person_type: lead.person_type || '',
+      mother_name: lead.mother_name || '',
+      // Endereço
+      cep: lead.cep || '',
+      estado: lead.estado || '',
+      cidade: lead.cidade || '',
+      bairro: lead.bairro || '',
+      rua: lead.rua || '',
+      numero: lead.numero || '',
+      // Campos financeiros
+      balance: lead.balance || '',
+      pix: lead.pix || '',
+      pix_key: lead.pix_key || '',
+      Simulation: lead.Simulation || '',
+      balance_error: lead.balance_error || '',
+      proposal_error: lead.proposal_error || '',
+      parcelas: lead.parcelas || null,
+      // Outros campos
+      provider: lead.provider || 'cartos'
+    })
+    setEditModalOpen(true)
+  }
+
+  const saveLeadData = async () => {
+    setIsSavingLead(true)
+    setSaveError('')
+    try {
+      const res = await fetch(`/api/leads/${editingLead.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(editingLead)
+      })
+      const json = await res.json()
+      if (json.success) {
+        setEditModalOpen(false)
+        // Atualizar a lista de leads
+        setStats(prev => ({
+          ...prev,
+          leadsList: prev.leadsList.map(lead => 
+            lead.id === editingLead.id ? { ...lead, ...editingLead } : lead
+          )
+        }))
+      } else {
+        setSaveError(json.message || 'Erro ao salvar dados')
+      }
+    } catch (err) {
+      setSaveError('Erro ao salvar dados: ' + err.message)
+    } finally {
+      setIsSavingLead(false)
+    }
+  }
+
+  const openProposalsHistory = async (lead) => {
+    setIsLoadingProposals(true)
+    try {
+      const res = await fetch(`/api/leads/${lead.id}/proposals`, { credentials: 'include' })
+      const json = await res.json()
+      if (json.success) {
+        setProposalsHistory(json.data || [])
+        setSelectedLead(lead)
+        setProposalsHistoryModalOpen(true)
+      }
+    } catch (err) {
+      console.error('Erro ao carregar histórico de propostas:', err)
+    } finally {
+      setIsLoadingProposals(false)
+    }
+  }
+
+  const repeatQuery = async (leadId) => {
+    setRepeatingQuery(leadId)
+    setRepeatError('')
+    try {
+      const res = await fetch(`/api/leads/${leadId}/repeat-query`, {
+        method: 'POST',
+        credentials: 'include'
+      })
+      const json = await res.json()
+      if (!json.success) {
+        setRepeatError(json.message || 'Erro ao repetir consulta')
+      }
+    } catch (err) {
+      setRepeatError('Erro ao repetir consulta: ' + err.message)
+    } finally {
+      setRepeatingQuery(null)
     }
   }
 
@@ -1164,8 +1329,16 @@ export default function Dashboard() {
                     <td className="px-4 py-3 text-white">{prop.updated_at}</td>
                     <td className="px-4 py-3 flex gap-2 text-white">
                       <button className="p-1 rounded bg-cyan-700/70 hover:bg-cyan-500 transition-colors" title="Visualizar" onClick={() => { setSelectedProposal(prop); setViewModalOpen(true); }}>
-                        <EyeIcon className="w-5 h-5 text-white" />
+                        <FaEye className="w-4 h-4 text-white" />
                       </button>
+                      <button className="p-1 rounded bg-purple-700/70 hover:bg-purple-500 transition-colors" title="Editar" onClick={() => openEditModal(prop)}>
+                        <FaEdit className="w-4 h-4 text-white" />
+                      </button>
+                      {prop.value && (
+                        <button className="p-1 rounded bg-blue-700/70 hover:bg-blue-500 transition-colors" title="Ver histórico de propostas" onClick={() => openProposalsHistory(prop)}>
+                          <FaFileAlt className="w-4 h-4 text-white" />
+                        </button>
+                      )}
                       {['pending', 'formalization'].includes((prop.status || '').toLowerCase()) && (
                         <button className="p-1 rounded bg-red-700/70 hover:bg-red-500 transition-colors" title="Excluir" onClick={() => { setProposalToDelete(prop); setDeleteModalOpen(true) }}>
                           <TrashIcon className="w-5 h-5 text-white" />
@@ -1250,7 +1423,8 @@ export default function Dashboard() {
                   <th className="px-4 py-3 font-medium text-white">Saldo</th>
                   <th className="px-4 py-3 font-medium text-white">Simulado</th>
                   <th className="px-4 py-3 font-medium text-white">Data</th>
-                  <th className="px-4 py-3 font-medium rounded-tr-lg text-white">Erro</th>
+                  <th className="px-4 py-3 font-medium text-white">Erro</th>
+                  <th className="px-4 py-3 font-medium rounded-tr-lg text-white">Ações</th>
                 </tr>
               </thead>
               <tbody>
@@ -1265,11 +1439,56 @@ export default function Dashboard() {
                     <td className="px-4 py-3 text-white">{lead.simulado}</td>
                     <td className="px-4 py-3 text-white">{lead.updated_at}</td>
                     <td className={`px-4 py-3 ${lead.erro ? 'text-red-400' : 'text-white'}`}>{lead.erro || '-'}</td>
+                    <td className="px-4 py-3">
+                      <div className="flex gap-2">
+                        <button 
+                          className="p-1 rounded bg-purple-700/70 hover:bg-purple-500 transition-colors" 
+                          title="Ver detalhes do lead"
+                          onClick={() => {
+                            setSelectedLead(lead)
+                            setViewLeadModalOpen(true)
+                          }}
+                        >
+                          <FaEye className="w-4 h-4 text-white" />
+                        </button>
+                        
+                        <button 
+                          className="p-1 rounded bg-cyan-700/70 hover:bg-cyan-500 transition-colors" 
+                          title="Editar dados pessoais"
+                          onClick={() => openEditModal(lead)}
+                        >
+                          <FaEdit className="w-4 h-4 text-white" />
+                        </button>
+                        
+                        {lead.proposal_value && (
+                          <button 
+                            className="p-1 rounded bg-blue-700/70 hover:bg-blue-500 transition-colors" 
+                            title="Ver histórico de propostas"
+                            onClick={() => openProposalsHistory(lead)}
+                          >
+                            <FaFileAlt className="w-4 h-4 text-white" />
+                          </button>
+                        )}
+                        
+                        <button 
+                          className="p-1 rounded bg-green-700/70 hover:bg-green-500 transition-colors" 
+                          title="Repetir consulta"
+                          onClick={() => repeatQuery(lead.id)}
+                          disabled={repeatingQuery === lead.id}
+                        >
+                          {repeatingQuery === lead.id ? (
+                            <FaSpinner className="w-4 h-4 text-white animate-spin" />
+                          ) : (
+                            <FaRedo className="w-4 h-4 text-white" />
+                          )}
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))}
                 {stats.leadsList.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="px-4 py-6 text-center text-white">
+                    <td colSpan={7} className="px-4 py-6 text-center text-white">
                       Nenhum lead encontrado no período selecionado
                     </td>
                   </tr>
