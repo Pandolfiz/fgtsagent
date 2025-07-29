@@ -128,6 +128,11 @@ export default function Dashboard() {
   const [proposalToDelete, setProposalToDelete] = useState(null)
   const [isDeleting, setIsDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [viewModalOpen, setViewModalOpen] = useState(false)
+  const [selectedProposal, setSelectedProposal] = useState(null)
+  const [proposalDetails, setProposalDetails] = useState(null)
+  const [isLoadingDetails, setIsLoadingDetails] = useState(false)
+  const [detailsError, setDetailsError] = useState('')
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
   const cancelButtonRef = useRef(null)
   const navigate = useNavigate()
@@ -615,6 +620,31 @@ export default function Dashboard() {
       setIsDeleting(false)
     }
   }
+
+  async function handleViewProposal() {
+    if (!selectedProposal) return
+    setIsLoadingDetails(true)
+    setDetailsError('')
+    try {
+      const res = await fetch(`/api/proposals/${selectedProposal.id}`, { credentials: 'include' })
+      const json = await res.json()
+      if (json.success) {
+        setProposalDetails(json.proposal)
+      } else {
+        setDetailsError(json.message || 'Erro ao carregar detalhes da proposta')
+      }
+    } catch (err) {
+      setDetailsError('Erro ao carregar detalhes da proposta: ' + err.message)
+    } finally {
+      setIsLoadingDetails(false)
+    }
+  }
+
+  useEffect(() => {
+    if (viewModalOpen && selectedProposal) {
+      handleViewProposal()
+    }
+  }, [viewModalOpen, selectedProposal])
 
   if (isLoading) {
     return (
@@ -1133,7 +1163,7 @@ export default function Dashboard() {
                     </td>
                     <td className="px-4 py-3 text-white">{prop.updated_at}</td>
                     <td className="px-4 py-3 flex gap-2 text-white">
-                      <button className="p-1 rounded bg-cyan-700/70 hover:bg-cyan-500 transition-colors" title="Visualizar">
+                      <button className="p-1 rounded bg-cyan-700/70 hover:bg-cyan-500 transition-colors" title="Visualizar" onClick={() => { setSelectedProposal(prop); setViewModalOpen(true); }}>
                         <EyeIcon className="w-5 h-5 text-white" />
                       </button>
                       {['pending', 'formalization'].includes((prop.status || '').toLowerCase()) && (
@@ -1266,6 +1296,100 @@ export default function Dashboard() {
                       <button type="button" className="inline-flex justify-center rounded-md border border-red-700 bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-600 focus:outline-none disabled:opacity-60" onClick={handleDeleteProposal} disabled={isDeleting}>
                         {isDeleting ? <span className="animate-spin mr-2 w-4 h-4 border-2 border-white border-t-transparent rounded-full inline-block align-middle" /> : null}
                         Excluir
+                      </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition.Root>
+
+        {/* Modal de Visualização de Proposta */}
+        <Transition.Root show={viewModalOpen} as={Fragment}>
+          <Dialog as="div" className="relative z-50" initialFocus={cancelButtonRef} onClose={() => setViewModalOpen(false)}>
+            <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
+              <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
+            </Transition.Child>
+            <div className="fixed inset-0 z-50 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
+                  <Dialog.Panel className="w-full max-w-2xl transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700">
+                    <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-4">
+                      Detalhes da Proposta
+                    </Dialog.Title>
+                    
+                    {isLoadingDetails ? (
+                      <div className="flex items-center justify-center py-8">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
+                        <span className="ml-3 text-cyan-200">Carregando detalhes...</span>
+                      </div>
+                    ) : detailsError ? (
+                      <div className="text-red-400 text-sm mb-4">{detailsError}</div>
+                    ) : proposalDetails ? (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Nome do Lead</label>
+                            <p className="text-white">{selectedProposal?.lead_name || '-'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">CPF</label>
+                            <p className="text-white">{selectedProposal?.lead_cpf || '-'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Valor da Proposta</label>
+                            <p className="text-white">{proposalDetails.value ? `R$ ${new Intl.NumberFormat('pt-BR').format(proposalDetails.value)}` : '-'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Status</label>
+                            <StatusBadge status={proposalDetails.status} />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Criação</label>
+                            <p className="text-white">{proposalDetails.created_at ? new Date(proposalDetails.created_at).toLocaleDateString('pt-BR') : '-'}</p>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
+                            <p className="text-white break-all">{proposalDetails.pix_key || proposalDetails.chave_pix || '-'}</p>
+                          </div>
+                        </div>
+                        
+                        {proposalDetails.formalization_link && (
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Link de Formalização</label>
+                            <a 
+                              href={proposalDetails.formalization_link} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="text-cyan-400 hover:text-cyan-300 underline break-all"
+                            >
+                              {proposalDetails.formalization_link}
+                            </a>
+                          </div>
+                        )}
+                        
+                        {proposalDetails.status_detail && (
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Detalhes do Status</label>
+                            <p className="text-white">{proposalDetails.status_detail}</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="text-gray-400 text-center py-8">
+                        Nenhum detalhe disponível
+                      </div>
+                    )}
+                    
+                    <div className="mt-6 flex justify-end">
+                      <button 
+                        ref={cancelButtonRef}
+                        type="button" 
+                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                        onClick={() => setViewModalOpen(false)}
+                      >
+                        Fechar
                       </button>
                     </div>
                   </Dialog.Panel>
