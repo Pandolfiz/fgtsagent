@@ -1,5 +1,6 @@
 const logger = require('../utils/logger');
 const { supabaseAdmin } = require('../config/supabase');
+const { optimizedSelect, optimizedLeadsWithProposals } = require('../utils/supabaseOptimized');
 
 class LeadController {
   async list(req, res) {
@@ -20,28 +21,39 @@ class LeadController {
   async listComplete(req, res) {
     try {
       const clientId = req.user.id;
-      logger.info(`[LEADS] Buscando leads completos para cliente: ${clientId}`);
+      logger.info(`[LEADS-OPTIMIZED] Buscando leads completos para cliente: ${clientId}`);
 
-      // Buscar todos os leads do cliente com todos os dados já sincronizados
-      const { data: leads, error } = await supabaseAdmin
-        .from('leads')
-        .select('*')
-        .eq('client_id', clientId)
-        .order('updated_at', { ascending: false });
+      // Usar query otimizada com cache
+      const { data: leads, error } = await optimizedSelect(
+        supabaseAdmin,
+        'leads',
+        'id, name, cpf, email, phone, status, data, rg, mother_name, birth, marital_status, cep, numero, pix_key, balance, simulation, balance_error, updated_at',
+        { 
+          eq: { client_id: clientId },
+          order: { column: 'updated_at', ascending: false },
+          limit: 1000
+        },
+        5000, // 5s timeout
+        true // usar cache
+      );
 
       if (error) {
-        logger.error(`[LEADS] Erro ao buscar leads: ${error.message}`);
+        logger.error(`[LEADS-OPTIMIZED] Erro ao buscar leads: ${error.message}`);
         throw error;
       }
 
-      // Buscar propostas para verificar quais leads têm propostas
-      const { data: proposals, error: proposalsError } = await supabaseAdmin
-        .from('proposals')
-        .select('lead_id')
-        .eq('client_id', clientId);
+      // Buscar propostas otimizadas
+      const { data: proposals, error: proposalsError } = await optimizedSelect(
+        supabaseAdmin,
+        'proposals',
+        'lead_id',
+        { eq: { client_id: clientId } },
+        3000, // 3s timeout
+        true // usar cache
+      );
 
       if (proposalsError) {
-        logger.error(`[LEADS] Erro ao buscar propostas: ${proposalsError.message}`);
+        logger.error(`[LEADS-OPTIMIZED] Erro ao buscar propostas: ${proposalsError.message}`);
       }
 
       // Criar um Set com os lead_ids que têm propostas
@@ -60,7 +72,7 @@ class LeadController {
         hasProposals: leadsWithProposals.has(lead.id)
       })) : [];
 
-      logger.info(`[LEADS] Retornando ${leadsWithProposalInfo?.length || 0} leads completos`);
+      logger.info(`[LEADS-OPTIMIZED] Retornando ${leadsWithProposalInfo?.length || 0} leads completos`);
       return res.json({ success: true, data: leadsWithProposalInfo || [] });
     } catch (err) {
       logger.error('LeadController.listComplete error:', err.message || err);

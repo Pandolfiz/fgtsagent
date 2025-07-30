@@ -71,6 +71,9 @@ router.get('/test-templates', async (req, res) => {
   }
 });
 
+// Rotas de health (públicas) - DEVE vir ANTES das rotas principais
+router.use('/api/health', require('./healthRoutes'));
+
 // Rotas principais
 router.use('/api', apiRoutes);
 router.use('/auth', authRoutes);

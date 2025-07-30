@@ -9,10 +9,13 @@
         "install:frontend": "cd frontend && npm install",
         "install:backend": "cd src && npm install",
         "build": "cd frontend && npm run build",
-        "dev": "cd src && npm run dev",
+        "dev": "nodemon src/server.js",
         "dev:all": "concurrently \"npm run dev\" \"cd frontend && npm run dev\"",
         "start": "cd src && npm start",
-        "test": "cd src && npm test"
+        "test": "cd src && npm test",
+        "test:performance": "node scripts/test-performance.js",
+        "test:simple": "node scripts/test-simple.js",
+        "test:cache": "node scripts/test-simple.js"
     },
     "devDependencies": {
         "concurrently": "^8.2.2"
@@ -35,6 +38,6 @@
     "author": "",
     "license": "ISC",
     "dependencies": {
-        "axios": "^1.10.0"
+        "axios": "^1.11.0"
     }
 }

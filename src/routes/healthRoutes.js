@@ -4,6 +4,7 @@ const logger = require('../utils/logger');
 const { createClient } = require('@supabase/supabase-js');
 const config = require('../config');
 const { withTimeout } = require('../utils/supabaseTimeout');
+const { getCacheStats, clearCache } = require('../utils/supabaseOptimized');
 
 // Cache dos últimos status de health check
 let lastHealthCheck = {
@@ -354,6 +355,55 @@ fgtsagent_health_status ${lastHealthCheck.status === 'healthy' ? 1 : 0}
   
   res.set('Content-Type', 'text/plain');
   res.send(prometheusMetrics);
+});
+
+/**
+ * @route GET /api/health/cache
+ * @desc Obter estatísticas do cache (PÚBLICO para testes)
+ * @access Public
+ */
+router.get('/cache', async (req, res) => {
+  try {
+    const stats = getCacheStats();
+    return res.json({
+      success: true,
+      cache: {
+        size: stats.size,
+        keys: stats.keys.slice(0, 10), // Mostrar apenas 10 primeiras chaves
+        totalKeys: stats.keys.length
+      },
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Erro ao obter estatísticas do cache:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao obter estatísticas do cache'
+    });
+  }
+});
+
+/**
+ * @route POST /api/health/cache/clear
+ * @desc Limpar cache (PÚBLICO para testes)
+ * @access Public
+ */
+router.post('/cache/clear', async (req, res) => {
+  try {
+    const { pattern } = req.body;
+    clearCache(pattern);
+    return res.json({
+      success: true,
+      message: pattern ? `Cache limpo para padrão: ${pattern}` : 'Cache limpo completamente',
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    logger.error('Erro ao limpar cache:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro ao limpar cache'
+    });
+  }
 });
 
 module.exports = router; 
