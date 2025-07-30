@@ -11,7 +11,8 @@ import {
   FaTimes,
   FaCheck,
   FaExclamationTriangle,
-  FaChevronRight
+  FaChevronRight,
+  FaPlus
 } from 'react-icons/fa'
 import { Dialog, Transition } from '@headlessui/react'
 import { ChevronUpDownIcon } from '@heroicons/react/24/solid'
@@ -48,6 +49,19 @@ export default function Leads() {
   // Estados para repetir consulta
   const [repeatingQuery, setRepeatingQuery] = useState(null)
   const [repeatError, setRepeatError] = useState('')
+  const [showProviderModal, setShowProviderModal] = useState(false)
+  const [selectedLeadForQuery, setSelectedLeadForQuery] = useState(null)
+  const [selectedProvider, setSelectedProvider] = useState('cartos')
+  const [availableBanks, setAvailableBanks] = useState([])
+  const [selectedBank, setSelectedBank] = useState('')
+  const [loadingBanks, setLoadingBanks] = useState(false)
+  
+  // Estados para criar proposta
+  const [createProposalModalOpen, setCreateProposalModalOpen] = useState(false)
+  const [selectedLeadForProposal, setSelectedLeadForProposal] = useState(null)
+  const [proposalFormData, setProposalFormData] = useState({})
+  const [isCreatingProposal, setIsCreatingProposal] = useState(false)
+  const [createProposalError, setCreateProposalError] = useState('')
 
   // Opções de status para filtro
   const statusOptions = [
@@ -65,7 +79,7 @@ export default function Leads() {
     { value: 'name', label: 'Nome' },
     { value: 'cpf', label: 'CPF' },
     { value: 'balance', label: 'Saldo Consulta' },
-    { value: 'Simulation', label: 'Saldo Simulação' },
+    { value: 'simulation', label: 'Saldo Simulação' },
     { value: 'updated_at', label: 'Data Última Interação' },
     { value: 'proposal_value', label: 'Valor Proposta' }
   ]
@@ -125,13 +139,49 @@ export default function Leads() {
     }
   }
 
+  // Função para recarregar dados dos leads
+  const reloadLeadsData = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session?.access_token) {
+        throw new Error('Token de acesso não encontrado')
+      }
+      
+      const response = await fetch('/api/leads/complete', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('Erro na resposta:', errorText)
+        throw new Error(`Erro ao buscar leads: ${response.status} ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        console.log(`[LEADS] Dados recarregados:`, data.data.length, 'leads')
+        setLeads(data.data)
+        setFilteredLeads(data.data)
+      } else {
+        console.error('Erro na resposta:', data.message)
+      }
+    } catch (error) {
+      console.error('Erro ao recarregar dados dos leads:', error)
+    }
+  }
+
   // Função para determinar o status do lead baseado nos dados
   const getLeadStatus = (lead) => {
     if (lead.proposal_status === 'paid') return 'proposta_paga'
     if (lead.proposal_status === 'cancelled') return 'proposta_cancelada'
     if (lead.proposal_status === 'pending') return 'proposta_pendente'
     if (lead.proposal_status === 'formalization') return 'proposta_criada'
-    if (lead.Simulation && lead.Simulation > 0) return 'simulacao'
+    if (lead.simulation && lead.simulation > 0) return 'simulacao'
     if (lead.balance && lead.balance > 0) return 'pre_consulta'
     return 'pre_consulta'
   }
@@ -262,7 +312,7 @@ export default function Leads() {
       }
 
       // Tratamento especial para campos numéricos
-      if (['balance', 'Simulation', 'proposal_value'].includes(sortField)) {
+      if (['balance', 'simulation', 'proposal_value'].includes(sortField)) {
         aValue = parseFloat(aValue || 0)
         bValue = parseFloat(bValue || 0)
       }
@@ -312,7 +362,7 @@ export default function Leads() {
       balance: lead.balance || '',
       pix: lead.pix || '',
       pix_key: lead.pix_key || '',
-      Simulation: lead.Simulation || '',
+      simulation: lead.simulation || '',
       balance_error: lead.balance_error || '',
       proposal_error: lead.proposal_error || '',
       parcelas: lead.parcelas || null,
@@ -402,7 +452,7 @@ export default function Leads() {
         balance: editingLead.balance || null,
         pix: editingLead.pix || null,
         pix_key: editingLead.pix_key || null,
-        Simulation: editingLead.Simulation || null,
+        simulation: editingLead.simulation || null,
         balance_error: editingLead.balance_error || null,
         proposal_error: editingLead.proposal_error || null,
         parcelas: editingLead.parcelas || null,
@@ -464,7 +514,56 @@ export default function Leads() {
   }
 
   // Função para repetir consulta
-  const repeatQuery = async (leadId) => {
+  const fetchAvailableBanks = async () => {
+    try {
+      setLoadingBanks(true)
+      console.log('[LEADS] Iniciando busca de bancos...')
+      
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session?.access_token) {
+        throw new Error('Token de acesso não encontrado')
+      }
+
+      const response = await fetch('/api/partner-credentials', {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Erro HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      console.log('[LEADS] Resposta da API de bancos:', data)
+      
+      if (data.success && data.data) {
+        // Filtrar apenas credenciais ativas
+        const activeCredentials = data.data.filter(cred => cred.status === 'active')
+        console.log('[LEADS] Bancos ativos encontrados:', activeCredentials.length)
+        setAvailableBanks(activeCredentials)
+        
+        // Selecionar o primeiro banco por padrão se houver
+        if (activeCredentials.length > 0) {
+          setSelectedBank(activeCredentials[0].id)
+          console.log('[LEADS] Banco padrão selecionado:', activeCredentials[0].name)
+        }
+      } else {
+        console.error('Erro ao carregar bancos:', data.message)
+        setAvailableBanks([])
+      }
+    } catch (error) {
+      console.error('Erro ao buscar bancos disponíveis:', error)
+      setAvailableBanks([])
+    } finally {
+      setLoadingBanks(false)
+      console.log('[LEADS] Busca de bancos concluída')
+    }
+  }
+
+  const repeatQuery = async (leadId, provider = 'cartos', bankId = '') => {
     try {
       setRepeatingQuery(leadId)
       setRepeatError('')
@@ -475,26 +574,276 @@ export default function Leads() {
         throw new Error('Token de acesso não encontrado')
       }
 
-      const response = await fetch(`/api/leads/${leadId}/repeat-query`, {
-        method: 'POST',
+      // Primeiro, buscar dados completos do lead
+      const leadResponse = await fetch(`/api/leads/${leadId}`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
         }
       })
-
-      const data = await response.json()
-
-      if (data.success) {
-        // Recarregar a lista de leads
-        await fetchLeads()
-      } else {
-        setRepeatError(data.message || 'Erro ao repetir consulta')
+      const leadData = await leadResponse.json()
+      
+      if (!leadData.success) {
+        throw new Error('Erro ao buscar dados do lead: ' + leadData.message)
       }
+      
+      // Buscar dados da credencial do banco selecionado
+      console.log('Buscando dados do banco com ID:', bankId)
+      const bankUrl = `/api/partner-credentials/${bankId}`
+      console.log('URL do banco:', bankUrl)
+      
+      const bankResponse = await fetch(bankUrl, {
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        }
+      })
+      
+      console.log('Status da resposta do banco:', bankResponse.status)
+      console.log('Headers da resposta:', bankResponse.headers)
+      
+      if (!bankResponse.ok) {
+        const errorText = await bankResponse.text()
+        console.error('Erro na resposta do banco:', errorText)
+        throw new Error(`Erro HTTP ${bankResponse.status}: ${errorText}`)
+      }
+      
+      const bankData = await bankResponse.json()
+      console.log('Dados do banco recebidos:', bankData)
+      
+      if (!bankData.success) {
+        throw new Error('Erro ao buscar dados do banco: ' + bankData.message)
+      }
+      
+      // Preparar payload do webhook
+      console.log('Dados do lead:', leadData.data)
+      console.log('Dados do banco:', bankData.data)
+      console.log('User ID da credencial do banco:', bankData.data.user_id)
+      
+      // Verificar se os dados necessários estão presentes
+      if (!leadData.data || !bankData.data) {
+        throw new Error('Dados do lead ou banco não encontrados')
+      }
+      
+      // Verificar se o banco tem oauth_config
+      if (!bankData.data.oauth_config) {
+        console.warn('Banco não tem oauth_config, usando valores padrão')
+        bankData.data.oauth_config = {}
+      }
+      
+      // Verificar se o user_id está presente na credencial do banco
+      if (!bankData.data.user_id) {
+        throw new Error('user_id não encontrado na credencial do banco')
+      }
+      
+      const webhookPayload = [
+        {
+          cpf: leadData.data.cpf || '',
+          provider: provider,
+          nome: leadData.data.name || '',
+          grant_type: bankData.data.oauth_config.grant_type || 'password',
+          username: bankData.data.oauth_config.username || '',
+          password: bankData.data.oauth_config.password || '',
+          audience: bankData.data.oauth_config.audience || '',
+          scope: bankData.data.oauth_config.scope || '',
+          client_id: bankData.data.oauth_config.client_id || '',
+          user_id: bankData.data.user_id || '',
+          phone: leadData.data.phone || ''
+        }
+      ]
+      
+      console.log('Enviando webhook com payload:', webhookPayload)
+      
+      // Enviar webhook para o n8n
+      const webhookUrl = 'https://n8n-n8n.8cgx4t.easypanel.host/webhook/consulta_app'
+      console.log('Enviando webhook para:', webhookUrl)
+      console.log('Payload do webhook:', webhookPayload)
+      
+      const webhookResponse = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(webhookPayload)
+      })
+      
+      console.log('Status da resposta do webhook:', webhookResponse.status)
+      console.log('Headers da resposta do webhook:', webhookResponse.headers)
+      
+      // Verificar apenas se a requisição foi enviada com sucesso (status 2xx)
+      if (webhookResponse.status >= 200 && webhookResponse.status < 300) {
+        console.log('Webhook enviado com sucesso para o n8n')
+        
+        // Tentar ler a resposta para debug, mas não falhar se não conseguir
+        try {
+          const responseText = await webhookResponse.text()
+          console.log('Resposta do n8n:', responseText)
+        } catch (e) {
+          console.log('Não foi possível ler a resposta do n8n (normal)')
+        }
+      } else {
+        const errorText = await webhookResponse.text()
+        console.error('Erro na resposta do webhook:', errorText)
+        throw new Error(`Erro HTTP ${webhookResponse.status}: ${errorText}`)
+      }
+      
+      // Recarregar a lista de leads
+      await reloadLeadsData()
+      
     } catch (error) {
       setRepeatError('Erro ao repetir consulta: ' + error.message)
     } finally {
       setRepeatingQuery(null)
+    }
+  }
+
+  const openProviderModal = async (lead) => {
+    console.log('[LEADS] Abrindo modal para lead:', lead.name)
+    setSelectedLeadForQuery(lead)
+    setSelectedProvider('cartos') // Reset para padrão
+    setSelectedBank('') // Reset banco selecionado
+    setShowProviderModal(true)
+    
+    // Buscar bancos disponíveis imediatamente
+    fetchAvailableBanks() // Removido await para não bloquear a abertura do modal
+  }
+
+  const confirmRepeatQuery = async () => {
+    if (selectedLeadForQuery) {
+      if (!selectedBank) {
+        setRepeatError('Por favor, selecione um banco')
+        return
+      }
+      
+      await repeatQuery(selectedLeadForQuery.id, selectedProvider, selectedBank)
+      setShowProviderModal(false)
+      setSelectedLeadForQuery(null)
+    }
+  }
+
+  const openCreateProposalModal = async (lead) => {
+    console.log('[LEADS] Abrindo modal de criar proposta para lead:', lead.name)
+    setSelectedLeadForProposal(lead)
+    setCreateProposalError('')
+    setSelectedProvider('cartos') // Reset para padrão
+    setSelectedBank('') // Reset banco selecionado
+    
+    try {
+      // Buscar dados completos do lead
+      const response = await fetch(`/api/leads/${lead.id}`, {
+        credentials: 'include'
+      })
+      const data = await response.json()
+      
+      if (data.success) {
+        const leadData = data.data
+        
+        // Preparar dados do formulário
+        const formData = {
+          // Dados do lead
+          name: leadData.name || '',
+          cpf: leadData.cpf || '',
+          rg: leadData.rg || '',
+          motherName: leadData.mother_name || leadData.motherName || '',
+          email: leadData.email || '',
+          birthDate: leadData.birth || leadData.birthDate || '',
+          maritalStatus: leadData.marital_status || leadData.maritalStatus || '',
+          phone: leadData.phone || '',
+          postalCode: leadData.cep || leadData.postalCode || '',
+          addressNumber: leadData.address_number || leadData.addressNumber || '',
+          chavePix: leadData.chave_pix || leadData.chavePix || ''
+        }
+        
+        setProposalFormData(formData)
+        setCreateProposalModalOpen(true)
+        
+        // Buscar bancos disponíveis imediatamente
+        fetchAvailableBanks()
+      } else {
+        console.error('Erro ao buscar dados do lead:', data.message)
+        setCreateProposalError('Erro ao carregar dados do lead')
+      }
+    } catch (error) {
+      console.error('Erro ao abrir modal de criar proposta:', error)
+      setCreateProposalError('Erro ao carregar dados')
+    }
+  }
+
+  const createProposal = async () => {
+    if (!selectedLeadForProposal) return
+    
+    if (!selectedBank) {
+      setCreateProposalError('Por favor, selecione um banco')
+      return
+    }
+    
+    setIsCreatingProposal(true)
+    setCreateProposalError('')
+    
+    try {
+      // Buscar dados do partner_credentials selecionado
+      const credentialsResponse = await fetch(`/api/partner-credentials/${selectedBank}`, {
+        credentials: 'include'
+      })
+      const credentialsData = await credentialsResponse.json()
+      
+      if (!credentialsData.success) {
+        throw new Error('Erro ao buscar dados do banco selecionado')
+      }
+      
+      const bankData = credentialsData.data
+      
+      const payload = [{
+        name: proposalFormData.name,
+        cpf: proposalFormData.cpf,
+        rg: proposalFormData.rg,
+        motherName: proposalFormData.motherName,
+        email: proposalFormData.email,
+        birthDate: proposalFormData.birthDate,
+        maritalStatus: proposalFormData.maritalStatus,
+        phone: proposalFormData.phone,
+        postalCode: proposalFormData.postalCode,
+        addressNumber: proposalFormData.addressNumber,
+        chavePix: proposalFormData.chavePix,
+        grant_type: bankData.grant_type || '',
+        username: bankData.username || '',
+        password: bankData.password || '',
+        audience: bankData.audience || '',
+        scope: bankData.scope || '',
+        client_id: bankData.client_id || '',
+        user_id: bankData.user_id || ''
+      }]
+      
+      console.log('[LEADS] Enviando proposta para webhook:', payload)
+      
+      const webhookResponse = await fetch('https://n8n-n8n.8cgx4t.easypanel.host/webhook/criaPropostaApp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+      
+      console.log('[LEADS] Resposta do webhook:', webhookResponse.status)
+      
+      if (webhookResponse.status >= 200 && webhookResponse.status < 300) {
+        console.log('[LEADS] Proposta criada com sucesso')
+        setCreateProposalModalOpen(false)
+        setSelectedLeadForProposal(null)
+        setProposalFormData({})
+        
+        // Recarregar dados do dashboard
+        await reloadLeadsData()
+      } else {
+        const errorText = await webhookResponse.text()
+        console.error('[LEADS] Erro no webhook:', errorText)
+        setCreateProposalError('Erro ao criar proposta. Tente novamente.')
+      }
+    } catch (error) {
+      console.error('[LEADS] Erro ao criar proposta:', error)
+      setCreateProposalError('Erro ao criar proposta. Tente novamente.')
+    } finally {
+      setIsCreatingProposal(false)
     }
   }
 
@@ -726,10 +1075,10 @@ export default function Leads() {
                       )}
                     </div>
                   </th>
-                  <th className="px-4 py-3 font-medium text-white cursor-pointer hover:bg-gray-800/50 transition-colors" onClick={() => toggleSort('Simulation')}>
+                  <th className="px-4 py-3 font-medium text-white cursor-pointer hover:bg-gray-800/50 transition-colors" onClick={() => toggleSort('simulation')}>
                     <div className="flex items-center gap-2">
                       Saldo Simulação
-                      {sortField === 'Simulation' && (
+                      {sortField === 'simulation' && (
                         <FaSort className={`w-3 h-3 ${sortDirection === 'asc' ? 'rotate-180' : ''}`} />
                       )}
                     </div>
@@ -770,7 +1119,7 @@ export default function Leads() {
                     <td className="px-4 py-3 text-white">{lead.name || '-'}</td>
                     <td className="px-4 py-3 text-white">{lead.cpf || '-'}</td>
                     <td className="px-4 py-3 text-white">{formatCurrency(lead.balance)}</td>
-                    <td className="px-4 py-3 text-white">{formatCurrency(lead.Simulation)}</td>
+                    <td className="px-4 py-3 text-white">{formatCurrency(lead.simulation)}</td>
                     <td className="px-4 py-3 text-white">
                       {lead.balance_error ? (
                         <span className="text-red-400 text-sm">{lead.balance_error}</span>
@@ -816,7 +1165,7 @@ export default function Leads() {
                           <FaEye className="w-4 h-4 text-white" />
                         </button>
                         
-                        {lead.proposal_value && (
+                        {lead.hasProposals && (
                           <button 
                             className="p-1 rounded bg-blue-700/70 hover:bg-blue-500 transition-colors" 
                             title="Ver histórico de propostas"
@@ -829,7 +1178,7 @@ export default function Leads() {
                         <button 
                           className="p-1 rounded bg-green-700/70 hover:bg-green-500 transition-colors" 
                           title="Repetir consulta"
-                          onClick={() => repeatQuery(lead.id)}
+                          onClick={() => openProviderModal(lead)}
                           disabled={repeatingQuery === lead.id}
                         >
                           {repeatingQuery === lead.id ? (
@@ -837,6 +1186,36 @@ export default function Leads() {
                           ) : (
                             <FaRedo className="w-4 h-4 text-white" />
                           )}
+                        </button>
+                        
+                        <button
+                          className={`p-1 rounded transition-colors ${
+                            !lead.balance_error && lead.simulation && lead.simulation > 0
+                              ? 'bg-orange-700/70 hover:bg-orange-500'
+                              : 'bg-gray-600 cursor-not-allowed opacity-50'
+                          }`}
+                          title={
+                            !lead.balance_error && lead.simulation && lead.simulation > 0
+                              ? 'Criar proposta'
+                              : `Debug: balance_error="${lead.balance_error}", simulation="${lead.simulation}", type="${typeof lead.simulation}"`
+                          }
+                          onClick={() => {
+                            const condition = !lead.balance_error && lead.simulation && lead.simulation > 0
+                            console.log('[DEBUG] Lead data:', {
+                              name: lead.name,
+                              balance_error: lead.balance_error,
+                              balance_errorType: typeof lead.balance_error,
+                              simulation: lead.simulation,
+                              simulationType: typeof lead.simulation,
+                              condition: condition,
+                              part1: !lead.balance_error,
+                              part2: lead.simulation && lead.simulation > 0
+                            })
+                            openCreateProposalModal(lead)
+                          }}
+                          disabled={!(!lead.balance_error && lead.simulation && lead.simulation > 0)}
+                        >
+                          <FaPlus className="w-4 h-4 text-white" />
                         </button>
                       </div>
                     </td>
@@ -1086,8 +1465,8 @@ export default function Leads() {
                               type="number"
                               step="0.01"
                               min="0"
-                              value={editingLead.Simulation || ''}
-                              onChange={(e) => setEditingLead({...editingLead, Simulation: e.target.value})}
+                              value={editingLead.simulation || ''}
+                              onChange={(e) => setEditingLead({...editingLead, simulation: e.target.value})}
                               placeholder="0,00"
                               className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
                             />
@@ -1161,12 +1540,14 @@ export default function Leads() {
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Provedor</label>
-                            <input
-                              type="text"
+                            <select
                               value={editingLead.provider || 'cartos'}
                               onChange={(e) => setEditingLead({...editingLead, provider: e.target.value})}
                               className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            >
+                              <option value="cartos">Cartos</option>
+                              <option value="qi">QI</option>
+                            </select>
                           </div>
                         </div>
                       </div>
@@ -1329,7 +1710,7 @@ export default function Leads() {
                             </div>
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Simulação</label>
-                              <p className="text-white">{formatCurrency(selectedLead.Simulation)}</p>
+                              <p className="text-white">{formatCurrency(selectedLead.simulation)}</p>
                             </div>
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Consulta</label>
@@ -1356,12 +1737,17 @@ export default function Leads() {
 
                         {/* Parcelas */}
                         {selectedLead.parcelas && selectedLead.parcelas.length > 0 && (
-                          <div className="border-b border-gray-600 pb-4">
-                            <h4 className="text-sm font-semibold text-cyan-300 mb-4">Parcelas</h4>
-                            <div className="bg-gray-800 p-4 rounded-lg max-h-48 overflow-y-auto">
+                          <div className="border-b border-gray-600 pb-4 md:w-1/2">
+                            <div className="flex justify-between items-center mb-4">
+                              <h4 className="text-sm font-semibold text-cyan-300">Parcelas do Saldo</h4>
+                              <span className="text-xs text-gray-400 bg-gray-700 px-2 py-1 rounded-full">
+                                {selectedLead.parcelas.length} parcela{selectedLead.parcelas.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                            <div className="bg-gray-800 p-3 rounded-lg max-h-48 overflow-y-auto">
                               {formatParcelas(selectedLead.parcelas).map((parcela, index) => {
                                 return (
-                                  <div key={index} className="flex justify-between items-center text-white text-sm mb-2 last:mb-0 border-b border-gray-700 pb-2 last:border-b-0">
+                                  <div key={index} className="flex justify-between items-center text-white text-sm mb-1 last:mb-0 border-b border-gray-700 pb-1 last:border-b-0">
                                     <span className="font-medium text-cyan-300">{parcela.ano}:</span>
                                     <span className="font-semibold">{parcela.valor}</span>
                                   </div>
@@ -1482,11 +1868,17 @@ export default function Leads() {
                             <div 
                               key={proposal.id || index}
                               className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                                selectedProposal?.id === proposal.id 
+                                selectedProposal && (selectedProposal.id === proposal.id || selectedProposal.proposal_id === proposal.proposal_id)
                                   ? 'border-cyan-500 bg-cyan-900/20' 
                                   : 'border-gray-600 bg-gray-700 hover:bg-gray-600'
                               }`}
-                              onClick={() => setSelectedProposal(proposal)}
+                              onClick={() => {
+                                if (selectedProposal && (selectedProposal.id === proposal.id || selectedProposal.proposal_id === proposal.proposal_id)) {
+                                  setSelectedProposal(null) // Fechar detalhes se clicar no mesmo item
+                                } else {
+                                  setSelectedProposal(proposal) // Abrir detalhes se clicar em item diferente
+                                }
+                              }}
                             >
                               <div className="flex justify-between items-start">
                                 <div className="flex-1">
@@ -1513,7 +1905,7 @@ export default function Leads() {
                                   </div>
                                 </div>
                                 <FaChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${
-                                  selectedProposal?.id === proposal.id ? 'rotate-90' : ''
+                                  selectedProposal && (selectedProposal.id === proposal.id || selectedProposal.proposal_id === proposal.proposal_id) ? 'rotate-90' : ''
                                 }`} />
                               </div>
                             </div>
@@ -1625,6 +2017,298 @@ export default function Leads() {
                       onClick={() => setProposalsHistoryModalOpen(false)}
                     >
                       Fechar
+                    </button>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition.Root>
+
+      {/* Modal de Seleção de Provedor */}
+      <Transition.Root show={showProviderModal} as={Fragment}>
+        <Dialog as="div" className="relative z-50" onClose={() => setShowProviderModal(false)}>
+          <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
+            <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
+          </Transition.Child>
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
+                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700">
+                  <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-4">
+                    Selecionar Provedor
+                  </Dialog.Title>
+                  
+                  <div className="mb-6">
+                    <p className="text-gray-200 mb-4">
+                      Selecione qual provedor e banco deseja usar para consultar o saldo do lead <strong className="text-cyan-300">{selectedLeadForQuery?.name}</strong>:
+                    </p>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-cyan-300 mb-2">Provedor</label>
+                        <select
+                          value={selectedProvider}
+                          onChange={(e) => setSelectedProvider(e.target.value)}
+                          className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        >
+                          <option value="cartos">Cartos</option>
+                          <option value="qi">QI</option>
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-cyan-300 mb-2">Banco</label>
+                        {loadingBanks ? (
+                          <div className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white flex items-center">
+                            <FaSpinner className="animate-spin mr-2 w-4 h-4" />
+                            Carregando bancos...
+                          </div>
+                        ) : availableBanks.length > 0 ? (
+                          <select
+                            value={selectedBank}
+                            onChange={(e) => setSelectedBank(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          >
+                            <option value="">Selecione um banco</option>
+                            {availableBanks.map((bank) => (
+                              <option key={bank.id} value={bank.id}>
+                                {bank.name} ({bank.partner_type})
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="w-full px-3 py-2 bg-gray-800 border border-red-500 rounded-lg text-red-400">
+                            Nenhum banco disponível. Cadastre credenciais na página de Parceiros.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="flex justify-end gap-3">
+                    <button 
+                      type="button" 
+                      className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                      onClick={() => setShowProviderModal(false)}
+                    >
+                      Cancelar
+                    </button>
+                    <button 
+                      type="button" 
+                      className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60" 
+                      onClick={confirmRepeatQuery}
+                      disabled={repeatingQuery === selectedLeadForQuery?.id}
+                    >
+                      {repeatingQuery === selectedLeadForQuery?.id ? (
+                        <>
+                          <FaSpinner className="animate-spin mr-2 w-4 h-4" />
+                          Consultando...
+                        </>
+                      ) : (
+                        'Confirmar Consulta'
+                      )}
+                    </button>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition.Root>
+
+      {/* Modal de Criar Proposta */}
+      <Transition.Root show={createProposalModalOpen} as={Fragment}>
+        <Dialog as="div" className="relative z-50" onClose={() => setCreateProposalModalOpen(false)}>
+          <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
+            <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
+          </Transition.Child>
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
+                <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700 max-h-[90vh] overflow-y-auto">
+                  <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
+                    Criar Proposta - {selectedLeadForProposal?.name}
+                  </Dialog.Title>
+                  
+                  {createProposalError && (
+                    <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm">
+                      {createProposalError}
+                    </div>
+                  )}
+                  
+                  <div className="space-y-6">
+                    {/* Dados do Lead */}
+                    <div className="border-b border-gray-600 pb-4">
+                      <h4 className="text-sm font-semibold text-cyan-300 mb-4">Dados do Lead</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Nome</label>
+                          <input
+                            type="text"
+                            value={proposalFormData.name || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, name: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">CPF</label>
+                          <input
+                            type="text"
+                            value={proposalFormData.cpf || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, cpf: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">RG</label>
+                          <input
+                            type="text"
+                            value={proposalFormData.rg || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, rg: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Nome da Mãe</label>
+                          <input
+                            type="text"
+                            value={proposalFormData.motherName || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, motherName: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Email</label>
+                          <input
+                            type="email"
+                            value={proposalFormData.email || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, email: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Nascimento</label>
+                          <input
+                            type="date"
+                            value={proposalFormData.birthDate || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, birthDate: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Estado Civil</label>
+                          <select
+                            value={proposalFormData.maritalStatus || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, maritalStatus: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          >
+                            <option value="">Selecione</option>
+                            <option value="single">Solteiro</option>
+                            <option value="married">Casado</option>
+                            <option value="divorced">Divorciado</option>
+                            <option value="widowed">Viúvo</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Telefone</label>
+                          <input
+                            type="text"
+                            value={proposalFormData.phone || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, phone: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">CEP</label>
+                          <input
+                            type="text"
+                            value={proposalFormData.postalCode || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, postalCode: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Número do Endereço</label>
+                          <input
+                            type="text"
+                            value={proposalFormData.addressNumber || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, addressNumber: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
+                          <input
+                            type="text"
+                            value={proposalFormData.chavePix || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, chavePix: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Seleção de Provedor e Banco */}
+                    <div className="border-b border-gray-600 pb-4">
+                      <h4 className="text-sm font-semibold text-cyan-300 mb-4">Configurações da Proposta</h4>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-2">Provedor</label>
+                          <select
+                            value={selectedProvider}
+                            onChange={(e) => setSelectedProvider(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          >
+                            <option value="cartos">Cartos</option>
+                            <option value="qi">QI</option>
+                          </select>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-2">Banco</label>
+                          {loadingBanks ? (
+                            <div className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white flex items-center">
+                              <FaSpinner className="animate-spin mr-2 w-4 h-4" />
+                              Carregando bancos...
+                            </div>
+                          ) : availableBanks.length > 0 ? (
+                            <select
+                              value={selectedBank}
+                              onChange={(e) => setSelectedBank(e.target.value)}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            >
+                              <option value="">Selecione um banco</option>
+                              {availableBanks.map((bank) => (
+                                <option key={bank.id} value={bank.id}>
+                                  {bank.name} ({bank.partner_type})
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="w-full px-3 py-2 bg-gray-800 border border-red-500 rounded-lg text-red-400">
+                              Nenhum banco disponível. Cadastre credenciais na página de Parceiros.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-6 flex justify-end gap-3">
+                    <button type="button" className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" onClick={() => setCreateProposalModalOpen(false)} disabled={isCreatingProposal}>
+                      Cancelar
+                    </button>
+                    <button type="button" className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60" onClick={createProposal} disabled={isCreatingProposal}>
+                      {isCreatingProposal ? (
+                        <>
+                          <FaSpinner className="animate-spin mr-2 w-4 h-4" />
+                          Criando Proposta...
+                        </>
+                      ) : (
+                        'Criar Proposta'
+                      )}
                     </button>
                   </div>
                 </Dialog.Panel>
