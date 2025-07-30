@@ -218,6 +218,13 @@ exports.deleteProposal = async (req, res) => {
       .eq('proposal_id', proposal_id);
     if (error) throw error;
     if (!proposals || proposals.length === 0) return res.status(404).json({ success: false, message: 'Proposta não encontrada.' });
+    
+    const proposal = proposals[0];
+    logger.info(`[DEBUG] Proposta encontrada: ${proposal_id}`, {
+      status: proposal.status,
+      client_id: proposal.client_id,
+      user_id: req.user.id
+    });
     // Cancelar na V8 se possível
     let v8CancelSuccess = false;
     try {
@@ -240,11 +247,8 @@ exports.deleteProposal = async (req, res) => {
       if (v8Err.message.includes('Credenciais do parceiro não encontradas')) {
         logger.warn(`Credenciais não encontradas para usuário ${req.user.id}, continuando com cancelamento local apenas`);
       } else if (!v8Err.message.includes('Operation does not allow cancelation')) {
-        return res.status(400).json({ 
-          success: false, 
-          message: 'Falha ao cancelar na V8.', 
-          error: v8Err.message 
-        });
+        logger.warn(`Falha ao cancelar na V8 para proposta ${proposal_id}, continuando apenas com cancelamento local: ${v8Err.message}`);
+        // Não retornar erro 400, apenas continuar com cancelamento local
       }
     }
     // Atualizar status para 'cancelled' localmente no Supabase
@@ -265,5 +269,139 @@ exports.deleteProposal = async (req, res) => {
       stack: err.stack?.split('\n').slice(0, 3).join('\n') 
     });
     return res.status(500).json({ success: false, message: 'Erro ao excluir proposta.', error: err.message });
+  }
+};
+
+exports.updateProposal = async (req, res) => {
+  try {
+    if (!req.user || !req.user.id) {
+      return res.status(401).json({ success: false, message: 'Usuário não autenticado ou ID do usuário ausente.' });
+    }
+    
+    const proposal_id = req.params.id;
+    if (!proposal_id) {
+      return res.status(400).json({ success: false, message: 'ID da proposta não informado.' });
+    }
+    
+    const { chavePix } = req.body;
+    
+    // Validar se a chave PIX foi fornecida
+    if (!chavePix) {
+      return res.status(400).json({ success: false, message: 'Chave PIX é obrigatória.' });
+    }
+    
+    // Buscar proposta para verificar se existe e se pertence ao usuário
+    const { data: proposals, error } = await supabaseAdmin
+      .from('proposals')
+      .select('*')
+      .eq('proposal_id', proposal_id)
+      .eq('client_id', req.user.id);
+      
+    if (error) throw error;
+    
+    if (!proposals || proposals.length === 0) {
+      return res.status(404).json({ success: false, message: 'Proposta não encontrada ou não pertence ao usuário.' });
+    }
+    
+    const proposal = proposals[0];
+    
+    // Verificar se a proposta pode ser editada (apenas propostas pendentes)
+    if (proposal.status !== 'pending') {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Apenas propostas pendentes podem ser editadas.' 
+      });
+    }
+    
+    // Atualizar apenas a chave PIX
+    const { error: updateError } = await supabaseAdmin
+      .from('proposals')
+      .update({ chavePix })
+      .eq('proposal_id', proposal_id);
+      
+    if (updateError) throw updateError;
+    
+    logger.info(`Proposta ${proposal_id} atualizada com sucesso. Nova chave PIX: ${chavePix}`);
+    
+    // Enviar webhook para n8n após atualização bem-sucedida
+    try {
+      // Buscar dados do lead para obter o CPF
+      const { data: lead, error: leadError } = await supabaseAdmin
+        .from('leads')
+        .select('cpf')
+        .eq('id', proposal.lead_id)
+        .single();
+        
+      if (leadError || !lead) {
+        logger.warn(`[WEBHOOK] Lead não encontrado para proposta ${proposal_id}: ${leadError?.message || 'Lead não encontrado'}`);
+      } else {
+        // Buscar credenciais do parceiro
+        const partnerCreds = await partnerCredentialsService.listPartnerCredentials(req.user.id);
+        
+        if (!partnerCreds || partnerCreds.length === 0) {
+          logger.warn(`[WEBHOOK] Credenciais do parceiro não encontradas para usuário ${req.user.id}`);
+        } else {
+          const creds = partnerCreds[0];
+          
+          // Preparar payload do webhook
+          const webhookPayload = [
+            {
+              action: "resolver",
+              parametros: {
+                cpf: lead.cpf
+              },
+              grant_type: creds.oauth_config.grant_type,
+              username: creds.oauth_config.username,
+              password: creds.oauth_config.password,
+              audience: creds.oauth_config.audience,
+              scope: creds.oauth_config.scope,
+              client_id: creds.oauth_config.client_id,
+              user_id: req.user.id
+            }
+          ];
+          
+          // Enviar webhook para n8n (sem aguardar resposta)
+          const N8N_WEBHOOK_URL = 'https://n8n-n8n.8cgx4t.easypanel.host/webhook/toolPropostaApp';
+          
+          logger.info(`[WEBHOOK] Enviando webhook para n8n: ${N8N_WEBHOOK_URL}`, {
+            proposal_id,
+            lead_cpf: lead.cpf,
+            user_id: req.user.id
+          });
+          
+          // Log do payload enviado
+          logger.info(`[WEBHOOK] Payload enviado:`, JSON.stringify(webhookPayload, null, 2));
+          
+          // Enviar webhook de forma assíncrona (fire and forget)
+          axios.post(N8N_WEBHOOK_URL, webhookPayload, {
+            timeout: 30000,
+            headers: {
+              'Content-Type': 'application/json'
+            }
+          }).then(() => {
+            logger.info(`[WEBHOOK] Webhook enviado com sucesso para proposta ${proposal_id}`);
+          }).catch((webhookError) => {
+            logger.error(`[WEBHOOK] Erro ao enviar webhook para proposta ${proposal_id}:`, webhookError.message);
+          });
+        }
+      }
+    } catch (webhookError) {
+      logger.error(`[WEBHOOK] Erro ao enviar webhook para proposta ${proposal_id}:`, webhookError.message);
+      // Não falhar a operação principal por causa do webhook
+    }
+    
+    return res.json({ 
+      success: true, 
+      message: 'Proposta atualizada com sucesso.',
+      data: { proposal_id, chavePix }
+    });
+    
+  } catch (err) {
+    logger.error('Erro ao atualizar proposta:', err.message);
+    return res.status(500).json({ 
+      success: false, 
+      message: 'Erro ao atualizar proposta.', 
+      error: err.message 
+    });
   }
 }; 

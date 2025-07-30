@@ -140,6 +140,9 @@ export default function Dashboard() {
   const [viewModalOpen, setViewModalOpen] = useState(false)
   const [selectedProposal, setSelectedProposal] = useState(null)
   const [proposalDetails, setProposalDetails] = useState(null)
+  
+  // Estado separado para proposta selecionada no histórico
+  const [selectedProposalInHistory, setSelectedProposalInHistory] = useState(null)
   const [isLoadingDetails, setIsLoadingDetails] = useState(false)
   const [detailsError, setDetailsError] = useState('')
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768)
@@ -176,6 +179,12 @@ export default function Dashboard() {
   const [proposalFormData, setProposalFormData] = useState({})
   const [isCreatingProposal, setIsCreatingProposal] = useState(false)
   const [createProposalError, setCreateProposalError] = useState('')
+  
+  // Estados para modal de editar proposta
+  const [editProposalModalOpen, setEditProposalModalOpen] = useState(false)
+  const [editingProposal, setEditingProposal] = useState(null)
+  const [isEditingProposal, setIsEditingProposal] = useState(false)
+  const [editProposalError, setEditProposalError] = useState('')
 
   // Função para calcular a posição do calendário
   const updateCalendarPosition = () => {
@@ -1169,6 +1178,8 @@ export default function Dashboard() {
       if (json.success) {
         setProposalsHistory(json.data || [])
         setSelectedLead(lead)
+        // Limpar proposta selecionada no histórico ao abrir o modal
+        setSelectedProposalInHistory(null)
         setProposalsHistoryModalOpen(true)
         console.log('[DASHBOARD] Modal de histórico aberto com sucesso')
       } else {
@@ -1411,6 +1422,66 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Erro ao abrir modal de criar proposta:', error)
       setCreateProposalError('Erro ao carregar dados')
+    }
+  }
+
+  // Função para abrir modal de edição de proposta
+  const openEditProposalModal = async (proposal) => {
+    try {
+      console.log('[DASHBOARD] Abrindo modal de editar proposta:', proposal)
+      setEditingProposal(proposal)
+      setEditProposalError('')
+      setEditProposalModalOpen(true)
+    } catch (error) {
+      console.error('Erro ao abrir modal de editar proposta:', error)
+      setEditProposalError('Erro ao abrir modal de edição')
+    }
+  }
+
+  // Função para salvar edição da proposta
+  const saveProposalEdit = async () => {
+    try {
+      setIsEditingProposal(true)
+      setEditProposalError('')
+      
+      const { data: { session } } = await supabase.auth.getSession()
+      
+      if (!session?.access_token) {
+        throw new Error('Token de acesso não encontrado')
+      }
+      
+      const response = await fetch(`/api/proposals/${editingProposal.proposal_id || editingProposal.id}`, {
+        method: 'PUT',
+        headers: {
+          'Authorization': `Bearer ${session.access_token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          chavePix: editingProposal.chavePix
+        })
+      })
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        throw new Error(`Erro HTTP ${response.status}: ${errorText}`)
+      }
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        console.log('[DASHBOARD] Proposta editada com sucesso')
+        setEditProposalModalOpen(false)
+        setEditingProposal(null)
+        // Recarregar dados do dashboard
+        await reloadDashboardData()
+      } else {
+        throw new Error(data.message || 'Erro ao editar proposta')
+      }
+    } catch (error) {
+      console.error('Erro ao editar proposta:', error)
+      setEditProposalError(error.message)
+    } finally {
+      setIsEditingProposal(false)
     }
   }
 
@@ -2018,8 +2089,8 @@ export default function Dashboard() {
                       <button className="p-1 rounded bg-cyan-700/70 hover:bg-cyan-500 transition-colors" title="Visualizar" onClick={() => { setSelectedProposal(prop); setViewModalOpen(true); }}>
                         <FaEye className="w-4 h-4 text-white" />
                       </button>
-                      {['formalization', 'pending'].includes((prop.status || '').toLowerCase()) && (
-                      <button className="p-1 rounded bg-purple-700/70 hover:bg-purple-500 transition-colors" title="Editar" onClick={() => openEditModal(prop)}>
+                      {['pending'].includes((prop.status || '').toLowerCase()) && (
+                      <button className="p-1 rounded bg-purple-700/70 hover:bg-purple-500 transition-colors" title="Editar Proposta" onClick={() => openEditProposalModal(prop)}>
                         <FaEdit className="w-4 h-4 text-white" />
                       </button>
                       )}
@@ -3029,15 +3100,15 @@ export default function Dashboard() {
                               <div 
                                 key={proposal.id || index}
                                 className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                                  selectedProposal && (selectedProposal.id === proposal.id || selectedProposal.proposal_id === proposal.proposal_id)
+                                  selectedProposalInHistory && (selectedProposalInHistory.id === proposal.id || selectedProposalInHistory.proposal_id === proposal.proposal_id)
                                     ? 'border-cyan-500 bg-cyan-900/20' 
                                     : 'border-gray-600 bg-gray-700 hover:bg-gray-600'
                                 }`}
                                 onClick={() => {
-                                  if (selectedProposal && (selectedProposal.id === proposal.id || selectedProposal.proposal_id === proposal.proposal_id)) {
-                                    setSelectedProposal(null) // Fechar detalhes se clicar no mesmo item
+                                  if (selectedProposalInHistory && (selectedProposalInHistory.id === proposal.id || selectedProposalInHistory.proposal_id === proposal.proposal_id)) {
+                                    setSelectedProposalInHistory(null) // Fechar detalhes se clicar no mesmo item
                                   } else {
-                                    setSelectedProposal(proposal) // Abrir detalhes se clicar em item diferente
+                                    setSelectedProposalInHistory(proposal) // Abrir detalhes se clicar em item diferente
                                   }
                                 }}
                               >
@@ -3068,7 +3139,7 @@ export default function Dashboard() {
                                     </div>
                                   </div>
                                   <FaChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${
-                                    selectedProposal && (selectedProposal.id === proposal.id || selectedProposal.proposal_id === proposal.proposal_id) ? 'rotate-90' : ''
+                                    selectedProposalInHistory && (selectedProposalInHistory.id === proposal.id || selectedProposalInHistory.proposal_id === proposal.proposal_id) ? 'rotate-90' : ''
                                   }`} />
                                 </div>
                               </div>
@@ -3077,57 +3148,57 @@ export default function Dashboard() {
                         </div>
 
                         {/* Detalhes da Proposta Selecionada */}
-                        {selectedProposal && (
+                        {selectedProposalInHistory && (
                           <div className="bg-gray-800 rounded-lg p-4">
                             <h4 className="text-sm font-semibold text-cyan-300 mb-4">Dados do Proposta</h4>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               {/* ID da Proposta */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">ID da Proposta</label>
-                                <p className="text-white text-sm break-all">{selectedProposal.proposal_id || selectedProposal.id}</p>
+                                <p className="text-white text-sm break-all">{selectedProposalInHistory.proposal_id || selectedProposalInHistory.id}</p>
                               </div>
                               
                               {/* Valor */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Valor</label>
-                                <p className="text-white">{formatCurrency(selectedProposal.value || selectedProposal.amount)}</p>
+                                <p className="text-white">{formatCurrency(selectedProposalInHistory.value || selectedProposalInHistory.amount)}</p>
                               </div>
                               
                               {/* Status */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Status</label>
-                                <p className="text-white">{selectedProposal.status || '-'}</p>
+                                <p className="text-white">{selectedProposalInHistory.status || '-'}</p>
                               </div>
                               
                               {/* Data de Criação */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Criação</label>
-                                <p className="text-white">{formatDate(selectedProposal.created_at)}</p>
+                                <p className="text-white">{formatDate(selectedProposalInHistory.created_at)}</p>
                               </div>
                               
                               {/* Data de Atualização */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Atualização</label>
-                                <p className="text-white">{formatDate(selectedProposal.updated_at)}</p>
+                                <p className="text-white">{formatDate(selectedProposalInHistory.updated_at)}</p>
                               </div>
                               
                               {/* Número do Contrato */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Número do Contrato</label>
-                                <p className="text-white">{selectedProposal['Número contrato'] || '-'}</p>
+                                <p className="text-white">{selectedProposalInHistory['Número contrato'] || '-'}</p>
                               </div>
                               
                               {/* Link de Formalização */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Link de Formalização</label>
-                                {selectedProposal['Link de formalização'] ? (
+                                {selectedProposalInHistory['Link de formalização'] ? (
                                   <a 
-                                    href={selectedProposal['Link de formalização']} 
+                                    href={selectedProposalInHistory['Link de formalização']} 
                                     target="_blank" 
                                     rel="noopener noreferrer"
                                     className="text-cyan-400 hover:text-cyan-300 underline break-all text-sm"
                                   >
-                                    {selectedProposal['Link de formalização']}
+                                    {selectedProposalInHistory['Link de formalização']}
                                   </a>
                                 ) : (
                                   <p className="text-white">-</p>
@@ -3137,33 +3208,33 @@ export default function Dashboard() {
                               {/* Status Reason */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Status</label>
-                                <p className="text-white">{selectedProposal.status_reason || '-'}</p>
+                                <p className="text-white">{selectedProposalInHistory.status_reason || '-'}</p>
                               </div>
                               
                               {/* Status Description */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Descrição do Status</label>
-                                <p className="text-white">{selectedProposal.status_description || '-'}</p>
+                                <p className="text-white">{selectedProposalInHistory.status_description || '-'}</p>
                               </div>
                               
                               {/* Error Reason */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Erro</label>
-                                <p className="text-white">{selectedProposal.error_reason || '-'}</p>
+                                <p className="text-white">{selectedProposalInHistory.error_reason || '-'}</p>
                               </div>
                               
                               {/* Chave PIX */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
-                                <p className="text-white">{selectedProposal.chavePix || '-'}</p>
+                                <p className="text-white">{selectedProposalInHistory.chavePix || '-'}</p>
                               </div>
                               
                               {/* Metadados - Ocupa toda a largura */}
-                              {selectedProposal.metadata && Object.keys(selectedProposal.metadata).length > 0 && (
+                              {selectedProposalInHistory.metadata && Object.keys(selectedProposalInHistory.metadata).length > 0 && (
                                 <div className="md:col-span-2">
                                   <label className="block text-sm font-medium text-cyan-300 mb-2">Metadados</label>
                                   <div className="bg-gray-700 p-3 rounded-lg max-h-32 overflow-y-auto">
-                                    <pre className="text-white text-xs overflow-auto">{JSON.stringify(selectedProposal.metadata, null, 2)}</pre>
+                                    <pre className="text-white text-xs overflow-auto">{JSON.stringify(selectedProposalInHistory.metadata, null, 2)}</pre>
                                   </div>
                                 </div>
                               )}
@@ -3180,6 +3251,157 @@ export default function Dashboard() {
                         onClick={() => setProposalsHistoryModalOpen(false)}
                       >
                         Fechar
+                      </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition.Root>
+
+        {/* Modal de Edição de Proposta */}
+        <Transition.Root show={editProposalModalOpen} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={() => setEditProposalModalOpen(false)}>
+            <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
+              <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
+            </Transition.Child>
+            <div className="fixed inset-0 z-50 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
+                  <Dialog.Panel className="w-full max-w-2xl transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700">
+                    <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
+                      Editar Proposta - {editingProposal?.proposal_id || editingProposal?.id}
+                    </Dialog.Title>
+                    
+                    {editProposalError && (
+                      <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg">
+                        <p className="text-red-400 text-sm">{editProposalError}</p>
+                      </div>
+                    )}
+                    
+                    {editingProposal && (
+                      <div className="space-y-6">
+                        {/* Dados da Proposta (Somente Leitura) */}
+                        <div className="bg-gray-800 rounded-lg p-4">
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Dados da Proposta</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* ID da Proposta */}
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">ID da Proposta</label>
+                              <p className="text-white text-sm">{editingProposal.proposal_id || editingProposal.id}</p>
+                            </div>
+                            
+                            {/* Valor */}
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Valor</label>
+                              <p className="text-white">{formatCurrency(editingProposal.value || editingProposal.amount)}</p>
+                            </div>
+                            
+                            {/* Status */}
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Status</label>
+                              <p className="text-white">{editingProposal.status || '-'}</p>
+                            </div>
+                            
+                            {/* Data de Criação */}
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Criação</label>
+                              <p className="text-white">{formatDate(editingProposal.created_at)}</p>
+                            </div>
+                            
+                            {/* Data de Atualização */}
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Atualização</label>
+                              <p className="text-white">{formatDate(editingProposal.updated_at)}</p>
+                            </div>
+                            
+                            {/* Número do Contrato */}
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Número do Contrato</label>
+                              <p className="text-white">{editingProposal['Número contrato'] || '-'}</p>
+                            </div>
+                            
+                            {/* Link de Formalização */}
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Link de Formalização</label>
+                              {editingProposal['Link de formalização'] ? (
+                                <a 
+                                  href={editingProposal['Link de formalização']} 
+                                  target="_blank" 
+                                  rel="noopener noreferrer"
+                                  className="text-cyan-400 hover:text-cyan-300 underline break-all text-sm"
+                                >
+                                  {editingProposal['Link de formalização']}
+                                </a>
+                              ) : (
+                                <p className="text-white">-</p>
+                              )}
+                            </div>
+                            
+                            {/* Motivo do Status */}
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Status</label>
+                              <p className="text-white">{editingProposal.status_reason || '-'}</p>
+                            </div>
+                            
+                            {/* Descrição do Status */}
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Descrição do Status</label>
+                              <p className="text-white">{editingProposal.status_description || '-'}</p>
+                            </div>
+                            
+                            {/* Motivo do Erro */}
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Erro</label>
+                              <p className="text-white">{editingProposal.error_reason || '-'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Campo Editável - Chave PIX */}
+                        <div className="bg-gray-800 rounded-lg p-4">
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Editar Chave PIX</h4>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-2">Chave PIX</label>
+                            <input
+                              type="text"
+                              value={editingProposal.chavePix || ''}
+                              onChange={(e) => setEditingProposal({...editingProposal, chavePix: e.target.value})}
+                              className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-cyan-500"
+                              placeholder="Digite a chave PIX"
+                            />
+                            <p className="text-xs text-gray-400 mt-1">
+                              Este é o único campo editável da proposta
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="mt-6 flex justify-end gap-3">
+                      <button 
+                        type="button" 
+                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                        onClick={() => setEditProposalModalOpen(false)}
+                        disabled={isEditingProposal}
+                      >
+                        Cancelar
+                      </button>
+                      <button 
+                        type="button" 
+                        className="inline-flex justify-center rounded-md border border-transparent bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed" 
+                        onClick={saveProposalEdit}
+                        disabled={isEditingProposal}
+                      >
+                        {isEditingProposal ? (
+                          <>
+                            <FaSpinner className="w-4 h-4 text-white animate-spin mr-2" />
+                            Salvando...
+                          </>
+                        ) : (
+                          'Salvar Alterações'
+                        )}
                       </button>
                     </div>
                   </Dialog.Panel>
