@@ -129,9 +129,9 @@ async function fixContactData() {
         // Verificar se há valores válidos
         const lastBalanceRecord = balanceRecords[0];
         const hasValidBalance = lastBalanceRecord.balance !== null && lastBalanceRecord.balance !== undefined;
-        const hasValidSimulation = lastBalanceRecord.simulation !== null && lastBalanceRecord.simulation !== undefined;
+        const hasValidsimulation = lastBalanceRecord.simulation !== null && lastBalanceRecord.simulation !== undefined;
         
-        if (!hasValidBalance || !hasValidSimulation) {
+        if (!hasValidBalance || !hasValidsimulation) {
           console.log('Atualizando registro de saldo com valores válidos...');
           
           const { error: updateBalanceError } = await supabaseAdmin
@@ -151,7 +151,7 @@ async function fixContactData() {
         } else {
           console.log('Os registros de saldo já possuem valores válidos.');
           console.log(`- Balance: ${lastBalanceRecord.balance}`);
-          console.log(`- Simulation: ${lastBalanceRecord.simulation}`);
+          console.log(`- simulation: ${lastBalanceRecord.simulation}`);
         }
       }
       

@@ -28,7 +28,8 @@ import {
   FaSpinner,
   FaExclamationTriangle,
   FaTimes,
-  FaChevronRight
+  FaChevronRight,
+  FaPlus
 } from 'react-icons/fa'
 import { DateRange } from 'react-date-range'
 import 'react-date-range/dist/styles.css'
@@ -157,11 +158,24 @@ export default function Dashboard() {
   const [selectedLead, setSelectedLead] = useState(null)
   const [repeatingQuery, setRepeatingQuery] = useState(null)
   const [repeatError, setRepeatError] = useState('')
+  const [showProviderModal, setShowProviderModal] = useState(false)
+  const [selectedLeadForQuery, setSelectedLeadForQuery] = useState(null)
+  const [selectedProvider, setSelectedProvider] = useState('cartos')
+  const [availableBanks, setAvailableBanks] = useState([])
+  const [selectedBank, setSelectedBank] = useState('')
+  const [loadingBanks, setLoadingBanks] = useState(false)
 
   // Estados para histórico de propostas
   const [proposalsHistoryModalOpen, setProposalsHistoryModalOpen] = useState(false)
   const [proposalsHistory, setProposalsHistory] = useState([])
   const [isLoadingProposals, setIsLoadingProposals] = useState(false)
+
+  // Estados para modal de criar proposta
+  const [createProposalModalOpen, setCreateProposalModalOpen] = useState(false)
+  const [selectedLeadForProposal, setSelectedLeadForProposal] = useState(null)
+  const [proposalFormData, setProposalFormData] = useState({})
+  const [isCreatingProposal, setIsCreatingProposal] = useState(false)
+  const [createProposalError, setCreateProposalError] = useState('')
 
   // Função para calcular a posição do calendário
   const updateCalendarPosition = () => {
@@ -522,6 +536,69 @@ export default function Dashboard() {
     };
   }, [period, dateRange, navigate]);
 
+  // Função para recarregar dados do dashboard
+  const reloadDashboardData = async () => {
+    try {
+      // Recuperar o token de autenticação do localStorage
+      let authToken = localStorage.getItem('authToken');
+      if (!authToken) {
+        // Tentar obter do supabase.auth.token
+        const storedTokens = localStorage.getItem('supabase.auth.token');
+        if (storedTokens) {
+          try {
+            const tokens = JSON.parse(storedTokens);
+            if (tokens?.currentSession?.access_token) {
+              authToken = tokens.currentSession.access_token;
+              localStorage.setItem('authToken', authToken);
+            }
+          } catch (e) {
+            // ignora
+          }
+        }
+      }
+      
+      const headers = { 'Content-Type': 'application/json' };
+      if (authToken) {
+        headers['Authorization'] = `Bearer ${authToken}`;
+      }
+      
+      // Construir URL com parâmetros atuais
+      let url = '/api/dashboard/stats';
+      if (period === 'custom' && dateRange && dateRange.length > 0) {
+        const start = formatDateToYYYYMMDD(dateRange[0].startDate);
+        const end = formatDateToYYYYMMDD(dateRange[0].endDate);
+        url += `?start=${start}&end=${end}`;
+      } else if (period !== 'all') {
+        url += `?period=${period}`;
+      }
+      
+      const res = await fetch(url, { credentials: 'include', headers });
+      
+      // Verificar se o token expirou (status 401)
+      if (res.status === 401) {
+        console.error('Erro de autenticação: Token expirado ou inválido');
+        localStorage.removeItem('supabase_tokens');
+        localStorage.setItem('redirectAfterLogin', '/dashboard');
+        navigate('/login?error=session_expired&message=Sua sessão expirou. Por favor, faça login novamente.');
+        return;
+      }
+      
+      if (!res.ok) {
+        throw new Error(`Erro ao buscar dados: ${res.status} ${res.statusText}`);
+      }
+      
+      const data = await res.json();
+      console.log(`[DASHBOARD] Dados recarregados:`, data.data);
+      setStats(data.data);
+      
+    } catch (error) {
+      console.error('Erro ao recarregar dados do dashboard:', error);
+      if (error.message?.includes('401') || error.message?.includes('autoriza')) {
+        navigate('/login?error=auth_error&message=Erro de autenticação. Por favor, faça login novamente.');
+      }
+    }
+  };
+
   // Função para formatar o intervalo de datas
   function formatDateRange(range) {
     if (!range[0].startDate || !range[0].endDate) return ''
@@ -630,31 +707,148 @@ export default function Dashboard() {
 
   const formatDate = (dateString) => {
     if (!dateString) return '-'
+    
+    // Se a data já está formatada como string brasileira, retornar como está
+    if (typeof dateString === 'string' && dateString.includes('/')) {
+      return dateString
+    }
+    
     try {
-      return new Date(dateString).toLocaleString('pt-BR')
+      const date = new Date(dateString)
+      if (isNaN(date.getTime())) {
+        return dateString // Retornar o valor original se não conseguir parsear
+      }
+      return date.toLocaleString('pt-BR')
     } catch (error) {
       return dateString
     }
   }
 
-  const formatParcelas = (parcelas) => {
-    if (!parcelas || !Array.isArray(parcelas)) return []
-    return parcelas.map(parcela => {
-      const match = parcela.match(/(\d+):\s*([\d,]+)/)
-      if (match) {
-        return {
-          ano: match[1],
-          valor: formatCurrency(match[2])
-        }
+  const formatDateCompact = (dateString) => {
+    if (!dateString) return '-'
+    
+    // Se a data já está formatada como string brasileira, retornar como está
+    if (typeof dateString === 'string' && dateString.includes('/')) {
+      return dateString
+    }
+    
+    try {
+      const date = new Date(dateString)
+      if (isNaN(date.getTime())) {
+        return dateString // Retornar o valor original se não conseguir parsear
       }
-      return { ano: '-', valor: parcela }
+      
+      const now = new Date()
+      const diffTime = Math.abs(now - date)
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
+      
+      // Se for hoje, mostrar apenas a hora
+      if (diffDays === 1) {
+        return date.toLocaleTimeString('pt-BR', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        })
+      }
+      
+      // Se for ontem, mostrar "Ontem" + hora
+      if (diffDays === 2) {
+        return `Ontem ${date.toLocaleTimeString('pt-BR', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        })}`
+      }
+      
+      // Se for nos últimos 7 dias, mostrar dia da semana + hora
+      if (diffDays <= 7) {
+        return `${date.toLocaleDateString('pt-BR', { 
+          weekday: 'short' 
+        })} ${date.toLocaleTimeString('pt-BR', { 
+          hour: '2-digit', 
+          minute: '2-digit' 
+        })}`
+      }
+      
+      // Para datas mais antigas, mostrar data completa
+      return date.toLocaleDateString('pt-BR', { 
+        day: '2-digit',
+        month: '2-digit',
+        year: '2-digit'
+      })
+    } catch (error) {
+      return dateString
+    }
+  }
+
+  // Função para extrair apenas a data de uma string formatada brasileira
+  const extractDateFromFormatted = (dateString) => {
+    if (!dateString) return '-'
+    
+    // Se já é uma data formatada brasileira, extrair apenas a data
+    if (typeof dateString === 'string' && dateString.includes('/')) {
+      // Padrão: "30/07/2025, 14:30:25" -> "30/07/25"
+      const dateMatch = dateString.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/)
+      if (dateMatch) {
+        const [, day, month, year] = dateMatch
+        return `${day}/${month}/${year.slice(-2)}`
+      }
+      
+      // Se não conseguir extrair, retornar como está
+      return dateString
+    }
+    
+    // Se for uma data ISO, formatar
+    try {
+      const date = new Date(dateString)
+      if (!isNaN(date.getTime())) {
+        return date.toLocaleDateString('pt-BR', { 
+          day: '2-digit',
+          month: '2-digit',
+          year: '2-digit'
+        })
+      }
+    } catch (error) {
+      // Ignorar erro
+    }
+    
+    return dateString
+  }
+
+  const formatParcelas = (parcelas) => {
+    if (!parcelas || !Array.isArray(parcelas) || parcelas.length === 0) {
+      return []
+    }
+
+    return parcelas.map((parcela, index) => {
+      let valor = '-'
+      let ano = '-'
+      
+      if (typeof parcela === 'object' && parcela.amount) {
+        valor = formatCurrency(parcela.amount)
+        if (parcela.dueDate) {
+          const data = new Date(parcela.dueDate)
+          ano = data.getFullYear().toString()
+        }
+      } else if (typeof parcela === 'string') {
+        // Tentar extrair valor de string
+        const match = parcela.match(/(\d+(?:[.,]\d+)?)/)
+      if (match) {
+          valor = formatCurrency(parseFloat(match[1].replace(',', '.')))
+        }
+        // Tentar extrair ano de string
+        const yearMatch = parcela.match(/(20\d{2})/)
+        if (yearMatch) {
+          ano = yearMatch[1]
+      }
+      }
+      
+      return { ano, valor, original: parcela }
     })
   }
 
   const getLeadStatus = (lead) => {
     if (lead.ressaque_tag) return 'ressaque'
     if (lead.proposal_value) return 'proposta'
-    if (lead.balance || lead.Simulation) return 'consultado'
+    if (lead.balance || lead.simulation) return 'consultado'
     return 'novo'
   }
 
@@ -702,15 +896,18 @@ export default function Dashboard() {
   }
 
   // Funções para manipular leads
-  const openEditModal = (lead) => {
+  const openEditModal = async (lead) => {
+    if (!lead.id) {
+      console.error('ID do lead não encontrado:', lead)
+      // Fallback: usar dados limitados da tabela
     setEditingLead({
-      // Campos básicos
+        id: null,
       name: lead.name || '',
       cpf: lead.cpf || '',
       email: lead.email || '',
       phone: lead.phone || '',
       status: lead.status || '',
-      // Campos de documento
+        data: lead.data || {},
       rg: lead.rg || '',
       nationality: lead.nationality || '',
       is_pep: lead.is_pep || false,
@@ -718,36 +915,223 @@ export default function Dashboard() {
       marital_status: lead.marital_status || '',
       person_type: lead.person_type || '',
       mother_name: lead.mother_name || '',
-      // Endereço
       cep: lead.cep || '',
       estado: lead.estado || '',
       cidade: lead.cidade || '',
       bairro: lead.bairro || '',
       rua: lead.rua || '',
       numero: lead.numero || '',
-      // Campos financeiros
       balance: lead.balance || '',
       pix: lead.pix || '',
       pix_key: lead.pix_key || '',
-      Simulation: lead.Simulation || '',
+        simulation: lead.simulation || '',
       balance_error: lead.balance_error || '',
       proposal_error: lead.proposal_error || '',
       parcelas: lead.parcelas || null,
+        provider: lead.provider || 'cartos',
+        proposal_value: lead.proposal_value || '',
+        proposal_status: lead.proposal_status || '',
+        proposal_id: lead.proposal_id || '',
+        error_reason: lead.error_reason || '',
+        ressaque_tag: lead.ressaque_tag || false,
+        created_at: lead.created_at || '',
+        updated_at: lead.updated_at || ''
+      })
+      setEditModalOpen(true)
+      return
+    }
+    
+    try {
+      // Buscar dados completos do lead
+      const response = await fetch(`/api/leads/${lead.id}`, {
+        credentials: 'include'
+      })
+      const data = await response.json()
+      
+      if (data.success) {
+        const fullLead = data.data
+        setEditingLead({
+          id: fullLead.id,
+          // Campos básicos
+          name: fullLead.name || '',
+          cpf: fullLead.cpf || '',
+          email: fullLead.email || '',
+          phone: fullLead.phone || '',
+          status: fullLead.status || '',
+          data: fullLead.data || {},
+          // Campos de documento
+          rg: fullLead.rg || '',
+          nationality: fullLead.nationality || '',
+          is_pep: fullLead.is_pep || false,
+          birth: fullLead.birth || '',
+          marital_status: fullLead.marital_status || '',
+          person_type: fullLead.person_type || '',
+          mother_name: fullLead.mother_name || '',
+          // Endereço
+          cep: fullLead.cep || '',
+          estado: fullLead.estado || '',
+          cidade: fullLead.cidade || '',
+          bairro: fullLead.bairro || '',
+          rua: fullLead.rua || '',
+          numero: fullLead.numero || '',
+          // Campos financeiros
+          balance: fullLead.balance || '',
+          pix: fullLead.pix || '',
+          pix_key: fullLead.pix_key || '',
+          simulation: fullLead.simulation || '',
+          balance_error: fullLead.balance_error || '',
+          proposal_error: fullLead.proposal_error || '',
+          parcelas: fullLead.parcelas || null,
       // Outros campos
-      provider: lead.provider || 'cartos'
+          provider: fullLead.provider || 'cartos',
+          // Campos de proposta
+          proposal_value: fullLead.proposal_value || '',
+          proposal_status: fullLead.proposal_status || '',
+          proposal_id: fullLead.proposal_id || '',
+          // Campos de erro e status
+          error_reason: fullLead.error_reason || '',
+          ressaque_tag: fullLead.ressaque_tag || false,
+          // Campos de data
+          created_at: fullLead.created_at || '',
+          updated_at: fullLead.updated_at || ''
+        })
+      } else {
+        console.error('Erro ao buscar dados do lead:', data.message)
+        // Fallback: usar dados limitados da tabela
+        setEditingLead({
+          id: lead.id,
+          name: lead.name || '',
+          cpf: lead.cpf || '',
+          email: lead.email || '',
+          phone: lead.phone || '',
+          status: lead.status || '',
+          data: lead.data || {},
+          rg: lead.rg || '',
+          nationality: lead.nationality || '',
+          is_pep: lead.is_pep || false,
+          birth: lead.birth || '',
+          marital_status: lead.marital_status || '',
+          person_type: lead.person_type || '',
+          mother_name: lead.mother_name || '',
+          cep: lead.cep || '',
+          estado: lead.estado || '',
+          cidade: lead.cidade || '',
+          bairro: lead.bairro || '',
+          rua: lead.rua || '',
+          numero: lead.numero || '',
+          balance: lead.balance || '',
+          pix: lead.pix || '',
+          pix_key: lead.pix_key || '',
+          simulation: lead.simulation || '',
+          balance_error: lead.balance_error || '',
+          proposal_error: lead.proposal_error || '',
+          parcelas: lead.parcelas || null,
+          provider: lead.provider || 'cartos',
+          proposal_value: lead.proposal_value || '',
+          proposal_status: lead.proposal_status || '',
+          proposal_id: lead.proposal_id || '',
+          error_reason: lead.error_reason || '',
+          ressaque_tag: lead.ressaque_tag || false,
+          created_at: lead.created_at || '',
+          updated_at: lead.updated_at || ''
+        })
+      }
+      setEditModalOpen(true)
+    } catch (error) {
+      console.error('Erro ao buscar dados do lead:', error)
+      // Fallback: usar dados limitados da tabela
+      setEditingLead({
+        id: lead.id,
+        name: lead.name || '',
+        cpf: lead.cpf || '',
+        email: lead.email || '',
+        phone: lead.phone || '',
+        status: lead.status || '',
+        data: lead.data || {},
+        rg: lead.rg || '',
+        nationality: lead.nationality || '',
+        is_pep: lead.is_pep || false,
+        birth: lead.birth || '',
+        marital_status: lead.marital_status || '',
+        person_type: lead.person_type || '',
+        mother_name: lead.mother_name || '',
+        cep: lead.cep || '',
+        estado: lead.estado || '',
+        cidade: lead.cidade || '',
+        bairro: lead.bairro || '',
+        rua: lead.rua || '',
+        numero: lead.numero || '',
+        balance: lead.balance || '',
+        pix: lead.pix || '',
+        pix_key: lead.pix_key || '',
+        simulation: lead.simulation || '',
+        balance_error: lead.balance_error || '',
+        proposal_error: lead.proposal_error || '',
+        parcelas: lead.parcelas || null,
+        provider: lead.provider || 'cartos',
+        proposal_value: lead.proposal_value || '',
+        proposal_status: lead.proposal_status || '',
+        proposal_id: lead.proposal_id || '',
+        error_reason: lead.error_reason || '',
+        ressaque_tag: lead.ressaque_tag || false,
+        created_at: lead.created_at || '',
+        updated_at: lead.updated_at || ''
     })
     setEditModalOpen(true)
+    }
   }
 
   const saveLeadData = async () => {
     setIsSavingLead(true)
     setSaveError('')
     try {
+      // Preparar dados para envio, removendo campos que não devem ser enviados
+      const dataToSend = {
+        name: editingLead.name,
+        cpf: editingLead.cpf,
+        email: editingLead.email,
+        phone: editingLead.phone,
+        status: editingLead.status,
+        data: editingLead.data,
+        // Campos de documento
+        rg: editingLead.rg,
+        nationality: editingLead.nationality,
+        is_pep: editingLead.is_pep,
+        birth: editingLead.birth,
+        marital_status: editingLead.marital_status,
+        person_type: editingLead.person_type,
+        mother_name: editingLead.mother_name,
+        // Endereço
+        cep: editingLead.cep,
+        estado: editingLead.estado,
+        cidade: editingLead.cidade,
+        bairro: editingLead.bairro,
+        rua: editingLead.rua,
+        numero: editingLead.numero,
+        // Campos financeiros
+        balance: editingLead.balance,
+        pix: editingLead.pix,
+        pix_key: editingLead.pix_key,
+        simulation: editingLead.simulation,
+        balance_error: editingLead.balance_error,
+        proposal_error: editingLead.proposal_error,
+        parcelas: editingLead.parcelas,
+        // Outros campos
+        provider: editingLead.provider,
+        // Campos de proposta
+        proposal_value: editingLead.proposal_value,
+        proposal_status: editingLead.proposal_status,
+        proposal_id: editingLead.proposal_id,
+        // Campos de erro e status
+        error_reason: editingLead.error_reason,
+        ressaque_tag: editingLead.ressaque_tag
+      }
+
       const res = await fetch(`/api/leads/${editingLead.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
-        body: JSON.stringify(editingLead)
+        body: JSON.stringify(dataToSend)
       })
       const json = await res.json()
       if (json.success) {
@@ -770,38 +1154,341 @@ export default function Dashboard() {
   }
 
   const openProposalsHistory = async (lead) => {
+    console.log('[DASHBOARD] Abrindo histórico de propostas para lead:', lead)
     setIsLoadingProposals(true)
     try {
-      const res = await fetch(`/api/leads/${lead.id}/proposals`, { credentials: 'include' })
+      const url = `/api/leads/${lead.id}/proposals`
+      console.log('[DASHBOARD] Fazendo requisição para:', url)
+      
+      const res = await fetch(url, { credentials: 'include' })
+      console.log('[DASHBOARD] Status da resposta:', res.status)
+      
       const json = await res.json()
+      console.log('[DASHBOARD] Resposta da API:', json)
+      
       if (json.success) {
         setProposalsHistory(json.data || [])
         setSelectedLead(lead)
         setProposalsHistoryModalOpen(true)
+        console.log('[DASHBOARD] Modal de histórico aberto com sucesso')
+      } else {
+        console.error('[DASHBOARD] Erro na resposta da API:', json.message)
       }
     } catch (err) {
-      console.error('Erro ao carregar histórico de propostas:', err)
+      console.error('[DASHBOARD] Erro ao carregar histórico de propostas:', err)
     } finally {
       setIsLoadingProposals(false)
     }
   }
 
-  const repeatQuery = async (leadId) => {
+  const repeatQuery = async (leadId, provider = 'cartos', bankId = '') => {
     setRepeatingQuery(leadId)
     setRepeatError('')
     try {
-      const res = await fetch(`/api/leads/${leadId}/repeat-query`, {
-        method: 'POST',
+      // Primeiro, buscar dados completos do lead
+      const leadResponse = await fetch(`/api/leads/${leadId}`, {
         credentials: 'include'
       })
-      const json = await res.json()
-      if (!json.success) {
-        setRepeatError(json.message || 'Erro ao repetir consulta')
+      const leadData = await leadResponse.json()
+      
+      if (!leadData.success) {
+        throw new Error('Erro ao buscar dados do lead: ' + leadData.message)
       }
+      
+      // Buscar dados da credencial do banco selecionado
+      console.log('Buscando dados do banco com ID:', bankId)
+      const bankUrl = `/api/partner-credentials/${bankId}`
+      console.log('URL do banco:', bankUrl)
+      
+      const bankResponse = await fetch(bankUrl, {
+        credentials: 'include'
+      })
+      
+      console.log('Status da resposta do banco:', bankResponse.status)
+      console.log('Headers da resposta:', bankResponse.headers)
+      
+      if (!bankResponse.ok) {
+        const errorText = await bankResponse.text()
+        console.error('Erro na resposta do banco:', errorText)
+        throw new Error(`Erro HTTP ${bankResponse.status}: ${errorText}`)
+      }
+      
+      const bankData = await bankResponse.json()
+      console.log('Dados do banco recebidos:', bankData)
+      
+      if (!bankData.success) {
+        throw new Error('Erro ao buscar dados do banco: ' + bankData.message)
+      }
+      
+      // Preparar payload do webhook
+      console.log('Dados do lead:', leadData.data)
+      console.log('Dados do banco:', bankData.data)
+      console.log('User ID da credencial do banco:', bankData.data.user_id)
+      
+      // Verificar se os dados necessários estão presentes
+      if (!leadData.data || !bankData.data) {
+        throw new Error('Dados do lead ou banco não encontrados')
+      }
+      
+      // Verificar se o banco tem oauth_config
+      if (!bankData.data.oauth_config) {
+        console.warn('Banco não tem oauth_config, usando valores padrão')
+        bankData.data.oauth_config = {}
+      }
+      
+      // Verificar se o user_id está presente na credencial do banco
+      if (!bankData.data.user_id) {
+        throw new Error('user_id não encontrado na credencial do banco')
+      }
+      
+      const webhookPayload = [
+        {
+          cpf: leadData.data.cpf || '',
+          provider: provider,
+          nome: leadData.data.name || '',
+          grant_type: bankData.data.oauth_config.grant_type || 'password',
+          username: bankData.data.oauth_config.username || '',
+          password: bankData.data.oauth_config.password || '',
+          audience: bankData.data.oauth_config.audience || '',
+          scope: bankData.data.oauth_config.scope || '',
+          client_id: bankData.data.oauth_config.client_id || '',
+          user_id: bankData.data.user_id || '',
+          phone: leadData.data.phone || ''
+        }
+      ]
+      
+      console.log('Enviando webhook com payload:', webhookPayload)
+      
+      // Enviar webhook para o n8n
+      const webhookUrl = 'https://n8n-n8n.8cgx4t.easypanel.host/webhook/consulta_app'
+      console.log('Enviando webhook para:', webhookUrl)
+      console.log('Payload do webhook:', webhookPayload)
+      
+      const webhookResponse = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(webhookPayload)
+      })
+      
+      console.log('Status da resposta do webhook:', webhookResponse.status)
+      console.log('Headers da resposta do webhook:', webhookResponse.headers)
+      
+      // Verificar apenas se a requisição foi enviada com sucesso (status 2xx)
+      if (webhookResponse.status >= 200 && webhookResponse.status < 300) {
+        console.log('Webhook enviado com sucesso para o n8n')
+        
+        // Tentar ler a resposta para debug, mas não falhar se não conseguir
+        try {
+          const responseText = await webhookResponse.text()
+          console.log('Resposta do n8n:', responseText)
+        } catch (e) {
+          console.log('Não foi possível ler a resposta do n8n (normal)')
+        }
+      } else {
+        const errorText = await webhookResponse.text()
+        console.error('Erro na resposta do webhook:', errorText)
+        throw new Error(`Erro HTTP ${webhookResponse.status}: ${errorText}`)
+      }
+      
+      // Recarregar dados do dashboard após consulta bem-sucedida
+      await reloadDashboardData()
+      
     } catch (err) {
       setRepeatError('Erro ao repetir consulta: ' + err.message)
     } finally {
       setRepeatingQuery(null)
+    }
+  }
+
+  const fetchAvailableBanks = async () => {
+    try {
+      setLoadingBanks(true)
+      console.log('[DASHBOARD] Iniciando busca de bancos...')
+      
+      const response = await fetch('/api/partner-credentials', {
+        credentials: 'include'
+      })
+      
+      if (!response.ok) {
+        throw new Error(`Erro HTTP ${response.status}: ${response.statusText}`)
+      }
+      
+      const data = await response.json()
+      console.log('[DASHBOARD] Resposta da API de bancos:', data)
+      
+      if (data.success && data.data) {
+        // Filtrar apenas credenciais ativas
+        const activeCredentials = data.data.filter(cred => cred.status === 'active')
+        console.log('[DASHBOARD] Bancos ativos encontrados:', activeCredentials.length)
+        setAvailableBanks(activeCredentials)
+        
+        // Selecionar o primeiro banco por padrão se houver
+        if (activeCredentials.length > 0) {
+          setSelectedBank(activeCredentials[0].id)
+          console.log('[DASHBOARD] Banco padrão selecionado:', activeCredentials[0].name)
+        }
+      } else {
+        console.error('Erro ao carregar bancos:', data.message)
+        setAvailableBanks([])
+      }
+    } catch (error) {
+      console.error('Erro ao buscar bancos disponíveis:', error)
+      setAvailableBanks([])
+    } finally {
+      setLoadingBanks(false)
+      console.log('[DASHBOARD] Busca de bancos concluída')
+    }
+  }
+
+  const openProviderModal = async (lead) => {
+    console.log('[DASHBOARD] Abrindo modal para lead:', lead.name)
+    setSelectedLeadForQuery(lead)
+    setSelectedProvider('cartos') // Reset para padrão
+    setSelectedBank('') // Reset banco selecionado
+    setShowProviderModal(true)
+    
+    // Buscar bancos disponíveis imediatamente
+    fetchAvailableBanks() // Removido await para não bloquear a abertura do modal
+  }
+
+  const confirmRepeatQuery = async () => {
+    if (selectedLeadForQuery) {
+      if (!selectedBank) {
+        setRepeatError('Por favor, selecione um banco')
+        return
+      }
+      
+      await repeatQuery(selectedLeadForQuery.id, selectedProvider, selectedBank)
+      setShowProviderModal(false)
+      setSelectedLeadForQuery(null)
+    }
+  }
+
+  const openCreateProposalModal = async (lead) => {
+    console.log('[DASHBOARD] Abrindo modal de criar proposta para lead:', lead.name)
+    setSelectedLeadForProposal(lead)
+    setCreateProposalError('')
+    setSelectedProvider('cartos') // Reset para padrão
+    setSelectedBank('') // Reset banco selecionado
+    
+    try {
+      // Buscar dados completos do lead
+      const response = await fetch(`/api/leads/${lead.id}`, {
+        credentials: 'include'
+      })
+      const data = await response.json()
+      
+      if (data.success) {
+        const leadData = data.data
+        
+        // Preparar dados do formulário
+        const formData = {
+          // Dados do lead
+          name: leadData.name || '',
+          cpf: leadData.cpf || '',
+          rg: leadData.rg || '',
+          motherName: leadData.mother_name || leadData.motherName || '',
+          email: leadData.email || '',
+          birthDate: leadData.birth || leadData.birthDate || '',
+          maritalStatus: leadData.marital_status || leadData.maritalStatus || '',
+          phone: leadData.phone || '',
+          postalCode: leadData.cep || leadData.postalCode || '',
+          addressNumber: leadData.address_number || leadData.addressNumber || '',
+          chavePix: leadData.chave_pix || leadData.chavePix || ''
+        }
+        
+        setProposalFormData(formData)
+        setCreateProposalModalOpen(true)
+        
+        // Buscar bancos disponíveis imediatamente
+        fetchAvailableBanks()
+      } else {
+        console.error('Erro ao buscar dados do lead:', data.message)
+        setCreateProposalError('Erro ao carregar dados do lead')
+      }
+    } catch (error) {
+      console.error('Erro ao abrir modal de criar proposta:', error)
+      setCreateProposalError('Erro ao carregar dados')
+    }
+  }
+
+  const createProposal = async () => {
+    if (!selectedLeadForProposal) return
+    
+    if (!selectedBank) {
+      setCreateProposalError('Por favor, selecione um banco')
+      return
+    }
+    
+    setIsCreatingProposal(true)
+    setCreateProposalError('')
+    
+    try {
+      // Buscar dados do partner_credentials selecionado
+      const credentialsResponse = await fetch(`/api/partner-credentials/${selectedBank}`, {
+        credentials: 'include'
+      })
+      const credentialsData = await credentialsResponse.json()
+      
+      if (!credentialsData.success) {
+        throw new Error('Erro ao buscar dados do banco selecionado')
+      }
+      
+      const bankData = credentialsData.data
+      
+      const payload = [{
+        name: proposalFormData.name,
+        cpf: proposalFormData.cpf,
+        rg: proposalFormData.rg,
+        motherName: proposalFormData.motherName,
+        email: proposalFormData.email,
+        birthDate: proposalFormData.birthDate,
+        maritalStatus: proposalFormData.maritalStatus,
+        phone: proposalFormData.phone,
+        postalCode: proposalFormData.postalCode,
+        addressNumber: proposalFormData.addressNumber,
+        chavePix: proposalFormData.chavePix,
+        grant_type: bankData.grant_type || '',
+        username: bankData.username || '',
+        password: bankData.password || '',
+        audience: bankData.audience || '',
+        scope: bankData.scope || '',
+        client_id: bankData.client_id || '',
+        user_id: bankData.user_id || ''
+      }]
+      
+      console.log('[DASHBOARD] Enviando proposta para webhook:', payload)
+      
+      const webhookResponse = await fetch('https://n8n-n8n.8cgx4t.easypanel.host/webhook/criaPropostaApp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      })
+      
+      console.log('[DASHBOARD] Resposta do webhook:', webhookResponse.status)
+      
+      if (webhookResponse.status >= 200 && webhookResponse.status < 300) {
+        console.log('[DASHBOARD] Proposta criada com sucesso')
+        setCreateProposalModalOpen(false)
+        setSelectedLeadForProposal(null)
+        setProposalFormData({})
+        
+        // Recarregar dados do dashboard
+        await reloadDashboardData()
+      } else {
+        const errorText = await webhookResponse.text()
+        console.error('[DASHBOARD] Erro no webhook:', errorText)
+        setCreateProposalError('Erro ao criar proposta. Tente novamente.')
+      }
+    } catch (error) {
+      console.error('[DASHBOARD] Erro ao criar proposta:', error)
+      setCreateProposalError('Erro ao criar proposta. Tente novamente.')
+    } finally {
+      setIsCreatingProposal(false)
     }
   }
 
@@ -1326,16 +2013,18 @@ export default function Dashboard() {
                     <td className="px-4 py-3 text-white">
                       <StatusBadge status={prop.status} />
                     </td>
-                    <td className="px-4 py-3 text-white">{prop.updated_at}</td>
+                    <td className="px-4 py-3 text-white">{extractDateFromFormatted(prop.updated_at)}</td>
                     <td className="px-4 py-3 flex gap-2 text-white">
                       <button className="p-1 rounded bg-cyan-700/70 hover:bg-cyan-500 transition-colors" title="Visualizar" onClick={() => { setSelectedProposal(prop); setViewModalOpen(true); }}>
                         <FaEye className="w-4 h-4 text-white" />
                       </button>
+                      {['formalization', 'pending'].includes((prop.status || '').toLowerCase()) && (
                       <button className="p-1 rounded bg-purple-700/70 hover:bg-purple-500 transition-colors" title="Editar" onClick={() => openEditModal(prop)}>
                         <FaEdit className="w-4 h-4 text-white" />
                       </button>
-                      {prop.value && (
-                        <button className="p-1 rounded bg-blue-700/70 hover:bg-blue-500 transition-colors" title="Ver histórico de propostas" onClick={() => openProposalsHistory(prop)}>
+                      )}
+                      {prop.value && prop.lead_id && prop.lead_id !== '-' && (
+                        <button className="p-1 rounded bg-blue-700/70 hover:bg-blue-500 transition-colors" title="Ver histórico de propostas" onClick={() => openProposalsHistory({ id: prop.lead_id, name: prop.lead_name })}>
                           <FaFileAlt className="w-4 h-4 text-white" />
                         </button>
                       )}
@@ -1437,16 +2126,43 @@ export default function Dashboard() {
                     <td className="px-4 py-3 text-white">{lead.cpf}</td>
                     <td className="px-4 py-3 text-white">{lead.saldo}</td>
                     <td className="px-4 py-3 text-white">{lead.simulado}</td>
-                    <td className="px-4 py-3 text-white">{lead.updated_at}</td>
+                    <td className="px-4 py-3 text-white">{extractDateFromFormatted(lead.updated_at)}</td>
                     <td className={`px-4 py-3 ${lead.erro ? 'text-red-400' : 'text-white'}`}>{lead.erro || '-'}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         <button 
                           className="p-1 rounded bg-purple-700/70 hover:bg-purple-500 transition-colors" 
                           title="Ver detalhes do lead"
-                          onClick={() => {
+                          onClick={async () => {
+                            if (!lead.id) {
+                              console.error('ID do lead não encontrado:', lead)
+                              // Fallback: usar dados limitados da tabela
                             setSelectedLead(lead)
                             setViewLeadModalOpen(true)
+                              return
+                            }
+                            
+                            try {
+                              // Buscar dados completos do lead
+                              const response = await fetch(`/api/leads/${lead.id}`, {
+                                credentials: 'include'
+                              })
+                              const data = await response.json()
+                              if (data.success) {
+                                setSelectedLead(data.data)
+                                setViewLeadModalOpen(true)
+                              } else {
+                                console.error('Erro ao buscar dados do lead:', data.message)
+                                // Fallback: usar dados limitados da tabela
+                                setSelectedLead(lead)
+                                setViewLeadModalOpen(true)
+                              }
+                            } catch (error) {
+                              console.error('Erro ao buscar dados do lead:', error)
+                              // Fallback: usar dados limitados da tabela
+                              setSelectedLead(lead)
+                              setViewLeadModalOpen(true)
+                            }
                           }}
                         >
                           <FaEye className="w-4 h-4 text-white" />
@@ -1460,7 +2176,7 @@ export default function Dashboard() {
                           <FaEdit className="w-4 h-4 text-white" />
                         </button>
                         
-                        {lead.proposal_value && (
+                        {lead.hasProposals && (
                           <button 
                             className="p-1 rounded bg-blue-700/70 hover:bg-blue-500 transition-colors" 
                             title="Ver histórico de propostas"
@@ -1473,7 +2189,7 @@ export default function Dashboard() {
                         <button 
                           className="p-1 rounded bg-green-700/70 hover:bg-green-500 transition-colors" 
                           title="Repetir consulta"
-                          onClick={() => repeatQuery(lead.id)}
+                          onClick={() => openProviderModal(lead)}
                           disabled={repeatingQuery === lead.id}
                         >
                           {repeatingQuery === lead.id ? (
@@ -1481,6 +2197,36 @@ export default function Dashboard() {
                           ) : (
                             <FaRedo className="w-4 h-4 text-white" />
                           )}
+                        </button>
+                        
+                                <button
+          className={`p-1 rounded transition-colors ${
+            !lead.erro && lead.simulado && lead.simulado.includes('R$')
+              ? 'bg-orange-700/70 hover:bg-orange-500'
+              : 'bg-gray-600 cursor-not-allowed opacity-50'
+          }`}
+          title={
+            !lead.erro && lead.simulado && lead.simulado.includes('R$')
+              ? 'Criar proposta'
+              : `Debug: erro="${lead.erro}", simulado="${lead.simulado}", type="${typeof lead.simulado}"`
+          }
+          onClick={() => {
+            const condition = !lead.erro && lead.simulado && lead.simulado.includes('R$')
+            console.log('[DEBUG] Lead data:', {
+              name: lead.name,
+              erro: lead.erro,
+              erroType: typeof lead.erro,
+              simulado: lead.simulado,
+              simuladoType: typeof lead.simulado,
+              condition: condition,
+              part1: !lead.erro,
+              part2: lead.simulado && lead.simulado.includes('R$')
+            })
+            openCreateProposalModal(lead)
+          }}
+          disabled={!(!lead.erro && lead.simulado && lead.simulado.includes('R$'))}
+        >
+          <FaPlus className="w-4 h-4 text-white" />
                         </button>
                       </div>
                     </td>
@@ -1617,6 +2363,1149 @@ export default function Dashboard() {
             </div>
           </Dialog>
         </Transition.Root>
+
+        {/* Modal de Edição de Lead */}
+        <Transition.Root show={editModalOpen} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={() => setEditModalOpen(false)}>
+            <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
+              <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
+            </Transition.Child>
+            <div className="fixed inset-0 z-50 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
+                  <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700">
+                    <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
+                      Editar Dados Pessoais
+                    </Dialog.Title>
+                    
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                      {/* Coluna Esquerda */}
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Informações Básicas</h4>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Nome</label>
+                          <input
+                            type="text"
+                            value={editingLead.name || ''}
+                            onChange={(e) => setEditingLead({...editingLead, name: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">CPF</label>
+                          <input
+                            type="text"
+                            value={editingLead.cpf || ''}
+                            onChange={(e) => setEditingLead({...editingLead, cpf: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Email</label>
+                          <input
+                            type="email"
+                            value={editingLead.email || ''}
+                            onChange={(e) => setEditingLead({...editingLead, email: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Telefone</label>
+                          <input
+                            type="text"
+                            value={editingLead.phone || ''}
+                            onChange={(e) => setEditingLead({...editingLead, phone: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">RG</label>
+                          <input
+                            type="text"
+                            value={editingLead.rg || ''}
+                            onChange={(e) => setEditingLead({...editingLead, rg: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Nacionalidade</label>
+                          <input
+                            type="text"
+                            value={editingLead.nationality || ''}
+                            onChange={(e) => setEditingLead({...editingLead, nationality: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Nascimento</label>
+                          <input
+                            type="date"
+                            value={editingLead.birth || ''}
+                            onChange={(e) => setEditingLead({...editingLead, birth: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Estado Civil</label>
+                          <input
+                            type="text"
+                            value={editingLead.marital_status || ''}
+                            onChange={(e) => setEditingLead({...editingLead, marital_status: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo de Pessoa</label>
+                          <input
+                            type="text"
+                            value={editingLead.person_type || ''}
+                            onChange={(e) => setEditingLead({...editingLead, person_type: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Nome da Mãe</label>
+                          <input
+                            type="text"
+                            value={editingLead.mother_name || ''}
+                            onChange={(e) => setEditingLead({...editingLead, mother_name: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                      </div>
+                      
+                      {/* Coluna Direita */}
+                      <div className="space-y-4">
+                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Endereço</h4>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">CEP</label>
+                          <input
+                            type="text"
+                            value={editingLead.cep || ''}
+                            onChange={(e) => setEditingLead({...editingLead, cep: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Estado</label>
+                          <input
+                            type="text"
+                            value={editingLead.estado || ''}
+                            onChange={(e) => setEditingLead({...editingLead, estado: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Cidade</label>
+                          <input
+                            type="text"
+                            value={editingLead.cidade || ''}
+                            onChange={(e) => setEditingLead({...editingLead, cidade: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Bairro</label>
+                          <input
+                            type="text"
+                            value={editingLead.bairro || ''}
+                            onChange={(e) => setEditingLead({...editingLead, bairro: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Rua</label>
+                          <input
+                            type="text"
+                            value={editingLead.rua || ''}
+                            onChange={(e) => setEditingLead({...editingLead, rua: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Número</label>
+                          <input
+                            type="text"
+                            value={editingLead.numero || ''}
+                            onChange={(e) => setEditingLead({...editingLead, numero: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <h4 className="text-sm font-semibold text-cyan-300 mb-4 mt-6">Informações Financeiras</h4>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Saldo</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={editingLead.balance || ''}
+                            onChange={(e) => setEditingLead({...editingLead, balance: e.target.value})}
+                            placeholder="0,00"
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Simulação</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={editingLead.simulation || ''}
+                            onChange={(e) => setEditingLead({...editingLead, simulation: e.target.value})}
+                            placeholder="0,00"
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Valor da Proposta</label>
+                          <input
+                            type="number"
+                            step="0.01"
+                            min="0"
+                            value={editingLead.proposal_value || ''}
+                            onChange={(e) => setEditingLead({...editingLead, proposal_value: e.target.value})}
+                            placeholder="0,00"
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Status da Proposta</label>
+                          <select
+                            value={editingLead.proposal_status || ''}
+                            onChange={(e) => setEditingLead({...editingLead, proposal_status: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          >
+                            <option value="">Selecione...</option>
+                            <option value="pending">Pendente</option>
+                            <option value="approved">Aprovada</option>
+                            <option value="rejected">Rejeitada</option>
+                            <option value="paid">Paga</option>
+                            <option value="cancelled">Cancelada</option>
+                          </select>
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">ID da Proposta</label>
+                          <input
+                            type="text"
+                            value={editingLead.proposal_id || ''}
+                            onChange={(e) => setEditingLead({...editingLead, proposal_id: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Consulta</label>
+                          <input
+                            type="text"
+                            value={editingLead.balance_error || ''}
+                            onChange={(e) => setEditingLead({...editingLead, balance_error: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Proposta</label>
+                          <input
+                            type="text"
+                            value={editingLead.proposal_error || ''}
+                            onChange={(e) => setEditingLead({...editingLead, proposal_error: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Erro</label>
+                          <input
+                            type="text"
+                            value={editingLead.error_reason || ''}
+                            onChange={(e) => setEditingLead({...editingLead, error_reason: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo da Chave PIX</label>
+                          <input
+                            type="text"
+                            value={editingLead.pix || ''}
+                            onChange={(e) => setEditingLead({...editingLead, pix: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
+                          <input
+                            type="text"
+                            value={editingLead.pix_key || ''}
+                            onChange={(e) => setEditingLead({...editingLead, pix_key: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          />
+                        </div>
+                        
+                        <h4 className="text-sm font-semibold text-cyan-300 mb-4 mt-6">Configurações</h4>
+                        
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">Provedor</label>
+                          <select
+                            value={editingLead.provider || 'cartos'}
+                            onChange={(e) => setEditingLead({...editingLead, provider: e.target.value})}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          >
+                            <option value="cartos">Cartos</option>
+                            <option value="qi">QI</option>
+                          </select>
+                        </div>
+                        
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            id="is_pep"
+                            checked={editingLead.is_pep || false}
+                            onChange={(e) => setEditingLead({...editingLead, is_pep: e.target.checked})}
+                            className="w-4 h-4 text-cyan-600 bg-gray-800 border-gray-600 rounded focus:ring-cyan-500 focus:ring-2"
+                          />
+                          <label htmlFor="is_pep" className="ml-2 text-sm font-medium text-cyan-300">
+                            Pessoa Exposta Politicamente (PEP)
+                          </label>
+                        </div>
+                        
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            id="ressaque_tag"
+                            checked={editingLead.ressaque_tag || false}
+                            onChange={(e) => setEditingLead({...editingLead, ressaque_tag: e.target.checked})}
+                            className="w-4 h-4 text-cyan-600 bg-gray-800 border-gray-600 rounded focus:ring-cyan-500 focus:ring-2"
+                          />
+                          <label htmlFor="ressaque_tag" className="ml-2 text-sm font-medium text-cyan-300">
+                            Tag de Ressaque
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {saveError && (
+                      <div className="mt-4 text-red-400 text-sm">{saveError}</div>
+                    )}
+                    
+                    <div className="mt-6 flex justify-end gap-3">
+                      <button 
+                        type="button" 
+                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                        onClick={() => setEditModalOpen(false)}
+                      >
+                        Cancelar
+                      </button>
+                      <button 
+                        type="button" 
+                        className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60" 
+                        onClick={saveLeadData}
+                        disabled={isSavingLead}
+                      >
+                        {isSavingLead ? (
+                          <>
+                            <FaSpinner className="animate-spin mr-2 w-4 h-4" />
+                            Salvando...
+                          </>
+                        ) : (
+                          'Salvar'
+                        )}
+                      </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition.Root>
+
+        {/* Modal de Visualização de Lead */}
+        <Transition.Root show={viewLeadModalOpen} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={() => setViewLeadModalOpen(false)}>
+            <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
+              <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
+            </Transition.Child>
+            <div className="fixed inset-0 z-50 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
+                  <Dialog.Panel className="w-full max-w-6xl transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700">
+                    <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
+                      Detalhes do Lead - {selectedLead?.name}
+                    </Dialog.Title>
+                    
+                    {selectedLead && (
+                      <div className="space-y-6">
+                        {/* Informações Básicas */}
+                        <div>
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Informações Básicas</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Nome</label>
+                              <p className="text-white">{selectedLead.name || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">CPF</label>
+                              <p className="text-white">{selectedLead.cpf || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Email</label>
+                              <p className="text-white">{selectedLead.email || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Telefone</label>
+                              <p className="text-white">{selectedLead.phone || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">RG</label>
+                              <p className="text-white">{selectedLead.rg || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Nacionalidade</label>
+                              <p className="text-white">{selectedLead.nationality || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Nascimento</label>
+                              <p className="text-white">{selectedLead.birth || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Estado Civil</label>
+                              <p className="text-white">{selectedLead.marital_status || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo de Pessoa</label>
+                              <p className="text-white">{selectedLead.person_type || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Nome da Mãe</label>
+                              <p className="text-white">{selectedLead.mother_name || '-'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Endereço */}
+                        <div>
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Endereço</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">CEP</label>
+                              <p className="text-white">{selectedLead.cep || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Estado</label>
+                              <p className="text-white">{selectedLead.estado || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Cidade</label>
+                              <p className="text-white">{selectedLead.cidade || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Bairro</label>
+                              <p className="text-white">{selectedLead.bairro || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Rua</label>
+                              <p className="text-white">{selectedLead.rua || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Número</label>
+                              <p className="text-white">{selectedLead.numero || '-'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Informações Financeiras */}
+                        <div>
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Informações Financeiras</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Saldo</label>
+                              <p className="text-white">{formatCurrency(selectedLead.balance)}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Simulação</label>
+                              <p className="text-white">{formatCurrency(selectedLead.simulation)}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Valor da Proposta</label>
+                              <p className="text-white">{formatCurrency(selectedLead.proposal_value)}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Status da Proposta</label>
+                              <p className="text-white">{selectedLead.proposal_status || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">ID da Proposta</label>
+                              <p className="text-white">{selectedLead.proposal_id || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo da Chave PIX</label>
+                              <p className="text-white">{selectedLead.pix || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
+                              <p className="text-white">{selectedLead.pix_key || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Consulta</label>
+                              <p className="text-red-400 text-sm">{selectedLead.balance_error || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Proposta</label>
+                              <p className="text-red-400 text-sm">{selectedLead.proposal_error || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Erro</label>
+                              <p className="text-red-400 text-sm">{selectedLead.error_reason || '-'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Parcelas */}
+                        {selectedLead.parcelas && selectedLead.parcelas.length > 0 && (
+                          <div className="md:w-1/2">
+                            <div className="flex justify-between items-center mb-4">
+                              <h4 className="text-sm font-semibold text-cyan-300">Parcelas do Saldo</h4>
+                              <span className="text-xs text-gray-400 bg-gray-700 px-2 py-1 rounded-full">
+                                {selectedLead.parcelas.length} parcela{selectedLead.parcelas.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                            <div className="bg-gray-800 p-3 rounded-lg max-h-48 overflow-y-auto">
+                              {formatParcelas(selectedLead.parcelas).map((parcela, index) => {
+                                return (
+                                  <div key={index} className="flex justify-between items-center text-white text-sm mb-1 last:mb-0 border-b border-gray-700 pb-1 last:border-b-0">
+                                    <span className="font-medium text-cyan-300">
+                                      {parcela.ano !== '-' ? `${parcela.ano}` : `Parcela ${index + 1}`}:
+                                    </span>
+                                    <span className="font-semibold">{parcela.valor}</span>
+                                  </div>
+                                )
+                              })}
+                              {/* Resumo total */}
+                              <div className="mt-3 pt-2 border-t border-gray-600">
+                                <div className="flex justify-between items-center text-white text-sm font-bold">
+                                  <span className="text-cyan-300">Total:</span>
+                                  <span>
+                                    {formatCurrency(
+                                      formatParcelas(selectedLead.parcelas)
+                                        .filter(p => p.valor !== '-')
+                                        .reduce((total, p) => {
+                                          // Extrair valor numérico da string formatada
+                                          const valorStr = p.valor.replace(/[^\d,]/g, '').replace(',', '.')
+                                          const valor = parseFloat(valorStr)
+                                          return total + (isNaN(valor) ? 0 : valor)
+                                        }, 0)
+                                    )}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Status e Metadados */}
+                        <div>
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Status e Metadados</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Status</label>
+                              <p className="text-white">{selectedLead.status || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Provedor</label>
+                              <p className="text-white">{selectedLead.provider || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Pessoa Exposta Politicamente (PEP)</label>
+                              <p className="text-white">
+                                {selectedLead.is_pep ? (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                                    Sim
+                                  </span>
+                                ) : 'Não'}
+                              </p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Tag de Ressaque</label>
+                              <p className="text-white">
+                                {selectedLead.ressaque_tag ? (
+                                  <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                                    Ressaque
+                                  </span>
+                                ) : 'Não'}
+                              </p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Criação</label>
+                              <p className="text-white">{selectedLead.created_at ? new Date(selectedLead.created_at).toLocaleString('pt-BR') : '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Última Atualização</label>
+                              <p className="text-white">{selectedLead.updated_at ? new Date(selectedLead.updated_at).toLocaleString('pt-BR') : '-'}</p>
+                            </div>
+                          </div>
+                          
+                          {/* Dados Adicionais */}
+                          {selectedLead.data && Object.keys(selectedLead.data).length > 0 && (
+                            <div className="mt-4">
+                              <label className="block text-sm font-medium text-cyan-300 mb-2">Dados Adicionais</label>
+                              <div className="bg-gray-800 p-3 rounded-lg max-h-32 overflow-y-auto">
+                                <pre className="text-white text-xs overflow-auto">{JSON.stringify(selectedLead.data, null, 2)}</pre>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    )}
+                    
+                    <div className="mt-6 flex justify-end">
+                      <button 
+                        type="button" 
+                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                        onClick={() => setViewLeadModalOpen(false)}
+                      >
+                        Fechar
+                      </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition.Root>
+
+        {/* Modal de Histórico de Propostas */}
+        <Transition.Root show={proposalsHistoryModalOpen} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={() => setProposalsHistoryModalOpen(false)}>
+            <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
+              <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
+            </Transition.Child>
+            <div className="fixed inset-0 z-50 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
+                  <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700">
+                    <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
+                      Histórico de Propostas - {selectedLead?.name}
+                    </Dialog.Title>
+                    
+                    {isLoadingProposals ? (
+                      <div className="flex justify-center items-center py-8">
+                        <FaSpinner className="w-8 h-8 text-cyan-500 animate-spin" />
+                        <span className="ml-3 text-white">Carregando propostas...</span>
+                      </div>
+                    ) : proposalsHistory.length === 0 ? (
+                      <div className="text-center py-8">
+                        <FaFileAlt className="w-12 h-12 text-gray-500 mx-auto mb-4" />
+                        <p className="text-gray-400">Nenhuma proposta encontrada para este lead.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-4">
+                        <div className="bg-gray-800 rounded-lg p-4">
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-3">Lista de Propostas</h4>
+                          <div className="space-y-2 max-h-64 overflow-y-auto">
+                            {proposalsHistory.map((proposal, index) => (
+                              <div 
+                                key={proposal.id || index}
+                                className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                                  selectedProposal && (selectedProposal.id === proposal.id || selectedProposal.proposal_id === proposal.proposal_id)
+                                    ? 'border-cyan-500 bg-cyan-900/20' 
+                                    : 'border-gray-600 bg-gray-700 hover:bg-gray-600'
+                                }`}
+                                onClick={() => {
+                                  if (selectedProposal && (selectedProposal.id === proposal.id || selectedProposal.proposal_id === proposal.proposal_id)) {
+                                    setSelectedProposal(null) // Fechar detalhes se clicar no mesmo item
+                                  } else {
+                                    setSelectedProposal(proposal) // Abrir detalhes se clicar em item diferente
+                                  }
+                                }}
+                              >
+                                <div className="flex justify-between items-start">
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2 mb-1">
+                                      <span className="text-sm font-medium text-white">
+                                        Proposta #{proposal.proposal_id || proposal.id}
+                                      </span>
+                                      <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                                        proposal.status === 'approved' ? 'bg-green-500/20 text-green-400' :
+                                        proposal.status === 'pending' ? 'bg-yellow-500/20 text-yellow-400' :
+                                        proposal.status === 'rejected' ? 'bg-red-500/20 text-red-400' :
+                                        proposal.status === 'paid' ? 'bg-emerald-500/20 text-emerald-400' :
+                                        'bg-gray-500/20 text-gray-400'
+                                      }`}>
+                                        {proposal.status === 'approved' ? 'Aprovada' :
+                                         proposal.status === 'pending' ? 'Pendente' :
+                                         proposal.status === 'rejected' ? 'Rejeitada' :
+                                         proposal.status === 'paid' ? 'Paga' :
+                                         proposal.status || 'Desconhecido'}
+                                      </span>
+                                    </div>
+                                    <div className="text-xs text-gray-400">
+                                      <span>Valor: {formatCurrency(proposal.value || proposal.amount)}</span>
+                                      <span className="mx-2">•</span>
+                                      <span>Criada em: {formatDate(proposal.created_at)}</span>
+                                    </div>
+                                  </div>
+                                  <FaChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${
+                                    selectedProposal && (selectedProposal.id === proposal.id || selectedProposal.proposal_id === proposal.proposal_id) ? 'rotate-90' : ''
+                                  }`} />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Detalhes da Proposta Selecionada */}
+                        {selectedProposal && (
+                          <div className="bg-gray-800 rounded-lg p-4">
+                            <h4 className="text-sm font-semibold text-cyan-300 mb-4">Dados do Proposta</h4>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {/* ID da Proposta */}
+                              <div>
+                                <label className="block text-sm font-medium text-cyan-300 mb-1">ID da Proposta</label>
+                                <p className="text-white text-sm break-all">{selectedProposal.proposal_id || selectedProposal.id}</p>
+                              </div>
+                              
+                              {/* Valor */}
+                              <div>
+                                <label className="block text-sm font-medium text-cyan-300 mb-1">Valor</label>
+                                <p className="text-white">{formatCurrency(selectedProposal.value || selectedProposal.amount)}</p>
+                              </div>
+                              
+                              {/* Status */}
+                              <div>
+                                <label className="block text-sm font-medium text-cyan-300 mb-1">Status</label>
+                                <p className="text-white">{selectedProposal.status || '-'}</p>
+                              </div>
+                              
+                              {/* Data de Criação */}
+                              <div>
+                                <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Criação</label>
+                                <p className="text-white">{formatDate(selectedProposal.created_at)}</p>
+                              </div>
+                              
+                              {/* Data de Atualização */}
+                              <div>
+                                <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Atualização</label>
+                                <p className="text-white">{formatDate(selectedProposal.updated_at)}</p>
+                              </div>
+                              
+                              {/* Número do Contrato */}
+                              <div>
+                                <label className="block text-sm font-medium text-cyan-300 mb-1">Número do Contrato</label>
+                                <p className="text-white">{selectedProposal['Número contrato'] || '-'}</p>
+                              </div>
+                              
+                              {/* Link de Formalização */}
+                              <div>
+                                <label className="block text-sm font-medium text-cyan-300 mb-1">Link de Formalização</label>
+                                {selectedProposal['Link de formalização'] ? (
+                                  <a 
+                                    href={selectedProposal['Link de formalização']} 
+                                    target="_blank" 
+                                    rel="noopener noreferrer"
+                                    className="text-cyan-400 hover:text-cyan-300 underline break-all text-sm"
+                                  >
+                                    {selectedProposal['Link de formalização']}
+                                  </a>
+                                ) : (
+                                  <p className="text-white">-</p>
+                                )}
+                              </div>
+                              
+                              {/* Status Reason */}
+                              <div>
+                                <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Status</label>
+                                <p className="text-white">{selectedProposal.status_reason || '-'}</p>
+                              </div>
+                              
+                              {/* Status Description */}
+                              <div>
+                                <label className="block text-sm font-medium text-cyan-300 mb-1">Descrição do Status</label>
+                                <p className="text-white">{selectedProposal.status_description || '-'}</p>
+                              </div>
+                              
+                              {/* Error Reason */}
+                              <div>
+                                <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Erro</label>
+                                <p className="text-white">{selectedProposal.error_reason || '-'}</p>
+                              </div>
+                              
+                              {/* Chave PIX */}
+                              <div>
+                                <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
+                                <p className="text-white">{selectedProposal.chavePix || '-'}</p>
+                              </div>
+                              
+                              {/* Metadados - Ocupa toda a largura */}
+                              {selectedProposal.metadata && Object.keys(selectedProposal.metadata).length > 0 && (
+                                <div className="md:col-span-2">
+                                  <label className="block text-sm font-medium text-cyan-300 mb-2">Metadados</label>
+                                  <div className="bg-gray-700 p-3 rounded-lg max-h-32 overflow-y-auto">
+                                    <pre className="text-white text-xs overflow-auto">{JSON.stringify(selectedProposal.metadata, null, 2)}</pre>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    
+                    <div className="mt-6 flex justify-end gap-3">
+                      <button 
+                        type="button" 
+                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                        onClick={() => setProposalsHistoryModalOpen(false)}
+                      >
+                        Fechar
+                      </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition.Root>
+
+        {/* Modal de Seleção de Provedor */}
+        <Transition.Root show={showProviderModal} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={() => setShowProviderModal(false)}>
+            <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
+              <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
+            </Transition.Child>
+            <div className="fixed inset-0 z-50 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
+                  <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700">
+                    <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-4">
+                      Selecionar Provedor
+                    </Dialog.Title>
+                    
+                                      <div className="mb-6">
+                    <p className="text-gray-200 mb-4">
+                      Selecione qual provedor e banco deseja usar para consultar o saldo do lead <strong className="text-cyan-300">{selectedLeadForQuery?.name}</strong>:
+                    </p>
+                    
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-cyan-300 mb-2">Provedor</label>
+                        <select
+                          value={selectedProvider}
+                          onChange={(e) => setSelectedProvider(e.target.value)}
+                          className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        >
+                          <option value="cartos">Cartos</option>
+                          <option value="qi">QI</option>
+                        </select>
+                      </div>
+                      
+                      <div>
+                        <label className="block text-sm font-medium text-cyan-300 mb-2">Banco</label>
+                        {loadingBanks ? (
+                          <div className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white flex items-center">
+                            <FaSpinner className="animate-spin mr-2 w-4 h-4" />
+                            Carregando bancos...
+                          </div>
+                        ) : availableBanks.length > 0 ? (
+                          <select
+                            value={selectedBank}
+                            onChange={(e) => setSelectedBank(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          >
+                            <option value="">Selecione um banco</option>
+                            {availableBanks.map((bank) => (
+                              <option key={bank.id} value={bank.id}>
+                                {bank.name} ({bank.partner_type})
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="w-full px-3 py-2 bg-gray-800 border border-red-500 rounded-lg text-red-400">
+                            Nenhum banco disponível. Cadastre credenciais na página de Parceiros.
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                    
+                    <div className="flex justify-end gap-3">
+                      <button 
+                        type="button" 
+                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                        onClick={() => setShowProviderModal(false)}
+                      >
+                        Cancelar
+                      </button>
+                      <button 
+                        type="button" 
+                        className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60" 
+                        onClick={confirmRepeatQuery}
+                        disabled={repeatingQuery === selectedLeadForQuery?.id}
+                      >
+                        {repeatingQuery === selectedLeadForQuery?.id ? (
+                          <>
+                            <FaSpinner className="animate-spin mr-2 w-4 h-4" />
+                            Consultando...
+                          </>
+                        ) : (
+                          'Confirmar Consulta'
+                        )}
+                      </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition.Root>
+
+        {/* Modal de Criar Proposta */}
+        <Transition.Root show={createProposalModalOpen} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={() => setCreateProposalModalOpen(false)}>
+            <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
+              <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
+            </Transition.Child>
+            <div className="fixed inset-0 z-50 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
+                  <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700 max-h-[90vh] overflow-y-auto">
+                    <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
+                      Criar Proposta - {selectedLeadForProposal?.name}
+                    </Dialog.Title>
+                    
+                    {createProposalError && (
+                      <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm">
+                        {createProposalError}
+                      </div>
+                    )}
+                    
+                    <div className="space-y-6">
+                      {/* Dados do Lead */}
+                      <div className="border-b border-gray-600 pb-4">
+                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Dados do Lead</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Nome</label>
+                            <input
+                              type="text"
+                              value={proposalFormData.name || ''}
+                              onChange={(e) => setProposalFormData({...proposalFormData, name: e.target.value})}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">CPF</label>
+                            <input
+                              type="text"
+                              value={proposalFormData.cpf || ''}
+                              onChange={(e) => setProposalFormData({...proposalFormData, cpf: e.target.value})}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">RG</label>
+                            <input
+                              type="text"
+                              value={proposalFormData.rg || ''}
+                              onChange={(e) => setProposalFormData({...proposalFormData, rg: e.target.value})}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Nome da Mãe</label>
+                            <input
+                              type="text"
+                              value={proposalFormData.motherName || ''}
+                              onChange={(e) => setProposalFormData({...proposalFormData, motherName: e.target.value})}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Email</label>
+                            <input
+                              type="email"
+                              value={proposalFormData.email || ''}
+                              onChange={(e) => setProposalFormData({...proposalFormData, email: e.target.value})}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Nascimento</label>
+                            <input
+                              type="date"
+                              value={proposalFormData.birthDate || ''}
+                              onChange={(e) => setProposalFormData({...proposalFormData, birthDate: e.target.value})}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Estado Civil</label>
+                            <select
+                              value={proposalFormData.maritalStatus || ''}
+                              onChange={(e) => setProposalFormData({...proposalFormData, maritalStatus: e.target.value})}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            >
+                              <option value="">Selecione</option>
+                              <option value="single">Solteiro</option>
+                              <option value="married">Casado</option>
+                              <option value="divorced">Divorciado</option>
+                              <option value="widowed">Viúvo</option>
+                            </select>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Telefone</label>
+                            <input
+                              type="text"
+                              value={proposalFormData.phone || ''}
+                              onChange={(e) => setProposalFormData({...proposalFormData, phone: e.target.value})}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">CEP</label>
+                            <input
+                              type="text"
+                              value={proposalFormData.postalCode || ''}
+                              onChange={(e) => setProposalFormData({...proposalFormData, postalCode: e.target.value})}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Número do Endereço</label>
+                            <input
+                              type="text"
+                              value={proposalFormData.addressNumber || ''}
+                              onChange={(e) => setProposalFormData({...proposalFormData, addressNumber: e.target.value})}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
+                            <input
+                              type="text"
+                              value={proposalFormData.chavePix || ''}
+                              onChange={(e) => setProposalFormData({...proposalFormData, chavePix: e.target.value})}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Seleção de Provedor e Banco */}
+                      <div className="border-b border-gray-600 pb-4">
+                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Configurações da Proposta</h4>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-2">Provedor</label>
+                            <select
+                              value={selectedProvider}
+                              onChange={(e) => setSelectedProvider(e.target.value)}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            >
+                              <option value="cartos">Cartos</option>
+                              <option value="qi">QI</option>
+                            </select>
+                          </div>
+                          
+                          <div>
+                            <label className="block text-sm font-medium text-cyan-300 mb-2">Banco</label>
+                            {loadingBanks ? (
+                              <div className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white flex items-center">
+                                <FaSpinner className="animate-spin mr-2 w-4 h-4" />
+                                Carregando bancos...
+                              </div>
+                            ) : availableBanks.length > 0 ? (
+                              <select
+                                value={selectedBank}
+                                onChange={(e) => setSelectedBank(e.target.value)}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              >
+                                <option value="">Selecione um banco</option>
+                                {availableBanks.map((bank) => (
+                                  <option key={bank.id} value={bank.id}>
+                                    {bank.name} ({bank.partner_type})
+                                  </option>
+                                ))}
+                              </select>
+                            ) : (
+                              <div className="w-full px-3 py-2 bg-gray-800 border border-red-500 rounded-lg text-red-400">
+                                Nenhum banco disponível. Cadastre credenciais na página de Parceiros.
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-6 flex justify-end gap-3">
+                      <button 
+                        type="button" 
+                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                        onClick={() => setCreateProposalModalOpen(false)}
+                        disabled={isCreatingProposal}
+                      >
+                        Cancelar
+                      </button>
+                      <button 
+                        type="button" 
+                        className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60" 
+                        onClick={createProposal}
+                        disabled={isCreatingProposal}
+                      >
+                        {isCreatingProposal ? (
+                          <>
+                            <FaSpinner className="animate-spin mr-2 w-4 h-4" />
+                            Criando Proposta...
+                          </>
+                        ) : (
+                          'Criar Proposta'
+                        )}
+                      </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition.Root>
+
+        {/* Toast de erro para repetir consulta */}
+        {repeatError && (
+          <div className="fixed bottom-4 right-4 bg-red-500/90 text-white p-4 rounded-lg shadow-lg z-50 max-w-md">
+            <div className="flex items-center gap-2">
+              <FaExclamationTriangle />
+              <span className="text-sm">{repeatError}</span>
+              <button 
+                onClick={() => setRepeatError('')}
+                className="ml-auto text-white/70 hover:text-white"
+              >
+                <FaTimes />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
     </>
   )

@@ -921,7 +921,7 @@ export function PartnerCredentialsPage() {
                     {showFilterDropdown && (
                       <div className="absolute right-0 z-10 mt-1 w-full bg-cyan-900/90 backdrop-blur-sm border border-cyan-800/50 shadow-lg rounded-md overflow-hidden">
                         <div className="py-1">
-                          {['Todos os tipos', 'V8', 'Caixa', 'Governo', 'Outro'].map((option) => (
+                          {['Todos os tipos', 'V8', 'Banrisul', 'BMP | Money Plus', 'I9', 'Digio', 'Fintex', 'Bankerize', 'Ágil', 'Smart', 'Outro'].map((option) => (
                             <button
                               key={option}
                               className={`flex w-full items-center px-4 py-3 text-sm text-white hover:bg-cyan-800/70 ${selectedFilter === option ? 'bg-cyan-800' : ''}`}
@@ -998,7 +998,7 @@ export function PartnerCredentialsPage() {
                           Nome
                         </th>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-cyan-100 uppercase tracking-wider">
-                          Tipo
+                          Banco
                         </th>
                         <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-cyan-100 uppercase tracking-wider">
                           Chave

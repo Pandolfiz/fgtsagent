@@ -34,8 +34,34 @@ class LeadController {
         throw error;
       }
 
-      logger.info(`[LEADS] Retornando ${leads?.length || 0} leads completos`);
-      return res.json({ success: true, data: leads || [] });
+      // Buscar propostas para verificar quais leads têm propostas
+      const { data: proposals, error: proposalsError } = await supabaseAdmin
+        .from('proposals')
+        .select('lead_id')
+        .eq('client_id', clientId);
+
+      if (proposalsError) {
+        logger.error(`[LEADS] Erro ao buscar propostas: ${proposalsError.message}`);
+      }
+
+      // Criar um Set com os lead_ids que têm propostas
+      const leadsWithProposals = new Set();
+      if (proposals) {
+        proposals.forEach(proposal => {
+          if (proposal.lead_id) {
+            leadsWithProposals.add(proposal.lead_id);
+          }
+        });
+      }
+
+      // Adicionar informação sobre propostas aos leads
+      const leadsWithProposalInfo = leads ? leads.map(lead => ({
+        ...lead,
+        hasProposals: leadsWithProposals.has(lead.id)
+      })) : [];
+
+      logger.info(`[LEADS] Retornando ${leadsWithProposalInfo?.length || 0} leads completos`);
+      return res.json({ success: true, data: leadsWithProposalInfo || [] });
     } catch (err) {
       logger.error('LeadController.listComplete error:', err.message || err);
       return res.status(500).json({ success: false, message: err.message });
@@ -107,7 +133,7 @@ class LeadController {
         balance: req.body.balance || null,
         pix: req.body.pix || null,
         pix_key: req.body.pix_key || null,
-        Simulation: req.body.Simulation || null,
+        simulation: req.body.simulation || null,
         balance_error: req.body.balance_error || null,
         proposal_error: req.body.proposal_error || null,
         parcelas: req.body.parcelas || null,
@@ -159,7 +185,7 @@ class LeadController {
       }
       
       const updateData = {};
-      ['name','cpf','email','phone','status','data','rg','nationality','is_pep','birth','marital_status','person_type','mother_name','cep','estado','cidade','bairro','rua','numero','balance','pix','pix_key','Simulation','balance_error','proposal_error','parcelas','provider'].forEach(field => {
+      ['name','cpf','email','phone','status','data','rg','nationality','is_pep','birth','marital_status','person_type','mother_name','cep','estado','cidade','bairro','rua','numero','balance','pix','pix_key','simulation','balance_error','proposal_error','parcelas','provider'].forEach(field => {
         if (req.body[field] !== undefined) {
           // Tratar campos vazios
           if (req.body[field] === '' || req.body[field] === undefined) {
