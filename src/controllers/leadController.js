@@ -87,23 +87,26 @@ class LeadController {
       
       logger.info(`[LEADS] Buscando lead ${id} para cliente ${clientId}`);
       
-      // Buscar o lead com todos os dados já sincronizados
-      const { data: lead, error } = await supabaseAdmin
+      // Primeiro verificar se o lead existe e pertence ao cliente
+      const { data: leads, error } = await supabaseAdmin
         .from('leads')
         .select('*')
         .eq('id', id)
-        .eq('client_id', clientId)
-        .single();
+        .eq('client_id', clientId);
         
       if (error) {
         logger.error(`[LEADS] Erro ao buscar lead ${id}:`, error.message);
         throw error;
       }
       
-      if (!lead) {
+      // Verificar se encontrou algum lead
+      if (!leads || leads.length === 0) {
         logger.warn(`[LEADS] Lead ${id} não encontrado para cliente ${clientId}`);
         return res.status(404).json({ success: false, message: 'Lead não encontrado' });
       }
+      
+      // Se encontrou múltiplos leads (caso raro), pegar o primeiro
+      const lead = leads[0];
       
       logger.info(`[LEADS] Lead ${id} encontrado com sucesso`);
       return res.json({ success: true, data: lead });

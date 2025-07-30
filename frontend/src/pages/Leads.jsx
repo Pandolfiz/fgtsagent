@@ -46,6 +46,9 @@ export default function Leads() {
   const [selectedProposal, setSelectedProposal] = useState(null)
   const [isLoadingProposals, setIsLoadingProposals] = useState(false)
   
+  // Estado separado para proposta selecionada no histórico
+  const [selectedProposalInHistory, setSelectedProposalInHistory] = useState(null)
+  
   // Estados para repetir consulta
   const [repeatingQuery, setRepeatingQuery] = useState(null)
   const [repeatError, setRepeatError] = useState('')
@@ -400,6 +403,8 @@ export default function Leads() {
       
       if (data.success) {
         setProposalsHistory(data.data)
+        // Limpar proposta selecionada no histórico ao abrir o modal
+        setSelectedProposalInHistory(null)
       } else {
         console.error('Erro na resposta:', data.message)
         setProposalsHistory([])
@@ -1867,18 +1872,18 @@ export default function Leads() {
                           {proposalsHistory.map((proposal, index) => (
                             <div 
                               key={proposal.id || index}
-                              className={`p-3 rounded-lg border cursor-pointer transition-colors ${
-                                selectedProposal && (selectedProposal.id === proposal.id || selectedProposal.proposal_id === proposal.proposal_id)
-                                  ? 'border-cyan-500 bg-cyan-900/20' 
-                                  : 'border-gray-600 bg-gray-700 hover:bg-gray-600'
-                              }`}
-                              onClick={() => {
-                                if (selectedProposal && (selectedProposal.id === proposal.id || selectedProposal.proposal_id === proposal.proposal_id)) {
-                                  setSelectedProposal(null) // Fechar detalhes se clicar no mesmo item
-                                } else {
-                                  setSelectedProposal(proposal) // Abrir detalhes se clicar em item diferente
-                                }
-                              }}
+                                                              className={`p-3 rounded-lg border cursor-pointer transition-colors ${
+                                  selectedProposalInHistory && (selectedProposalInHistory.id === proposal.id || selectedProposalInHistory.proposal_id === proposal.proposal_id)
+                                    ? 'border-cyan-500 bg-cyan-900/20' 
+                                    : 'border-gray-600 bg-gray-700 hover:bg-gray-600'
+                                }`}
+                                                              onClick={() => {
+                                  if (selectedProposalInHistory && (selectedProposalInHistory.id === proposal.id || selectedProposalInHistory.proposal_id === proposal.proposal_id)) {
+                                    setSelectedProposalInHistory(null) // Fechar detalhes se clicar no mesmo item
+                                  } else {
+                                    setSelectedProposalInHistory(proposal) // Abrir detalhes se clicar em item diferente
+                                  }
+                                }}
                             >
                               <div className="flex justify-between items-start">
                                 <div className="flex-1">
@@ -1904,67 +1909,67 @@ export default function Leads() {
                                     <span>Criada em: {formatDate(proposal.created_at)}</span>
                                   </div>
                                 </div>
-                                <FaChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${
-                                  selectedProposal && (selectedProposal.id === proposal.id || selectedProposal.proposal_id === proposal.proposal_id) ? 'rotate-90' : ''
-                                }`} />
+                                                                  <FaChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${
+                                    selectedProposalInHistory && (selectedProposalInHistory.id === proposal.id || selectedProposalInHistory.proposal_id === proposal.proposal_id) ? 'rotate-90' : ''
+                                  }`} />
                               </div>
                             </div>
                           ))}
                         </div>
                       </div>
 
-                      {/* Detalhes da Proposta Selecionada */}
-                      {selectedProposal && (
+                                              {/* Detalhes da Proposta Selecionada */}
+                        {selectedProposalInHistory && (
                         <div className="bg-gray-800 rounded-lg p-4">
                           <h4 className="text-sm font-semibold text-cyan-300 mb-4">Dados do Proposta</h4>
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             {/* ID da Proposta */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">ID da Proposta</label>
-                              <p className="text-white text-sm break-all">{selectedProposal.proposal_id || selectedProposal.id}</p>
+                                                              <p className="text-white text-sm break-all">{selectedProposalInHistory.proposal_id || selectedProposalInHistory.id}</p>
                             </div>
                             
                             {/* Valor */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Valor</label>
-                              <p className="text-white">{formatCurrency(selectedProposal.value || selectedProposal.amount)}</p>
+                              <p className="text-white">{formatCurrency(selectedProposalInHistory.value || selectedProposalInHistory.amount)}</p>
                             </div>
                             
                             {/* Status */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Status</label>
-                              <p className="text-white">{selectedProposal.status || '-'}</p>
+                              <p className="text-white">{selectedProposalInHistory.status || '-'}</p>
                             </div>
                             
                             {/* Data de Criação */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Criação</label>
-                              <p className="text-white">{formatDate(selectedProposal.created_at)}</p>
+                              <p className="text-white">{formatDate(selectedProposalInHistory.created_at)}</p>
                             </div>
                             
                             {/* Data de Atualização */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Atualização</label>
-                              <p className="text-white">{formatDate(selectedProposal.updated_at)}</p>
+                              <p className="text-white">{formatDate(selectedProposalInHistory.updated_at)}</p>
                             </div>
                             
                             {/* Número do Contrato */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Número do Contrato</label>
-                              <p className="text-white">{selectedProposal['Número contrato'] || '-'}</p>
+                                                              <p className="text-white">{selectedProposalInHistory['Número contrato'] || '-'}</p>
                             </div>
                             
                             {/* Link de Formalização */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Link de Formalização</label>
-                              {selectedProposal['Link de formalização'] ? (
+                              {selectedProposalInHistory['Link de formalização'] ? (
                                 <a 
-                                  href={selectedProposal['Link de formalização']} 
+                                  href={selectedProposalInHistory['Link de formalização']} 
                                   target="_blank" 
                                   rel="noopener noreferrer"
                                   className="text-cyan-400 hover:text-cyan-300 underline break-all text-sm"
                                 >
-                                  {selectedProposal['Link de formalização']}
+                                  {selectedProposalInHistory['Link de formalização']}
                                 </a>
                               ) : (
                                 <p className="text-white">-</p>
@@ -1974,33 +1979,33 @@ export default function Leads() {
                             {/* Status Reason */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Status</label>
-                              <p className="text-white">{selectedProposal.status_reason || '-'}</p>
+                              <p className="text-white">{selectedProposalInHistory.status_reason || '-'}</p>
                             </div>
                             
                             {/* Status Description */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Descrição do Status</label>
-                              <p className="text-white">{selectedProposal.status_description || '-'}</p>
+                              <p className="text-white">{selectedProposalInHistory.status_description || '-'}</p>
                             </div>
                             
                             {/* Error Reason */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Erro</label>
-                              <p className="text-white">{selectedProposal.error_reason || '-'}</p>
+                              <p className="text-white">{selectedProposalInHistory.error_reason || '-'}</p>
                             </div>
                             
                             {/* Chave PIX */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
-                              <p className="text-white">{selectedProposal.chavePix || '-'}</p>
+                              <p className="text-white">{selectedProposalInHistory.chavePix || '-'}</p>
                             </div>
                             
                             {/* Metadados - Ocupa toda a largura */}
-                            {selectedProposal.metadata && Object.keys(selectedProposal.metadata).length > 0 && (
+                            {selectedProposalInHistory.metadata && Object.keys(selectedProposalInHistory.metadata).length > 0 && (
                               <div className="md:col-span-2">
                                 <label className="block text-sm font-medium text-cyan-300 mb-2">Metadados</label>
                                 <div className="bg-gray-700 p-3 rounded-lg max-h-32 overflow-y-auto">
-                                  <pre className="text-white text-xs overflow-auto">{JSON.stringify(selectedProposal.metadata, null, 2)}</pre>
+                                  <pre className="text-white text-xs overflow-auto">{JSON.stringify(selectedProposalInHistory.metadata, null, 2)}</pre>
                                 </div>
                               </div>
                             )}
