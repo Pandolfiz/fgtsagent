@@ -77,16 +77,16 @@ exports.fixDatabasePolicies = async (req, res) => {
   }
 };
 
-// Busca o CPF de um lead pelo lead_id (admin/debug)
+// Busca o CPF de um lead pelo lead_id (admin/debug) - OTIMIZADO
 exports.getLeadCpfByLeadId = async (req, res) => {
-  logger.warn(`[CPF] (WARN) Entrou no controller getLeadCpfByLeadId`);
+  logger.warn(`[CPF-OPTIMIZED] Entrou no controller getLeadCpfByLeadId`);
   try {
     const { lead_id } = req.params;
-    logger.info(`[CPF] Recebido lead_id: ${lead_id}`);
+    logger.info(`[CPF-OPTIMIZED] Recebido lead_id: ${lead_id}`);
     
     // Validar se o lead_id é um UUID válido
     if (!lead_id || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(lead_id)) {
-      logger.warn(`[CPF] Tentativa de buscar lead com ID inválido: ${lead_id}`);
+      logger.warn(`[CPF-OPTIMIZED] Tentativa de buscar lead com ID inválido: ${lead_id}`);
       return res.status(400).json({ 
         success: false, 
         message: 'ID do lead inválido. Deve ser um UUID válido.',
@@ -95,16 +95,20 @@ exports.getLeadCpfByLeadId = async (req, res) => {
     }
 
     const { supabaseAdmin } = require('../config/supabase');
-    logger.info(`[CPF] Buscando CPF para lead: ${lead_id}`);
+    const { withTimeout } = require('../utils/supabaseOptimized');
     
-    const { data, error } = await supabaseAdmin
+    logger.info(`[CPF-OPTIMIZED] Buscando CPF para lead: ${lead_id}`);
+    
+    const query = supabaseAdmin
       .from('leads')
       .select('id, client_id, cpf')
       .eq('id', lead_id)
       .single();
       
+    const { data, error } = await withTimeout(query, 3000, `CPF query for lead ${lead_id}`);
+      
     if (error) {
-      logger.error(`[CPF] Erro ao buscar lead ${lead_id}: ${error.message}`);
+      logger.error(`[CPF-OPTIMIZED] Erro ao buscar lead ${lead_id}: ${error.message}`);
       return res.status(404).json({ 
         success: false, 
         message: 'Lead não encontrado no banco de dados', 
@@ -114,7 +118,7 @@ exports.getLeadCpfByLeadId = async (req, res) => {
     }
     
     if (!data) {
-      logger.warn(`[CPF] Lead não encontrado: ${lead_id}`);
+      logger.warn(`[CPF-OPTIMIZED] Lead não encontrado: ${lead_id}`);
       return res.status(404).json({ 
         success: false, 
         message: 'Lead não encontrado', 
@@ -122,10 +126,10 @@ exports.getLeadCpfByLeadId = async (req, res) => {
       });
     }
     
-    logger.info(`[CPF] CPF encontrado para lead ${lead_id}: ${data.cpf ? 'SIM' : 'NÃO'}`);
+    logger.info(`[CPF-OPTIMIZED] CPF encontrado para lead ${lead_id}: ${data.cpf ? 'SIM' : 'NÃO'}`);
     return res.json({ success: true, cpf: data.cpf, lead: data });
   } catch (err) {
-    logger.error(`[CPF] Erro interno ao buscar CPF do lead ${req.params.lead_id}: ${err.message}`);
+    logger.error(`[CPF-OPTIMIZED] Erro interno ao buscar CPF do lead ${req.params.lead_id}: ${err.message}`);
     return res.status(500).json({ 
       success: false, 
       message: 'Erro interno do servidor', 

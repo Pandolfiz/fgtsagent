@@ -1,5 +1,6 @@
 const { supabase, supabaseAdmin } = require('../config/supabase');
 const logger = require('../utils/logger');
+const { optimizedDashboardQuery, optimizedSelect } = require('../utils/supabaseOptimized');
 
 async function getDashboardStats(req, userId, period = 'daily') {
   try {
@@ -799,7 +800,7 @@ async function getDashboardStats(req, userId, period = 'daily') {
             current.setUTCDate(current.getUTCDate() + 1);
           }
           
-          // Agora filtramos os dados para cada semana
+          // Agora filtramos as propostas para cada semana
           for (const [weekKey, weekData] of weeks.entries()) {
             const weekStart = createSaoPauloDate(
               weekData.startDate.getUTCFullYear(),
