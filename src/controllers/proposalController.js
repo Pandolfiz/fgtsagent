@@ -46,51 +46,72 @@ axios.interceptors.response.use(
 async function getV8AccessToken(userId) {
   const creds = await partnerCredentialsService.listPartnerCredentials(userId);
   if (!creds || creds.length === 0) throw new Error('Credenciais do parceiro não encontradas para este usuário.');
-  const { grant_type, username, password, audience, scope, client_id } = creds[0];
-  const postData = qs.stringify({ grant_type, username, password, audience, scope, client_id });
+  
+  // O serviço retorna os dados em oauth_config
+  const { oauth_config } = creds[0];
+  const { grant_type, username, password, audience, scope, client_id } = oauth_config;
+
+  // Usar exatamente a conversão do curl para axios
   const options = {
     method: 'POST',
-    hostname: 'auth.v8sistema.com',
-    path: '/oauth/token',
+    url: 'https://auth.v8sistema.com/oauth/token',
+    params: {'': ''},
     headers: {
-      'Content-Type': 'application/x-www-form-urlencoded',
-      'Content-Length': Buffer.byteLength(postData)
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    data: {
+      grant_type,
+      username,
+      password,
+      audience,
+      scope,
+      client_id
     }
   };
-  return new Promise((resolve, reject) => {
-    const req = http.request(options, res => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          // Validar dados antes de fazer parse
-          if (!data || typeof data !== 'string') {
-            return reject(new Error('Resposta inválida do servidor de autenticação'));
-          }
-          
-          const parsed = JSON.parse(data);
-          
-          // Validar estrutura da resposta
-          if (!parsed || typeof parsed !== 'object') {
-            return reject(new Error('Formato de resposta inválido do servidor de autenticação'));
-          }
-          
-          if (parsed.access_token) {
-            return resolve(parsed.access_token);
-          }
-          
-          // Se não tem access_token, verificar se há mensagem de erro
-          const errorMessage = parsed.error_description || parsed.error || 'Access token não retornado';
-          return reject(new Error(errorMessage));
-        } catch (e) {
-          logger.error('Erro ao fazer parse da resposta de autenticação:', e.message);
-          return reject(new Error('Erro ao processar resposta do servidor de autenticação'));
-        }
-      });
-    }).on('error', reject);
-    req.write(postData);
-    req.end();
-  });
+
+  try {
+    // Tentar primeiro com axios
+    const response = await axios.request(options);
+    if (response.data && response.data.access_token) {
+      return response.data.access_token;
+    }
+    const errorMessage = response.data?.error_description || response.data?.error || 'Access token não retornado';
+    throw new Error(errorMessage);
+  } catch (error) {
+    logger.warn('Axios falhou, tentando com curl...', error.message);
+    
+    // Fallback: usar curl diretamente
+    const { exec } = require('child_process');
+    const util = require('util');
+    const execAsync = util.promisify(exec);
+    
+    const curlCommand = `curl --request POST \
+      --url 'https://auth.v8sistema.com/oauth/token' \
+      --header 'Content-Type: application/x-www-form-urlencoded' \
+      --data grant_type=password \
+      --data username=${username} \
+      --data password=${password} \
+      --data audience=${audience} \
+      --data scope=${scope} \
+      --data client_id=${client_id}`;
+    
+    try {
+      const { stdout, stderr } = await execAsync(curlCommand);
+      if (stderr) {
+        logger.error('Erro no curl:', stderr);
+      }
+      
+      const curlResponse = JSON.parse(stdout);
+      if (curlResponse.access_token) {
+        return curlResponse.access_token;
+      }
+      
+      throw new Error(curlResponse.error_description || curlResponse.error || 'Access token não retornado pelo curl');
+    } catch (curlError) {
+      logger.error('Erro ao executar curl:', curlError.message);
+      throw new Error(`Falha na autenticação V8: ${error.message} | Curl: ${curlError.message}`);
+    }
+  }
 }
 
 // Função para cancelar proposta na V8
@@ -350,12 +371,13 @@ exports.updateProposal = async (req, res) => {
               parametros: {
                 cpf: lead.cpf
               },
-              grant_type: creds.oauth_config.grant_type,
-              username: creds.oauth_config.username,
-              password: creds.oauth_config.password,
-              audience: creds.oauth_config.audience,
-              scope: creds.oauth_config.scope,
-              client_id: creds.oauth_config.client_id,
+                      // O serviço retorna os dados em oauth_config
+        grant_type: creds.oauth_config.grant_type,
+        username: creds.oauth_config.username,
+        password: creds.oauth_config.password,
+        audience: creds.oauth_config.audience,
+        scope: creds.oauth_config.scope,
+        client_id: creds.oauth_config.client_id,
               user_id: req.user.id
             }
           ];

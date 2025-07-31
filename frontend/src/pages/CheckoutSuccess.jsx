@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { CheckCircle, Home, Settings, CreditCard } from 'lucide-react';
+import { CheckCircle, Home, User, CreditCard } from 'lucide-react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import LandingNavbar from '../components/LandingNavbar.jsx';
 import axios from 'axios';
@@ -224,7 +224,7 @@ const CheckoutSuccess = () => {
             onClick={() => navigate('/profile')}
             className="flex items-center justify-center px-6 py-3 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors"
           >
-            <Settings className="w-5 h-5 mr-2" />
+            <User className="w-5 h-5 mr-2" />
             Configurar Perfil
           </button>
           

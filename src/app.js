@@ -17,6 +17,7 @@ const flash = require('connect-flash');
 const config = require('./config');
 const userApiKeyMiddleware = require('./middleware/userApiKeyMiddleware');
 const { requireAuth } = require('./middleware/auth');
+const { refreshTokens, applyRefreshedTokens } = require('./middleware/tokenRefresh');
 const adminRoutes = require('./routes/adminRoutes');
 const apiRoutes = require('./routes/apiRoutes');
 const whatsappCredentialRoutes = require('./routes/whatsappCredentialRoutes');
@@ -257,6 +258,9 @@ app.use(requestLogger);
 app.use(sanitizeInput);
 app.use(sanitizeRequest(['body', 'query', 'params']));
 
+// Middleware de renovação automática de tokens
+app.use(refreshTokens);
+
 // 🚀 Frontend é servido pelo Vite (desenvolvimento) ou Nginx (produção)
 // Backend focado apenas em APIs - Arquitetura mais limpa e performática
 console.log('🎯 Backend configurado apenas para APIs - Frontend servido externamente');
@@ -390,6 +394,9 @@ console.log('Rotas de health check registradas com sucesso');
 // Rotas API - estas devem vir DEPOIS das rotas específicas
 app.use('/api', apiRoutes);
 
+// Middleware para aplicar tokens renovados na resposta
+app.use(applyRefreshedTokens);
+
 app.use('/auth', authLimiter, authRoutes);
 app.use('/api/auth', authLimiter, authRoutes);
 app.use('/api/whatsapp-credentials', requireAuth, whatsappCredentialRoutes);
@@ -470,6 +477,13 @@ app.use((err, req, res, next) => {
     message: err.message || 'Ocorreu um erro inesperado',
     error: process.env.NODE_ENV === 'development' ? err : {}
   });
+});
+
+// Exportar o aplicativo Express
+module.exports = app;
+
+app.get('/api/teste', (req, res) => {
+  res.json({ ok: true });
 });
 
 // Exportar o aplicativo Express

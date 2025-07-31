@@ -27,6 +27,8 @@ export default function Leads() {
   const [filteredLeads, setFilteredLeads] = useState([])
   const [isLoading, setIsLoading] = useState(true)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [lastSyncTime, setLastSyncTime] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [sortField, setSortField] = useState('updated_at')
@@ -72,6 +74,7 @@ export default function Leads() {
     { value: 'pre_consulta', label: 'Pré Consulta' },
     { value: 'simulacao', label: 'Simulação' },
     { value: 'proposta_criada', label: 'Proposta Criada' },
+    { value: 'formalization', label: 'Proposta em Formalização' },
     { value: 'proposta_pendente', label: 'Proposta Pendente' },
     { value: 'proposta_cancelada', label: 'Proposta Cancelada' },
     { value: 'proposta_paga', label: 'Proposta Paga' }
@@ -104,6 +107,23 @@ export default function Leads() {
     }
     checkAuth()
   }, [])
+
+  // Sincronização inteligente - atualizar dados a cada 30 segundos
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    console.log('[LEADS] Iniciando sincronização inteligente...');
+    
+    const intervalId = setInterval(() => {
+      console.log('[LEADS] Sincronização inteligente - atualizando dados...');
+      reloadLeadsData();
+    }, 30000); // 30 segundos
+
+    return () => {
+      console.log('[LEADS] Parando sincronização inteligente...');
+      clearInterval(intervalId);
+    };
+  }, []); // Remover dependência isAuthenticated para evitar múltiplas execuções
 
   const fetchLeads = async () => {
     try {
@@ -145,6 +165,7 @@ export default function Leads() {
   // Função para recarregar dados dos leads
   const reloadLeadsData = async () => {
     try {
+      setIsSyncing(true);
       const { data: { session } } = await supabase.auth.getSession()
       
       if (!session?.access_token) {
@@ -170,22 +191,34 @@ export default function Leads() {
         console.log(`[LEADS] Dados recarregados:`, data.data.length, 'leads')
         setLeads(data.data)
         setFilteredLeads(data.data)
+        setLastSyncTime(new Date())
       } else {
         console.error('Erro na resposta:', data.message)
       }
     } catch (error) {
       console.error('Erro ao recarregar dados dos leads:', error)
+    } finally {
+      setIsSyncing(false);
     }
   }
 
   // Função para determinar o status do lead baseado nos dados
   const getLeadStatus = (lead) => {
+    // Verificar status da proposta primeiro (prioridade máxima)
     if (lead.proposal_status === 'paid') return 'proposta_paga'
     if (lead.proposal_status === 'cancelled') return 'proposta_cancelada'
     if (lead.proposal_status === 'pending') return 'proposta_pendente'
-    if (lead.proposal_status === 'formalization') return 'proposta_criada'
+    if (lead.proposal_status === 'formalization') return 'formalization'
+    
+    // Verificar se tem proposta criada (mesmo sem status específico)
+    if (lead.hasProposals || lead.proposal_id) return 'proposta_criada'
+    
+    // Verificar simulação
     if (lead.simulation && lead.simulation > 0) return 'simulacao'
+    
+    // Verificar consulta
     if (lead.balance && lead.balance > 0) return 'pre_consulta'
+    
     return 'pre_consulta'
   }
 
@@ -195,6 +228,7 @@ export default function Leads() {
       'pre_consulta': 'bg-gray-100 text-gray-800 border-gray-200',
       'simulacao': 'bg-blue-100 text-blue-800 border-blue-200',
       'proposta_criada': 'bg-cyan-100 text-cyan-800 border-cyan-200',
+      'formalization': 'bg-purple-100 text-purple-800 border-purple-200',
       'proposta_pendente': 'bg-yellow-100 text-yellow-800 border-yellow-200',
       'proposta_cancelada': 'bg-red-100 text-red-800 border-red-200',
       'proposta_paga': 'bg-emerald-100 text-emerald-800 border-emerald-200'
@@ -204,6 +238,7 @@ export default function Leads() {
       'pre_consulta': 'Pré Consulta',
       'simulacao': 'Simulação',
       'proposta_criada': 'Proposta Criada',
+      'formalization': 'Proposta em Formalização',
       'proposta_pendente': 'Proposta Pendente',
       'proposta_cancelada': 'Proposta Cancelada',
       'proposta_paga': 'Proposta Paga'
@@ -250,6 +285,16 @@ export default function Leads() {
     if (!dateString) return '-'
     return new Date(dateString).toLocaleString('pt-BR')
   }
+
+  // Função para formatar horário da última sincronização
+  const formatLastSyncTime = (date) => {
+    if (!date) return null;
+    return date.toLocaleTimeString('pt-BR', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
 
   // Função para formatar parcelas
   const formatParcelas = (parcelas) => {
@@ -935,13 +980,35 @@ export default function Leads() {
       <div className="p-6 bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 min-h-screen leads-page">
         <div className="w-full">
         {/* Cabeçalho */}
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Leads</h1>
-          <p className="text-cyan-200">Gerencie todos os seus leads em um só lugar</p>
+        <div className="mb-8 flex justify-between items-start">
+          <div>
+            <h1 className="text-3xl font-bold text-white mb-2">Leads</h1>
+            <p className="text-cyan-200">Gerencie todos os seus leads em um só lugar</p>
+          </div>
+          <div className="flex items-center gap-2">
+            {isSyncing && (
+              <div className="flex items-center gap-2 text-cyan-300 text-sm">
+                <FaSpinner className="w-4 h-4 animate-spin" />
+                <span>Sincronizando...</span>
+              </div>
+            )}
+            {lastSyncTime && !isSyncing && (
+              <div className="text-cyan-300 text-xs">
+                Última atualização: {formatLastSyncTime(lastSyncTime)}
+              </div>
+            )}
+            <button
+              onClick={() => reloadLeadsData()}
+              className="p-2 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors"
+              title="Atualizar dados"
+            >
+              <FaRedo className={`w-4 h-4 text-white ${isSyncing ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
         </div>
 
         {/* Cards de Resumo */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-8">
           {/* Total de Leads */}
           <div className="bg-gradient-to-br from-cyan-900/50 to-blue-900/50 backdrop-blur-sm rounded-lg p-6 border border-cyan-700/30">
             <div className="text-3xl font-bold text-white mb-2">
@@ -955,17 +1022,27 @@ export default function Leads() {
           {/* Propostas Pagas */}
           <div className="bg-gradient-to-br from-emerald-900/50 to-teal-900/50 backdrop-blur-sm rounded-lg p-6 border border-emerald-700/30">
             <div className="text-3xl font-bold text-white mb-2">
-              {leads.filter(lead => getLeadStatus(lead) === 'proposta_paga').length}
+              {leads.filter(lead => lead.proposal_status === 'paid').length}
             </div>
             <div className="text-emerald-200 text-sm font-medium">
               Propostas Pagas
             </div>
           </div>
 
+          {/* Propostas em Formalização */}
+          <div className="bg-gradient-to-br from-purple-900/50 to-indigo-900/50 backdrop-blur-sm rounded-lg p-6 border border-purple-700/30">
+            <div className="text-3xl font-bold text-white mb-2">
+              {leads.filter(lead => lead.proposal_status === 'formalization').length}
+            </div>
+            <div className="text-purple-200 text-sm font-medium">
+              Propostas em Formalização
+            </div>
+          </div>
+
           {/* Propostas Pendentes */}
           <div className="bg-gradient-to-br from-yellow-900/50 to-amber-900/50 backdrop-blur-sm rounded-lg p-6 border border-yellow-700/30">
             <div className="text-3xl font-bold text-white mb-2">
-              {leads.filter(lead => getLeadStatus(lead) === 'proposta_pendente').length}
+              {leads.filter(lead => lead.proposal_status === 'pending').length}
             </div>
             <div className="text-yellow-200 text-sm font-medium">
               Propostas Pendentes
@@ -975,7 +1052,9 @@ export default function Leads() {
           {/* Com Erros */}
           <div className="bg-gradient-to-br from-red-900/50 to-pink-900/50 backdrop-blur-sm rounded-lg p-6 border border-red-700/30">
             <div className="text-3xl font-bold text-white mb-2">
-              {leads.filter(lead => lead.error_reason && lead.error_reason.trim() !== '').length}
+              {leads.filter(lead => 
+                (lead.balance_error && lead.balance_error.trim() !== '')
+              ).length}
             </div>
             <div className="text-red-200 text-sm font-medium">
               Com Erros

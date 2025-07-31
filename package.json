@@ -15,7 +15,8 @@
         "test": "cd src && npm test",
         "test:performance": "node scripts/test-performance.js",
         "test:simple": "node scripts/test-simple.js",
-        "test:cache": "node scripts/test-simple.js"
+        "test:cache": "node scripts/test-simple.js",
+        "migrate:consent": "cd src && node scripts/apply_consent_migration_direct.js"
     },
     "devDependencies": {
         "concurrently": "^8.2.2"
@@ -41,3 +42,4 @@
         "axios": "^1.11.0"
     }
 }
+

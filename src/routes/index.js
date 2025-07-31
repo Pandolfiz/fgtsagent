@@ -98,4 +98,16 @@ router.use('/api/knowledge-base', require('./knowledgeBaseRoutes'));
 // Rotas do Stripe
 router.use('/api/stripe', require('./stripeRoutes'));
 
+// Rotas de configurações
+// router.use('/api/settings', require('./settingsRoutes'));
+
+// Rotas de consentimentos LGPD
+router.use('/api/consent', require('./consentRoutes'));
+
+module.exports = router; 
+// router.use('/api/settings', require('./settingsRoutes'));
+
+// Rotas de consentimentos LGPD
+router.use('/api/consent', require('./consentRoutes'));
+
 module.exports = router; 
