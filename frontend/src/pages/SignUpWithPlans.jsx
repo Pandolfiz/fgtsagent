@@ -10,11 +10,17 @@ const SignUpWithPlans = () => {
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedPlan, setSelectedPlan] = useState('pro'); // Default para o plano mais popular
   const [userData, setUserData] = useState({
-    name: '',
+    first_name: '',
+    last_name: '',
     email: '',
     password: '',
     confirmPassword: '',
     phone: ''
+  });
+  const [consent, setConsent] = useState({
+    terms: false,
+    privacy: false,
+    marketing: false
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -34,11 +40,24 @@ const SignUpWithPlans = () => {
     setError(null);
   };
 
+  const handleConsentChange = (type) => {
+    setConsent(prev => ({
+      ...prev,
+      [type]: !prev[type]
+    }));
+    setError(null);
+  };
+
   const validateStep1 = () => {
-    const { name, email, password, confirmPassword } = userData;
+    const { first_name, last_name, email, password, confirmPassword } = userData;
     
-    if (!name.trim()) {
+    if (!first_name.trim()) {
       setError('Nome é obrigatório');
+      return false;
+    }
+    
+    if (!last_name.trim()) {
+      setError('Sobrenome é obrigatório');
       return false;
     }
     
@@ -64,6 +83,17 @@ const SignUpWithPlans = () => {
     
     if (password !== confirmPassword) {
       setError('Senhas não coincidem');
+      return false;
+    }
+    
+    // Validação de consentimentos obrigatórios
+    if (!consent.terms) {
+      setError('É necessário aceitar os Termos de Uso');
+      return false;
+    }
+    
+    if (!consent.privacy) {
+      setError('É necessário aceitar a Política de Privacidade');
       return false;
     }
     
@@ -171,19 +201,36 @@ const SignUpWithPlans = () => {
         </div>
 
         <form className="space-y-2">
-          <div>
-            <label className="block text-cyan-200 mb-0.5 text-sm">
-              Nome Completo
-            </label>
-            <input
-              type="text"
-              name="name"
-              value={userData.name}
-              onChange={handleInputChange}
-              className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition"
-              placeholder="Seu nome completo"
-              required
-            />
+          {/* Nome e Sobrenome */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-cyan-200 mb-0.5 text-sm">
+                Nome *
+              </label>
+              <input
+                type="text"
+                name="first_name"
+                value={userData.first_name}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition"
+                placeholder="Seu nome"
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-cyan-200 mb-0.5 text-sm">
+                Sobrenome *
+              </label>
+              <input
+                type="text"
+                name="last_name"
+                value={userData.last_name}
+                onChange={handleInputChange}
+                className="w-full px-3 py-2 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition"
+                placeholder="Seu sobrenome"
+                required
+              />
+            </div>
           </div>
 
           <div>
@@ -243,6 +290,61 @@ const SignUpWithPlans = () => {
               placeholder="Confirme sua senha"
               required
             />
+          </div>
+
+          {/* Seção de Consentimentos */}
+          <div className="mt-4 space-y-3">
+            <h3 className="text-cyan-200 text-sm font-medium">Consentimentos Necessários</h3>
+            
+            {/* Termos de Uso */}
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                id="terms"
+                checked={consent.terms}
+                onChange={() => handleConsentChange('terms')}
+                className="mt-1 w-4 h-4 text-cyan-600 bg-gray-800 border-cyan-500/30 rounded focus:ring-cyan-500"
+              />
+              <label htmlFor="terms" className="text-cyan-200 text-sm">
+                Li e aceito os{' '}
+                <a href="/terms-of-use" target="_blank" className="text-cyan-300 hover:text-cyan-100 underline">
+                  Termos de Uso
+                </a>
+                <span className="text-red-400"> *</span>
+              </label>
+            </div>
+
+            {/* Política de Privacidade */}
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                id="privacy"
+                checked={consent.privacy}
+                onChange={() => handleConsentChange('privacy')}
+                className="mt-1 w-4 h-4 text-cyan-600 bg-gray-800 border-cyan-500/30 rounded focus:ring-cyan-500"
+              />
+              <label htmlFor="privacy" className="text-cyan-200 text-sm">
+                Li e aceito a{' '}
+                <a href="/privacy-policy" target="_blank" className="text-cyan-300 hover:text-cyan-100 underline">
+                  Política de Privacidade
+                </a>
+                <span className="text-red-400"> *</span>
+              </label>
+            </div>
+
+            {/* Marketing (Opcional) */}
+            <div className="flex items-start gap-3">
+              <input
+                type="checkbox"
+                id="marketing"
+                checked={consent.marketing}
+                onChange={() => handleConsentChange('marketing')}
+                className="mt-1 w-4 h-4 text-cyan-600 bg-gray-800 border-cyan-500/30 rounded focus:ring-cyan-500"
+              />
+              <label htmlFor="marketing" className="text-cyan-200 text-sm">
+                Aceito receber comunicações de marketing e ofertas personalizadas (opcional)
+              </label>
+            </div>
           </div>
 
           {error && (

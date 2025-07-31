@@ -29,7 +29,7 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
       const response = await api.post('/api/stripe/create-signup-checkout-session', {
         planType: selectedPlan,
         userEmail: userData.email,
-        userName: userData.name,
+        userName: `${userData.first_name} ${userData.last_name}`,
         successUrl: `${window.location.origin}/signup-success`,
         cancelUrl: `${window.location.origin}/signup`
       });

@@ -42,11 +42,11 @@ class LeadController {
         throw error;
       }
 
-      // Buscar propostas otimizadas
+      // Buscar propostas otimizadas com dados completos
       const { data: proposals, error: proposalsError } = await optimizedSelect(
         supabaseAdmin,
         'proposals',
-        'lead_id',
+        'lead_id, proposal_id, status, value, created_at, updated_at',
         { eq: { client_id: clientId } },
         3000, // 3s timeout
         true // usar cache
@@ -56,21 +56,41 @@ class LeadController {
         logger.error(`[LEADS-OPTIMIZED] Erro ao buscar propostas: ${proposalsError.message}`);
       }
 
-      // Criar um Set com os lead_ids que têm propostas
-      const leadsWithProposals = new Set();
+
+
+
+
+      // Criar um mapa com os dados das propostas por lead_id
+      const proposalsMap = new Map();
       if (proposals) {
         proposals.forEach(proposal => {
           if (proposal.lead_id) {
-            leadsWithProposals.add(proposal.lead_id);
+            // Se já existe uma proposta para este lead, manter a mais recente
+            const existing = proposalsMap.get(proposal.lead_id);
+            if (!existing || new Date(proposal.updated_at || proposal.created_at) > new Date(existing.updated_at || existing.created_at)) {
+              proposalsMap.set(proposal.lead_id, proposal);
+            }
           }
         });
       }
 
       // Adicionar informação sobre propostas aos leads
-      const leadsWithProposalInfo = leads ? leads.map(lead => ({
-        ...lead,
-        hasProposals: leadsWithProposals.has(lead.id)
-      })) : [];
+      const leadsWithProposalInfo = leads ? leads.map(lead => {
+        const proposal = proposalsMap.get(lead.id);
+        const leadWithProposal = {
+          ...lead,
+          hasProposals: proposalsMap.has(lead.id),
+          proposal_status: proposal?.status || null,
+          proposal_value: proposal?.value || null,
+          proposal_id: proposal?.proposal_id || null,
+          proposal_created_at: proposal?.created_at || null,
+          proposal_updated_at: proposal?.updated_at || null
+        };
+        
+
+        
+        return leadWithProposal;
+      }) : [];
 
       logger.info(`[LEADS-OPTIMIZED] Retornando ${leadsWithProposalInfo?.length || 0} leads completos`);
       return res.json({ success: true, data: leadsWithProposalInfo || [] });

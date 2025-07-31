@@ -3138,9 +3138,24 @@ export default function Dashboard() {
                                       <span>Criada em: {formatDate(proposal.created_at)}</span>
                                     </div>
                                   </div>
-                                  <FaChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${
-                                    selectedProposalInHistory && (selectedProposalInHistory.id === proposal.id || selectedProposalInHistory.proposal_id === proposal.proposal_id) ? 'rotate-90' : ''
-                                  }`} />
+                                  <div className="flex items-center gap-2">
+                                    {/* Botão de Editar (apenas para propostas pendentes) */}
+                                    {proposal.status === 'pending' && (
+                                      <button
+                                        className="p-1 rounded bg-purple-700/70 hover:bg-purple-500 transition-colors"
+                                        title="Editar Proposta"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          openEditProposalModal(proposal);
+                                        }}
+                                      >
+                                        <FaEdit className="w-3 h-3 text-white" />
+                                      </button>
+                                    )}
+                                    <FaChevronRight className={`w-4 h-4 text-gray-400 transition-transform ${
+                                      selectedProposalInHistory && (selectedProposalInHistory.id === proposal.id || selectedProposalInHistory.proposal_id === proposal.proposal_id) ? 'rotate-90' : ''
+                                    }`} />
+                                  </div>
                                 </div>
                               </div>
                             ))}
@@ -3244,7 +3259,23 @@ export default function Dashboard() {
                       </div>
                     )}
                     
-                    <div className="mt-6 flex justify-end gap-3">
+                    <div className="mt-6 flex justify-between items-center">
+                      {/* Botão de Criar Proposta */}
+                      <button 
+                        type="button" 
+                        className="inline-flex items-center justify-center rounded-md border border-cyan-500 bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 focus:outline-none transition-colors" 
+                        onClick={() => {
+                          setProposalsHistoryModalOpen(false);
+                          if (selectedLead) {
+                            openCreateProposalModal(selectedLead);
+                          }
+                        }}
+                      >
+                        <FaPlus className="w-4 h-4 mr-2" />
+                        Criar Nova Proposta
+                      </button>
+                      
+                      {/* Botão de Fechar */}
                       <button 
                         type="button" 
                         className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
