@@ -1,3 +1,3 @@
-import { EvolutionCredentialsPage } from '../../components/evolution-credentials/EvolutionCredentialsPage';
+import { WhatsappCredentialsPage } from '../../components/whatsapp-credentials/WhatsappCredentialsPage';
 
-export default EvolutionCredentialsPage; 
+export default WhatsappCredentialsPage; 
