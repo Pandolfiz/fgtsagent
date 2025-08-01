@@ -330,7 +330,7 @@ function sanitizeInput(req, res, next) {
 /**
  * Middleware para validar rate limiting por IP
  */
-function validateRateLimit(maxRequests = 100, windowMs = 15 * 60 * 1000) {
+function validateRateLimit(maxRequests = 1000, windowMs = 15 * 60 * 1000) {
   const requests = new Map();
 
   return (req, res, next) => {

@@ -70,12 +70,8 @@ services:
     restart: unless-stopped
     ports:
       - "${HTTP_PORT:-80}:80"
-      - "${HTTPS_PORT:-443}:443"
     volumes:
       - ./nginx/conf.d:/etc/nginx/conf.d:ro
-      - ./data/certbot/conf:/etc/letsencrypt:ro
-      - certbot-var:/var/lib/letsencrypt:ro
-      - ./data/certbot/www:/var/www/certbot:ro
       - frontend-dist:/usr/share/nginx/html:ro
       - nginx-cache:/var/cache/nginx
     depends_on:
@@ -103,43 +99,10 @@ services:
       options:
         max-size: "10m"
         max-file: "3"
-    command: >
-      /bin/sh -c "
-      if [ -f /etc/letsencrypt/live/fgtsagent.com.br/fullchain.pem ]; then
-        echo 'Certificados SSL encontrados, iniciando nginx com SSL...'
-        cp /etc/nginx/conf.d/app.ssl.conf.disabled /etc/nginx/conf.d/app.ssl.conf.active
-      else
-        echo 'Certificados SSL não encontrados, iniciando nginx sem SSL...'
-        rm -f /etc/nginx/conf.d/app.ssl.conf.active
-      fi &&
-      nginx -t &&
-      exec nginx -g 'daemon off;'
-      "
 
-  certbot:
-    image: certbot/certbot:latest
-    restart: unless-stopped
-    volumes:
-      - ./data/certbot/conf:/etc/letsencrypt
-      - certbot-var:/var/lib/letsencrypt
-      - ./data/certbot/www:/var/www/certbot
-    depends_on:
-      - nginx
-    deploy:
-      resources:
-        limits:
-          cpus: '0.25'
-          memory: 128M
-    logging:
-      driver: "json-file"
-      options:
-        max-size: "5m"
-        max-file: "2"
-    entrypoint: "/bin/sh -c 'trap exit TERM; while :; do certbot renew --quiet; sleep 12h & wait $${!}; done;'"
+
 
 volumes:
-  certbot-var:
-    driver: local
   nginx-cache:
     driver: local
   frontend-dist:

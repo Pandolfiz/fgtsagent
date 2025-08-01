@@ -17,6 +17,7 @@ const { execFile } = require('child_process');
 const contactController = require('../controllers/contactController');
 const agentsController = require('../controllers/agentsController');
 const rateLimit = require('express-rate-limit');
+const slowDown = require('express-slow-down');
 
 // Função para criar um controlador mock
 const createMockController = (name) => {
@@ -906,10 +907,10 @@ const upload = multer({
   }
 });
 
-// Rate limiting específico para uploads
+// Rate limiting específico para uploads (proteção contra ataques massivos)
 const uploadRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 5, // máximo 5 uploads por IP a cada 15 minutos
+  max: 50, // Aumentado para 50 uploads (proteção contra ataques massivos)
   message: {
     success: false,
     message: 'Muitos uploads. Tente novamente em 15 minutos.'
@@ -919,6 +920,18 @@ const uploadRateLimit = rateLimit({
   keyGenerator: (req) => {
     // Usar tanto IP quanto user ID para o rate limit
     return `upload_${req.ip}_${req.user?.id || 'anonymous'}`;
+  }
+});
+
+// Speed limiting para uploads (melhor UX com desaceleração gradual)
+const uploadSpeedLimiter = slowDown({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  delayAfter: 5, // Começar a desacelerar após 5 uploads
+  delayMs: () => 2000, // 2 segundos de atraso por upload adicional
+  maxDelayMs: 20000, // Máximo 20 segundos de atraso
+  keyGenerator: (req) => {
+    // Usar tanto IP quanto user ID para o speed limit
+    return `upload_speed_${req.ip}_${req.user?.id || 'anonymous'}`;
   }
 });
 
@@ -954,7 +967,7 @@ async function cleanupFile(filePath) {
   }
 }
 
-router.post('/agent/upload-kb', requireAuth, uploadRateLimit, upload.array('kbFiles'), async (req, res) => {
+router.post('/agent/upload-kb', requireAuth, uploadRateLimit, uploadSpeedLimiter, upload.array('kbFiles'), async (req, res) => {
   const uploadedFiles = [];
   
   try {
