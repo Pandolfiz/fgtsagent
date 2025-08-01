@@ -48,37 +48,64 @@ const app = express();
 // Configurar o Express para confiar em proxies
 app.set('trust proxy', 1);
 
-// Configurar limites de requisição
+// Configurar limites de requisição com estratégia híbrida (Rate + Speed Limiting)
+// Rate Limiting: Limite alto para proteção contra ataques massivos
+// Speed Limiting: Desaceleração gradual para melhor UX
+
+// Rate Limiting Global (limite alto para proteção)
 const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 1000 // Máximo de 1000 requisições por janela de tempo
+  max: 5000 // Aumentado para 5000 requisições (proteção contra ataques massivos)
 });
 
-// Limiter mais restritivo para rotas de API
+// Rate Limiting para APIs (limite alto)
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 1000 // Máximo de 1000 requisições por janela de tempo
+  max: 3000 // Aumentado para 3000 requisições
 });
 
-// Limiter ainda mais restritivo para rotas de autenticação
+// Rate Limiting para autenticação (limite moderado)
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  max: 30 // Máximo de 30 requisições por janela de tempo
+  max: 100 // Aumentado para 100 tentativas (proteção contra brute force)
 });
 
-// Speed limiter para rotas de API
-const speedLimiter = slowDown({
+// Speed Limiting Global (desaceleração gradual)
+const globalSpeedLimiter = slowDown({
   windowMs: 15 * 60 * 1000, // 15 minutos
-  delayAfter: 100, // Começar a atrasar depois de 100 requisições
-  delayMs: () => 500, // 500ms de atraso fixo por requisição acima do limite
-  validate: { delayMs: false } // Desabilitar a validação para evitar o aviso
+  delayAfter: 200, // Começar a desacelerar após 200 requisições
+  delayMs: () => 100, // 100ms de atraso por requisição adicional
+  maxDelayMs: 3000 // Máximo 3 segundos de atraso
+});
+
+// Speed Limiting para APIs (desaceleração moderada)
+const apiSpeedLimiter = slowDown({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  delayAfter: 150, // Começar a desacelerar após 150 requisições
+  delayMs: () => 200, // 200ms de atraso por requisição adicional
+  maxDelayMs: 5000 // Máximo 5 segundos de atraso
+});
+
+// Speed Limiting para autenticação (desaceleração agressiva)
+const authSpeedLimiter = slowDown({
+  windowMs: 15 * 60 * 1000, // 15 minutos
+  delayAfter: 10, // Começar a desacelerar após 10 tentativas
+  delayMs: () => 1000, // 1 segundo de atraso por tentativa adicional
+  maxDelayMs: 15000 // Máximo 15 segundos de atraso
 });
 
 // Aplicar limitadores globalmente, exceto para ambientes de desenvolvimento
 if (process.env.NODE_ENV !== 'development') {
+  // Rate Limiting: Proteção contra ataques massivos
   app.use(generalLimiter);
-  app.use('/api', speedLimiter);
-  logger.info('Rate limiting habilitado para ambiente de produção');
+  
+  // Speed Limiting: Melhor UX com desaceleração gradual
+  app.use(globalSpeedLimiter);
+  app.use('/api', apiSpeedLimiter);
+  
+  logger.info('Sistema híbrido de Rate + Speed Limiting habilitado para produção');
+  logger.info('Rate Limiting: Proteção contra ataques massivos');
+  logger.info('Speed Limiting: Desaceleração gradual para melhor UX');
 }
 
 // Middleware básicos
@@ -273,8 +300,8 @@ app.use(refreshTokens);
 app.use(securityHeaders);
 app.use(detectSuspiciousActivity);
 
-// Rate limiting personalizado (substitui o do helmet para ter mais controle)
-app.use(rateLimiter(100, 15 * 60 * 1000)); // 100 requests por 15 minutos
+// Rate limiting personalizado removido - agora usando estratégia híbrida (Rate + Speed Limiting)
+// Aplicado de forma mais granular nos locais específicos
 
 // Sanitização de entrada para prevenir XSS
 app.use(sanitizeInput);
@@ -415,8 +442,9 @@ app.use('/api', apiRoutes);
 // Middleware para aplicar tokens renovados na resposta
 app.use(applyRefreshedTokens);
 
-app.use('/auth', authLimiter, authRoutes);
-app.use('/api/auth', authLimiter, authRoutes);
+// Rotas de autenticação com Rate + Speed Limiting
+app.use('/auth', authLimiter, authSpeedLimiter, authRoutes);
+app.use('/api/auth', authLimiter, authSpeedLimiter, authRoutes);
 app.use('/api/whatsapp-credentials', requireAuth, whatsappCredentialRoutes);
 app.use('/api/credentials', credentialsRoutes);
 // REMOVIDO: app.use('/api', credentialsRoutes); // Isso sobrescrevia todas as rotas /api/*

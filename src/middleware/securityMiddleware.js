@@ -179,7 +179,7 @@ const detectSuspiciousActivity = async (req, res, next) => {
 /**
  * Middleware para rate limiting
  */
-const rateLimiter = (maxRequests = 100, windowMs = 15 * 60 * 1000) => {
+const rateLimiter = (maxRequests = 1000, windowMs = 15 * 60 * 1000) => {
   const requests = new Map();
 
   return (req, res, next) => {
