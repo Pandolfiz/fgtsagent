@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api, EvolutionCredential } from '../../utilities/api';
-import { FaWhatsapp, FaEdit, FaTrash, FaSync, FaPlus, FaCircle, FaCheck, FaExclamation, FaQuestionCircle, FaHourglass, FaBullhorn, FaPhone, FaBroadcastTower, FaBan } from 'react-icons/fa';
+import { FaWhatsapp, FaEdit, FaTrash, FaSync, FaPlus, FaCircle, FaCheck, FaExclamation, FaQuestionCircle, FaHourglass, FaBullhorn, FaPhone, FaBroadcastTower, FaBan, FaLink, FaExternalLinkAlt } from 'react-icons/fa';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import Navbar from '../Navbar';
@@ -8,7 +8,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { ErrorModal } from '../ErrorModal';
 import { useErrorModal } from '../../hooks/useErrorModal';
 
-export function EvolutionCredentialsPage() {
+export function WhatsappCredentialsPage() {
   const [credentials, setCredentials] = useState<EvolutionCredential[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -19,6 +19,11 @@ export function EvolutionCredentialsPage() {
   // Estado para exibir modal de QR Code
   const [showQrModal, setShowQrModal] = useState(false);
   const [qrData, setQrData] = useState<{ base64?: string; code?: string; pairingCode?: string } | null>(null);
+  
+  // Estados para iframe da Meta
+  const [showMetaIframeModal, setShowMetaIframeModal] = useState(false);
+  const [metaIframeUrl, setMetaIframeUrl] = useState('');
+  const [metaConnectionStatus, setMetaConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
   
   // Form states
   const [formData, setFormData] = useState({
@@ -76,6 +81,66 @@ export function EvolutionCredentialsPage() {
       executeNewSMS();
     }
   }, [modalState.isOpen, pendingNewSMS]);
+
+  // Função para abrir iframe da Meta
+  const handleOpenMetaIframe = () => {
+    // URL do iframe da Meta para conectar WhatsApp Business
+    const iframeUrl = 'https://business.facebook.com/wa/manage/accounts';
+    setMetaIframeUrl(iframeUrl);
+    setMetaConnectionStatus('connecting');
+    setShowMetaIframeModal(true);
+  };
+
+  // Função para lidar com mensagens do iframe da Meta
+  const handleMetaIframeMessage = useCallback((event: MessageEvent) => {
+    // Verificar se a mensagem é do domínio da Meta
+    if (event.origin !== 'https://business.facebook.com') {
+      return;
+    }
+
+    try {
+      const data = event.data;
+      
+      // Verificar se é uma mensagem de conexão bem-sucedida
+      if (data.type === 'whatsapp_connected' || data.status === 'connected') {
+        setMetaConnectionStatus('connected');
+        showSuccess('Conta do WhatsApp Business conectada com sucesso!', 'Conexão Realizada');
+        
+        // Recarregar credenciais após conexão
+        setTimeout(() => {
+          loadCredentials();
+        }, 2000);
+      }
+      
+      // Verificar se é uma mensagem de erro
+      if (data.type === 'error' || data.status === 'error') {
+        setMetaConnectionStatus('error');
+        showError('Erro ao conectar conta do WhatsApp Business. Tente novamente.', 'Erro de Conexão');
+      }
+    } catch (err) {
+      console.error('Erro ao processar mensagem do iframe da Meta:', err);
+    }
+  }, [showSuccess, showError]);
+
+  // Adicionar listener para mensagens do iframe
+  useEffect(() => {
+    window.addEventListener('message', handleMetaIframeMessage);
+    return () => {
+      window.removeEventListener('message', handleMetaIframeMessage);
+    };
+  }, [handleMetaIframeMessage]);
+
+  // Função para fechar modal do iframe
+  const handleCloseMetaIframe = () => {
+    setShowMetaIframeModal(false);
+    setMetaIframeUrl('');
+    setMetaConnectionStatus('idle');
+  };
+
+  // Função para abrir iframe em nova aba
+  const handleOpenMetaInNewTab = () => {
+    window.open('https://business.facebook.com/wa/manage/accounts', '_blank');
+  };
 
   // Adicionar novo número na Meta
   const handleAddMetaPhoneNumber = async (e: React.FormEvent) => {
@@ -1393,6 +1458,13 @@ export function EvolutionCredentialsPage() {
               <span>Verificar Todos</span>
             </button>
             <button
+              onClick={handleOpenMetaIframe}
+              className="px-3 sm:px-4 py-2 bg-purple-600/20 text-purple-300 rounded-lg hover:bg-purple-600/30 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base"
+            >
+              <FaLink className="mr-2" />
+              <span>Conectar Meta</span>
+            </button>
+            <button
               onClick={handleAddNew}
               className="px-3 sm:px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 text-white font-medium shadow-md hover:shadow-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 flex items-center justify-center text-sm sm:text-base"
             >
@@ -2573,6 +2645,148 @@ export function EvolutionCredentialsPage() {
                       >
                         {loading ? 'Enviando...' : 'Enviar SMS'}
                       </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition>
+
+        {/* Modal do iframe da Meta */}
+        <Transition appear show={showMetaIframeModal} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={handleCloseMetaIframe}>
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0"
+              enterTo="opacity-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100"
+              leaveTo="opacity-0"
+            >
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
+            </Transition.Child>
+
+            <div className="fixed inset-0 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0 scale-95"
+                  enterTo="opacity-100 scale-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100 scale-100"
+                  leaveTo="opacity-0 scale-95"
+                >
+                  <Dialog.Panel className="w-full max-w-6xl transform overflow-hidden rounded-lg bg-gradient-to-b from-purple-900 to-slate-900 p-6 text-left align-middle shadow-xl transition-all border border-purple-700/50">
+                    <Dialog.Title
+                      as="h3"
+                      className="text-xl font-semibold leading-6 text-purple-100 mb-4 flex items-center justify-between"
+                    >
+                      <div className="flex items-center">
+                        <FaLink className="mr-2 text-purple-400" />
+                        Conectar Conta do WhatsApp Business
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={handleOpenMetaInNewTab}
+                          className="px-3 py-1 text-sm bg-purple-600/20 text-purple-300 rounded hover:bg-purple-600/30 transition-colors flex items-center"
+                        >
+                          <FaExternalLinkAlt className="mr-1" />
+                          Abrir em Nova Aba
+                        </button>
+                        <button
+                          onClick={handleCloseMetaIframe}
+                          className="text-purple-300 hover:text-purple-100 transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </Dialog.Title>
+                    
+                    <div className="mb-4">
+                      <div className="bg-purple-800/20 border border-purple-700/30 rounded-lg p-4 mb-4">
+                        <h4 className="text-purple-200 font-medium mb-2">📋 Instruções:</h4>
+                        <ol className="text-purple-100 text-sm space-y-1 list-decimal list-inside">
+                          <li>Faça login na sua conta do Facebook Business</li>
+                          <li>Navegue até a seção "WhatsApp Business"</li>
+                          <li>Clique em "Adicionar número de telefone"</li>
+                          <li>Siga o processo de verificação da Meta</li>
+                          <li>Após a conexão, volte aqui e clique em "Verificar Todos"</li>
+                        </ol>
+                      </div>
+                      
+                      {metaConnectionStatus === 'connecting' && (
+                        <div className="bg-blue-800/20 border border-blue-700/30 rounded-lg p-3 mb-4">
+                          <div className="flex items-center">
+                            <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-400 mr-2"></div>
+                            <span className="text-blue-200 text-sm">Conectando com a Meta...</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {metaConnectionStatus === 'connected' && (
+                        <div className="bg-green-800/20 border border-green-700/30 rounded-lg p-3 mb-4">
+                          <div className="flex items-center">
+                            <FaCheck className="text-green-400 mr-2" />
+                            <span className="text-green-200 text-sm">Conta conectada com sucesso!</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {metaConnectionStatus === 'error' && (
+                        <div className="bg-red-800/20 border border-red-700/30 rounded-lg p-3 mb-4">
+                          <div className="flex items-center">
+                            <FaExclamation className="text-red-400 mr-2" />
+                            <span className="text-red-200 text-sm">Erro na conexão. Tente novamente.</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="relative">
+                      <iframe
+                        src={metaIframeUrl}
+                        className="w-full h-96 border-0 rounded-lg bg-white"
+                        title="Meta WhatsApp Business"
+                        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+                        allow="camera; microphone; geolocation"
+                      />
+                      
+                      {/* Overlay para caso o iframe não carregue */}
+                      <div className="absolute inset-0 bg-gray-800/50 flex items-center justify-center rounded-lg" style={{ display: 'none' }}>
+                        <div className="text-center">
+                          <FaExclamation className="text-4xl text-gray-400 mx-auto mb-2" />
+                          <p className="text-gray-300">Não foi possível carregar o iframe da Meta</p>
+                          <button
+                            onClick={handleOpenMetaInNewTab}
+                            className="mt-2 px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                          >
+                            Abrir em Nova Aba
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-4 flex justify-between items-center">
+                      <p className="text-purple-200 text-sm">
+                        💡 <strong>Dica:</strong> Se o iframe não carregar, use o botão "Abrir em Nova Aba"
+                      </p>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={handleCloseMetaIframe}
+                          className="px-4 py-2 rounded-md bg-slate-700 text-white hover:bg-slate-600 transition-colors"
+                        >
+                          Fechar
+                        </button>
+                        <button
+                          onClick={handleCheckAllStatus}
+                          className="px-4 py-2 rounded-md bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                        >
+                          Verificar Conexões
+                        </button>
+                      </div>
                     </div>
                   </Dialog.Panel>
                 </Transition.Child>

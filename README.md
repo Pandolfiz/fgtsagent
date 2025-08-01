@@ -79,7 +79,7 @@ stable-src/
 │   ├── src/
 │   │   ├── components/       # Componentes React
 │   │   │   ├── agent/        # Componentes de agentes
-│   │   │   ├── evolution-credentials/
+│   │   │   ├── whatsapp-credentials/
 │   │   │   └── partner-credentials/
 │   │   ├── pages/           # Páginas da aplicação
 │   │   │   ├── whatsapp-credentials/
