@@ -6,7 +6,6 @@ Dockerfile
 *.md
 .vscode
 .idea
-.env*
 coverage
 logs
 uploads

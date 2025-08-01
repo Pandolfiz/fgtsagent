@@ -18,11 +18,9 @@ frontend/dist
 .git
 .github
 .DS_Store
-.env
 .env.local
 .env.development
 .env.test
-.env.production
 .vscode
 .idea
 
