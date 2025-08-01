@@ -8,7 +8,7 @@ const { applyAllMigrations } = require('./utils/applyMigrations');
 const { validateJwtEnvironment } = require('./utils/jwtSecurity');
 
 // Definir porta diferente para evitar conflitos
-const PORT = process.env.PORT || config.port || 3003;
+const PORT = process.env.PORT || 3000;
 const express = require('express');
 const path = require('path');
 

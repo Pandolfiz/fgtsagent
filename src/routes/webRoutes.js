@@ -286,7 +286,8 @@ router.get('/profile', requireAuth, commonViewData, (req, res) => {
   }
 });
 
-// Rota para a página de configurações
+// Rota para a página de configurações (OCULTA)
+/*
 router.get('/profile/settings', requireAuth, commonViewData, (req, res) => {
   try {
     res.render('profile/settings', {
@@ -303,7 +304,7 @@ router.get('/profile/settings', requireAuth, commonViewData, (req, res) => {
   }
 });
 
-// Rota para processar configurações de perfil
+// Rota para processar configurações de perfil (OCULTA)
 router.post('/profile/settings', requireAuth, commonViewData, async (req, res) => {
   try {
     // Verificar se o usuário está autenticado
@@ -353,6 +354,7 @@ router.post('/profile/settings', requireAuth, commonViewData, async (req, res) =
     });
   }
 });
+*/
 
 // Rota para a página de API keys
 router.get('/profile/api-keys', requireAuth, commonViewData, (req, res) => {

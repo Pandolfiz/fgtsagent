@@ -107,9 +107,12 @@ services:
       /bin/sh -c "
       if [ -f /etc/letsencrypt/live/fgtsagent.com.br/fullchain.pem ]; then
         echo 'Certificados SSL encontrados, iniciando nginx com SSL...'
+        cp /etc/nginx/conf.d/app.ssl.conf.disabled /etc/nginx/conf.d/app.ssl.conf.active
       else
         echo 'Certificados SSL não encontrados, iniciando nginx sem SSL...'
+        rm -f /etc/nginx/conf.d/app.ssl.conf.active
       fi &&
+      nginx -t &&
       exec nginx -g 'daemon off;'
       "
 

@@ -4,6 +4,24 @@ import { Link } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import NeuralNetworkBackground from '../NeuralNetworkBackground.jsx';
 
+// Animações para destaque do plano premium
+const style = <style>{`
+@keyframes pulse-fast {
+  0%, 100% { box-shadow: 0 0 0 0 #00bcd480, 0 0 0 4px #0097a740; }
+  50% { box-shadow: 0 0 32px 8px #00bcd4, 0 0 0 8px #0097a780; }
+}
+.animate-pulse-fast {
+  animation: pulse-fast 1.2s cubic-bezier(0.4,0,0.6,1) infinite;
+}
+@keyframes pulse-slow {
+  0%, 100% { box-shadow: 0 0 0 0 #00bcd440, 0 0 0 4px #0097a720; }
+  50% { box-shadow: 0 0 32px 8px #00bcd4, 0 0 0 8px #0097a740; }
+}
+.animate-pulse-slow {
+  animation: pulse-slow 2.2s cubic-bezier(0.4,0,0.6,1) infinite;
+}
+`}</style>;
+
 // Dados sincronizados com os produtos e preços do Stripe
 // Produtos no Stripe:
 // - prod_STalRE6RzVNTUu: FGTS Agent - Plano Básico (R$ 99,99/mês)
@@ -14,7 +32,7 @@ const features = [
   { icon: <FaRobot size={40} />, title: 'Automação 24/7', text: 'Nosso agente atende leads a qualquer hora, sem falhas.' },
   { icon: <FaChartLine size={40} />, title: 'Aumente suas Vendas', text: 'Fluxo inteligente que converte mais clientes com menos esforço.' },
   { icon: <FaHandHoldingUsd size={40} />, title: 'Especialista em FGTS', text: 'Cria propostas e simula antecipação de saque-aniversário FGTS automaticamente.' },
-  { icon: <FaUsers size={40} />, title: 'Integração Omnichannel', text: 'Atendimento via WhatsApp, e-mail e web, garantindo proximidade com o cliente.' },
+  { icon: <FaUsers size={40} />, title: 'Integração Omnichannel', text: 'Atendimento via WhatsApp e web, garantindo proximidade com o cliente.' },
   { icon: <FaShieldAlt size={40} />, title: 'Segurança & Compliance', text: 'Dados protegidos e conformidade com regulamentações do setor financeiro.' },
   { icon: <FaChartPie size={40} />, title: 'Analytics em Tempo Real', text: 'Dashboards que mostram desempenho de leads, propostas e conversão.' }
 ];
@@ -22,63 +40,68 @@ const features = [
 // Dados dos planos baseados no Stripe
 const plans = [
   {
-    name: 'FGTS Agent - Plano Básico',
+    name: 'Plano Básico',
     price: 'R$ 99,99',
     period: '/mês',
-    description: 'Plano básico com operações limitadas de saldo FGTS e dashboard',
+    description: 'Indicado para operações pequenas com até 100 leads por mês',
     stripeProductId: 'prod_STalRE6RzVNTUu',
     stripePriceId: 'price_1RYdaBRrfRhcM17zE4rOKO9U',
     features: [
-      'Consultas limitadas de saldo FGTS',
+      'Agente de IA por mensagens',
+      'Consultas ilimitadas de saldo FGTS',
       'Dashboard básico',
-      'Integração WhatsApp',
+      'Integração WhatsApp Business',
       'Relatórios simples',
-      'Suporte por email'
+      'Suporte por email',
+      'Atendimento 24/7',
+      'Simulador básico de propostas'
     ],
     icon: <FaWhatsapp size={32} />,
     popular: false,
-    buttonText: 'Começar Agora'
+    buttonText: 'Testar 14 Dias Grátis'
   },
   {
-    name: 'FGTS Agent - Plano Pro',
+    name: 'Plano Pro',
     price: 'R$ 199,99',
     period: '/mês',
-    description: 'Plano profissional com consultas ilimitadas, notificações em tempo real e relatórios avançados',
+    description: 'Indicado para escritórios com até 500 leads por mês',
     stripeProductId: 'prod_STalhjSBTyHza7',
     stripePriceId: 'price_1RYdaFRrfRhcM17zecmj0hhT',
     features: [
-      'Consultas ilimitadas de FGTS',
+      'Agente de IA que ouve/envia audios',
+      'Consultas ilimitadas de saldo FGTS',
       'Notificações em tempo real',
-      'WhatsApp + Email + Web',
-      'Relatórios avançados',
+      'WhatsApp + Web',
+      'Dashboard e Relatórios avançados',
       'Simulador de propostas',
       'Suporte prioritário',
-      'Integrações personalizadas'
-    ],
+      'API oficial whatsapp para anúncios',
+      'Criação de propostas limitadas'    ],
     icon: <FaChartBar size={32} />,
     popular: true,
-    buttonText: 'Mais Popular'
+    buttonText: 'Escolher Pro'
   },
   {
-    name: 'FGTS Agent - Plano Premium',
+    name: 'Plano Premium',
     price: 'R$ 499,99',
     period: '/mês',
-    description: 'Plano premium com todas as funcionalidades, API dedicada e suporte prioritário',
+    description: 'Indicado para escritórios com alto fluxo de leads, +500 leads por mês',
     stripeProductId: 'prod_STalNWvSe9GqRs',
     stripePriceId: 'price_1RYdaJRrfRhcM17zJsOCBmmi',
     features: [
       'Todas as funcionalidades',
-      'API dedicada',
-      'Múltiplos agentes IA',
-      'Dashboard executivo',
+      'Consulta de saldo, simulação de propostas e criação de propostas Ilimitadas',
+      'Envio de áudios com personalização de voz',
+      'Disparo de mensagens em massa',
+      'Dashboard e relatórios avançados',
       'Suporte prioritário 24/7',
       'Gerente de conta dedicado',
-      'White-label disponível',
-      'SLA garantido'
+      'IA com estratégias de vendas avançadas'
     ],
-    icon: <FaUsers size={32} />,
+    icon: <FaChartLine size={32} />, 
     popular: false,
-    buttonText: 'Contatar Vendas'
+    premium: true, // NOVO
+    buttonText: 'Acesso Total'
   }
 ];
 
@@ -142,7 +165,7 @@ export default function Home({ isLoggedIn }) {
               {/* Overlay escurecido, começa abaixo do navbar (top-16 para ~64px de navbar) */}
               <motion.div
                 key="overlay"
-                className="fixed left-0 right-0 top-16 bottom-0 bg-black/60 z-40"
+                className="fixed left-0 right-0 top-16 bottom-0 bg-black/60 backdrop-blur-sm z-40"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 exit={{ opacity: 0 }}
@@ -153,23 +176,102 @@ export default function Home({ isLoggedIn }) {
               <motion.div
                 key="menu"
                 id="mobile-menu"
-                className="fixed top-16 right-0 h-[calc(100vh-64px)] w-4/5 max-w-xs bg-gradient-to-br from-cyan-900/95 via-blue-900/95 to-purple-900/95 z-50 shadow-2xl flex flex-col pt-8 px-8 gap-6 border-l border-cyan-400/30"
+                className="fixed top-16 right-0 h-[calc(100vh-64px)] w-4/5 max-w-xs bg-gradient-to-br from-blue-950/95 via-cyan-950/95 to-blue-900/95 backdrop-blur-xl z-50 shadow-2xl flex flex-col pt-8 px-8 gap-6 border-l-4 border-cyan-400/50 shadow-cyan-400/20"
                 initial={{ x: '100%' }}
                 animate={{ x: 0 }}
                 exit={{ x: '100%' }}
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               >
-                <motion.a href="#features" className="text-cyan-100 hover:text-cyan-300 transition font-semibold" onClick={() => setMenuOpen(false)} initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.1 }}>Funcionalidades</motion.a>
-                <motion.a href="#planos" className="text-cyan-100 hover:text-cyan-300 transition font-semibold" onClick={() => setMenuOpen(false)} initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.2 }}>Planos</motion.a>
-                <motion.a href="#clientes" className="text-cyan-100 hover:text-cyan-300 transition font-semibold" onClick={() => setMenuOpen(false)} initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.3 }}>Clientes</motion.a>
-                <motion.a href="#parceiro" className="text-cyan-100 hover:text-cyan-300 transition font-semibold" onClick={() => setMenuOpen(false)} initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.4 }}>Parceiro</motion.a>
+                {/* Logo no topo do menu */}
+                <motion.div 
+                  className="flex items-center gap-3 mb-6 pb-6 border-b border-cyan-400/20"
+                  initial={{ opacity: 0, y: -20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.1 }}
+                >
+                  <FaRobot className="text-cyan-300 animate-pulse" size={24} />
+                  <span className="text-xl font-extrabold text-cyan-200 tracking-wider">FgtsAgent</span>
+                </motion.div>
+
+                {/* Links de navegação com ícones */}
+                <motion.a 
+                  href="#features" 
+                  className="flex items-center gap-3 text-cyan-100 hover:text-cyan-300 transition font-semibold py-3 px-4 rounded-lg hover:bg-cyan-900/30 group" 
+                  onClick={() => setMenuOpen(false)} 
+                  initial={{ opacity: 0, x: 40 }} 
+                  animate={{ opacity: 1, x: 0 }} 
+                  transition={{ delay: 0.2 }}
+                >
+                  <FaRobot className="text-cyan-400 group-hover:text-cyan-300 transition-colors" size={18} />
+                  Funcionalidades
+                </motion.a>
+                
+                <motion.a 
+                  href="#planos" 
+                  className="flex items-center gap-3 text-cyan-100 hover:text-cyan-300 transition font-semibold py-3 px-4 rounded-lg hover:bg-cyan-900/30 group" 
+                  onClick={() => setMenuOpen(false)} 
+                  initial={{ opacity: 0, x: 40 }} 
+                  animate={{ opacity: 1, x: 0 }} 
+                  transition={{ delay: 0.3 }}
+                >
+                  <FaChartBar className="text-cyan-400 group-hover:text-cyan-300 transition-colors" size={18} />
+                  Planos
+                </motion.a>
+                
+                <motion.a 
+                  href="#clientes" 
+                  className="flex items-center gap-3 text-cyan-100 hover:text-cyan-300 transition font-semibold py-3 px-4 rounded-lg hover:bg-cyan-900/30 group" 
+                  onClick={() => setMenuOpen(false)} 
+                  initial={{ opacity: 0, x: 40 }} 
+                  animate={{ opacity: 1, x: 0 }} 
+                  transition={{ delay: 0.4 }}
+                >
+                  <FaUsers className="text-cyan-400 group-hover:text-cyan-300 transition-colors" size={18} />
+                  Clientes
+                </motion.a>
+                
+                <motion.a 
+                  href="#parceiro" 
+                  className="flex items-center gap-3 text-cyan-100 hover:text-cyan-300 transition font-semibold py-3 px-4 rounded-lg hover:bg-cyan-900/30 group" 
+                  onClick={() => setMenuOpen(false)} 
+                  initial={{ opacity: 0, x: 40 }} 
+                  animate={{ opacity: 1, x: 0 }} 
+                  transition={{ delay: 0.5 }}
+                >
+                  <FaHandHoldingUsd className="text-cyan-400 group-hover:text-cyan-300 transition-colors" size={18} />
+                  Parceiro
+                </motion.a>
+
+                {/* Botão de ação */}
                 {!isLoggedIn ? (
-                  <motion.div initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 }}>
-                    <Link to="/login" className="mt-2 px-5 py-2 rounded-full bg-cyan-400 text-white font-bold shadow-lg hover:bg-cyan-300 transition border-2 border-cyan-300/40 block text-center" onClick={() => setMenuOpen(false)}>Entrar</Link>
+                  <motion.div 
+                    className="mt-auto pt-6 border-t border-cyan-400/20"
+                    initial={{ opacity: 0, x: 40 }} 
+                    animate={{ opacity: 1, x: 0 }} 
+                    transition={{ delay: 0.6 }}
+                  >
+                    <Link 
+                      to="/login" 
+                      className="w-full px-6 py-3 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold shadow-lg hover:from-cyan-400 hover:to-blue-400 transition border-2 border-cyan-300/50 drop-shadow-neon block text-center" 
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Entrar
+                    </Link>
                   </motion.div>
                 ) : (
-                  <motion.div initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 }}>
-                    <Link to="/dashboard" className="mt-2 px-5 py-2 rounded-full bg-cyan-400 text-white font-bold shadow-lg hover:bg-cyan-300 transition border-2 border-cyan-300/40 block text-center" onClick={() => setMenuOpen(false)}>Dashboard</Link>
+                  <motion.div 
+                    className="mt-auto pt-6 border-t border-cyan-400/20"
+                    initial={{ opacity: 0, x: 40 }} 
+                    animate={{ opacity: 1, x: 0 }} 
+                    transition={{ delay: 0.6 }}
+                  >
+                    <Link 
+                      to="/dashboard" 
+                      className="w-full px-6 py-3 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold shadow-lg hover:from-cyan-400 hover:to-blue-400 transition border-2 border-cyan-300/50 drop-shadow-neon block text-center" 
+                      onClick={() => setMenuOpen(false)}
+                    >
+                      Dashboard
+                    </Link>
                   </motion.div>
                 )}
               </motion.div>
@@ -285,16 +387,25 @@ export default function Home({ isLoggedIn }) {
           {plans.map((plan, i) => (
             <motion.div
               key={i}
-              className={`bg-white/10 rounded-2xl p-8 text-center shadow-xl transition backdrop-blur-lg border drop-shadow-neon card-futuristic relative ${
-                plan.popular 
-                  ? 'border-emerald-400/60 scale-105 bg-gradient-to-b from-emerald-900/20 to-cyan-900/20' 
-                  : 'border-cyan-400/40 hover:scale-105'
-              }`}
+              className={`bg-white/10 rounded-2xl p-8 text-center shadow-xl transition backdrop-blur-lg border drop-shadow-neon card-futuristic relative flex flex-col h-full
+                ${plan.popular ? 'border-emerald-400/60 scale-105 bg-gradient-to-b from-emerald-900/20 to-cyan-900/20' : ''}
+                ${plan.premium ? 'border-blue-500/80 scale-110 bg-gradient-to-b from-blue-900/40 to-cyan-900/30 ring-4 ring-blue-400/40 z-20 bg-white/20' : 'border-cyan-400/40 hover:scale-105'}
+              `}
               initial={{ opacity: 0, y: 40 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ duration: 0.7, delay: i * 0.1 }}
+              style={plan.premium ? { boxShadow: '0 0 32px 8px #00bcd4, 0 0 0 4px #0097a7' } : {}}
             >
+                {/* Tag especial para o Premium */}
+                {plan.premium && (
+                  <div className="absolute -top-5 left-1/2 transform -translate-x-1/2 z-30">
+                    <span className="bg-gradient-to-r from-blue-500 via-cyan-500 to-cyan-500 text-white px-7 py-2 rounded-full text-base font-extrabold shadow-xl border-4 border-white/20 drop-shadow-neon whitespace-nowrap">
+                      CONVERSÃO MÁXIMA
+                    </span>
+                  </div>
+                )}
+              {/* Tag do popular permanece igual */}
               {plan.popular && (
                 <div className="absolute -top-4 left-1/2 transform -translate-x-1/2">
                   <span className="bg-gradient-to-r from-emerald-400 to-cyan-400 text-black px-6 py-2 rounded-full text-sm font-bold shadow-lg">
@@ -304,41 +415,45 @@ export default function Home({ isLoggedIn }) {
               )}
               
               <div className="mb-6">
-                <div className={`mb-4 flex justify-center ${plan.popular ? 'text-emerald-300' : 'text-cyan-300'}`}>
+                <div className={`mb-4 flex justify-center ${plan.popular ? 'text-emerald-300' : plan.premium ? 'text-blue-300' : 'text-cyan-300'}`}>
                   {plan.icon}
                 </div>
                 <h3 className="text-2xl font-bold text-white mb-2">{plan.name}</h3>
                 <p className="text-white/70 text-sm mb-4">{plan.description}</p>
                 
                 <div className="mb-6">
-                  <span className={`text-4xl font-extrabold ${plan.popular ? 'text-emerald-300' : 'text-cyan-300'}`}>
+                  <span className={`text-4xl font-extrabold ${plan.popular ? 'text-emerald-300' : plan.premium ? 'text-blue-300' : 'text-cyan-300'}`}>
                     {plan.price}
                   </span>
                   <span className="text-white/60 text-lg">{plan.period}</span>
                 </div>
               </div>
               
-              <div className="mb-8 text-left">
+              <div className="flex-grow mb-8 text-left">
                 {plan.features.map((feature, idx) => (
                   <div key={idx} className="flex items-center mb-3">
-                    <FaCheck className={`mr-3 ${plan.popular ? 'text-emerald-400' : 'text-cyan-400'} flex-shrink-0`} size={16} />
+                    <FaCheck className={`mr-3 ${plan.popular ? 'text-emerald-400' : plan.premium ? 'text-blue-400' : 'text-cyan-400'} flex-shrink-0`} size={16} />
                     <span className="text-white/90 text-sm">{feature}</span>
                   </div>
                 ))}
               </div>
               
-                             <Link
-                 to={`/signup?plan=${plan.stripePriceId}`}
-                 className={`w-full py-3 px-6 rounded-lg font-bold shadow-lg transition border-2 ${
-                   plan.popular
-                     ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white border-emerald-400/50 hover:from-emerald-400 hover:to-cyan-400'
-                     : 'bg-transparent text-cyan-300 border-cyan-400/50 hover:bg-cyan-900/50'
-                 } drop-shadow-neon block text-center`}
-                 data-price-id={plan.stripePriceId}
-                 data-product-id={plan.stripeProductId}
-               >
-                 {plan.buttonText}
-               </Link>
+              <div className="mt-auto">
+                <Link
+                  to={`/signup?plan=${plan.stripePriceId}`}
+                  className={`w-full py-3 px-6 rounded-lg font-bold shadow-lg transition border-2 ${
+                    plan.popular
+                      ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white border-emerald-400/50 hover:from-emerald-400 hover:to-cyan-400'
+                      : plan.premium
+                      ? 'bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-600 text-white border-cyan-300/80 hover:from-blue-500 hover:via-cyan-400 hover:to-blue-500 shadow-2xl shadow-cyan-400/50 transform hover:scale-105'
+                      : 'bg-transparent text-cyan-300 border-cyan-400/50 hover:bg-cyan-900/50'
+                  } drop-shadow-neon block text-center`}
+                  data-price-id={plan.stripePriceId}
+                  data-product-id={plan.stripeProductId}
+                >
+                  {plan.buttonText}
+                </Link>
+              </div>
             </motion.div>
           ))}
         </motion.div>

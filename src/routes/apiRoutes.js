@@ -831,6 +831,9 @@ router.get('/test-auth', async (req, res) => {
 // Rota para cancelar proposta
 router.post('/proposals/:id/cancel', requireAuth, proposalController.cancelProposal);
 
+// Rota para editar proposta
+router.put('/proposals/:id', requireAuth, proposalController.updateProposal);
+
 // Rota para excluir proposta
 router.delete('/proposals/:id', requireAuth, proposalController.deleteProposal);
 

@@ -4,43 +4,70 @@ const { supabase } = require('../config/supabase');
 const { requireAuth } = require('../middleware/auth');
 const logger = require('../utils/logger');
 const whatsappService = require('../services/whatsappService');
+const { optimizedMessagesQuery, optimizedSelect } = require('../utils/supabaseOptimized');
 
 // console.log('DEBUG: Arquivo src/routes/messages.js carregado');
 
 /**
  * @route GET /api/messages/:conversationId
- * @desc Obter mensagens de uma conversa específica
+ * @desc Obter mensagens de uma conversa específica (OTIMIZADO)
  * @access Private
  */
 router.get('/:conversationId', requireAuth, async (req, res) => {
   try {
     const { conversationId } = req.params;
     const userId = req.user.id;
+    const limit = parseInt(req.query.limit) || 100; // Limite padrão de 100 mensagens
     
-    logger.info(`Buscando mensagens para conversa: ${conversationId}, usuário: ${userId}`);
+    logger.info(`[OPTIMIZED] Buscando mensagens para conversa: ${conversationId}, usuário: ${userId}, limite: ${limit}`);
     
-    // Verificar se o usuário tem acesso a esta conversa
-    const { data: contactData, error: contactError } = await supabase
-      .from('contacts')
-      .select('*')
-      .eq('remote_jid', conversationId)
-      .eq('client_id', userId)
-      .single();
+    // Verificar se o usuário tem acesso a esta conversa (com cache)
+    logger.info(`[MESSAGES-DEBUG] Iniciando verificação para conversa: ${conversationId}, usuário: ${userId}`);
     
-    if (contactError || !contactData) {
-      logger.error(`Usuário ${userId} não tem acesso à conversa ${conversationId}`);
+    const { data: contactData, error: contactError } = await optimizedSelect(
+      supabase,
+      'contacts',
+      'remote_jid, client_id',
+      { eq: { remote_jid: conversationId, client_id: userId } },
+      3000, // 3s timeout
+      true // usar cache
+    );
+    
+    logger.info(`[MESSAGES-DEBUG] Resultado optimizedSelect:`, {
+      contactError: contactError?.message,
+      contactData: contactData,
+      contactDataLength: contactData?.data?.length,
+      hasData: !!contactData?.data,
+      conversationId,
+      userId
+    });
+    
+    if (contactError || !contactData || contactData.length === 0) {
+      logger.error(`[MESSAGES-DEBUG] Acesso negado - Usuário ${userId} não tem acesso à conversa ${conversationId}`, {
+        contactError: contactError?.message,
+        contactData: contactData,
+        contactDataLength: contactData?.length,
+        condition: {
+          hasError: !!contactError,
+          noData: !contactData,
+          emptyData: contactData?.length === 0
+        }
+      });
       return res.status(403).json({
         success: false,
         message: 'Acesso negado a esta conversa'
       });
     }
     
-    // Buscar mensagens
-    const { data: messagesData, error: messagesError } = await supabase
-      .from('messages')
-      .select('*')
-      .eq('conversation_id', conversationId)
-      .order('timestamp', { ascending: true });
+    logger.info(`[MESSAGES-DEBUG] Acesso permitido - contato encontrado`);
+    
+    // Buscar mensagens otimizadas com cache
+    const { data: messagesData, error: messagesError } = await optimizedMessagesQuery(
+      supabase,
+      conversationId,
+      limit,
+      3000 // 3s timeout
+    );
     
     if (messagesError) {
       logger.error(`Erro ao buscar mensagens: ${messagesError.message}`, { error: messagesError });
@@ -51,7 +78,7 @@ router.get('/:conversationId', requireAuth, async (req, res) => {
       });
     }
     
-    logger.info(`Mensagens encontradas: ${messagesData?.length || 0}`);
+    logger.info(`[OPTIMIZED] Mensagens encontradas: ${messagesData?.length || 0}`);
     
     // Formatar as mensagens
     const formattedMessages = messagesData.map(msg => ({
@@ -66,7 +93,9 @@ router.get('/:conversationId', requireAuth, async (req, res) => {
     
     return res.json({
       success: true,
-      messages: formattedMessages
+      messages: formattedMessages,
+      total: formattedMessages.length,
+      limit: limit
     });
   } catch (error) {
     logger.error('Erro ao processar solicitação de mensagens:', error);

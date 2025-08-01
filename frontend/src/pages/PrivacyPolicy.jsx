@@ -125,6 +125,24 @@ export default function PrivacyPolicy() {
               </section>
 
               <section className="mb-8">
+                <h2 className="text-2xl font-bold text-cyan-300 mb-4">4.1 Transferência Internacional de Dados</h2>
+                <p className="text-white/80 leading-relaxed mb-4">
+                  Alguns de nossos prestadores de serviços estão localizados fora do Brasil. 
+                  Quando necessário, realizamos transferências internacionais com as seguintes garantias:
+                </p>
+                <ul className="list-disc list-inside text-white/80 leading-relaxed space-y-2">
+                  <li><strong>Stripe (Estados Unidos):</strong> Processamento de pagamentos - Adequação de nível de proteção</li>
+                  <li><strong>Supabase (Brasil):</strong> Hospedagem de dados - Armazenamento local</li>
+                  <li><strong>Google Cloud (Estados Unidos):</strong> Serviços de email e analytics - Cláusulas contratuais padrão</li>
+                  <li><strong>Evolution API (Brasil):</strong> Serviços de WhatsApp - Armazenamento local</li>
+                </ul>
+                <p className="text-white/80 leading-relaxed mt-4">
+                  Todas as transferências internacionais seguem as diretrizes da LGPD e possuem 
+                  medidas de segurança adequadas para proteger seus dados.
+                </p>
+              </section>
+
+              <section className="mb-8">
                 <h2 className="text-2xl font-bold text-cyan-300 mb-4">5. Armazenamento e Segurança</h2>
                 
                 <h3 className="text-xl font-semibold text-cyan-200 mb-3">5.1 Localização dos Dados</h3>
@@ -258,9 +276,11 @@ export default function PrivacyPolicy() {
       </footer>
 
       {/* Background */}
-      <div className="fixed inset-0 w-full h-full z-[-20] animate-gradient-move bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950" 
-           style={{backgroundSize: '400% 400%'}} 
-           aria-hidden="true" />
+      <div
+        className="fixed inset-0 w-full h-full z-[-20] animate-gradient-move bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950"
+        style={{ backgroundSize: '400% 400%' }}
+        aria-hidden="true"
+      />
       </div>
     </>
   );

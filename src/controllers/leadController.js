@@ -1,5 +1,6 @@
 const logger = require('../utils/logger');
 const { supabaseAdmin } = require('../config/supabase');
+const { optimizedSelect, optimizedLeadsWithProposals } = require('../utils/supabaseOptimized');
 
 class LeadController {
   async list(req, res) {
@@ -20,88 +21,79 @@ class LeadController {
   async listComplete(req, res) {
     try {
       const clientId = req.user.id;
-      logger.info(`[LEADS] Buscando leads completos para cliente: ${clientId}`);
+      logger.info(`[LEADS-OPTIMIZED] Buscando leads completos para cliente: ${clientId}`);
 
-      // Buscar todos os leads do cliente
-      const { data: leads, error: leadsError } = await supabaseAdmin
-        .from('leads')
-        .select('*')
-        .eq('client_id', clientId);
+      // Usar query otimizada com cache
+      const { data: leads, error } = await optimizedSelect(
+        supabaseAdmin,
+        'leads',
+        'id, name, cpf, email, phone, status, data, rg, mother_name, birth, marital_status, cep, numero, pix_key, balance, simulation, balance_error, updated_at',
+        { 
+          eq: { client_id: clientId },
+          order: { column: 'updated_at', ascending: false },
+          limit: 1000
+        },
+        5000, // 5s timeout
+        true // usar cache
+      );
 
-      if (leadsError) throw leadsError;
-
-      // Buscar dados de balance para todos os leads
-      const { data: balanceData, error: balanceError } = await supabaseAdmin
-        .from('balance')
-        .select('*')
-        .eq('client_id', clientId);
-
-      if (balanceError) {
-        logger.error(`Erro ao buscar dados de balance: ${balanceError.message}`);
+      if (error) {
+        logger.error(`[LEADS-OPTIMIZED] Erro ao buscar leads: ${error.message}`);
+        throw error;
       }
 
-      // Buscar dados de proposals para todos os leads
-      const { data: proposalsData, error: proposalsError } = await supabaseAdmin
-        .from('proposals')
-        .select('*')
-        .eq('client_id', clientId);
+      // Buscar propostas otimizadas com dados completos
+      const { data: proposals, error: proposalsError } = await optimizedSelect(
+        supabaseAdmin,
+        'proposals',
+        'lead_id, proposal_id, status, value, created_at, updated_at',
+        { eq: { client_id: clientId } },
+        3000, // 3s timeout
+        true // usar cache
+      );
 
       if (proposalsError) {
-        logger.error(`Erro ao buscar dados de proposals: ${proposalsError.message}`);
+        logger.error(`[LEADS-OPTIMIZED] Erro ao buscar propostas: ${proposalsError.message}`);
       }
 
-      // Criar mapas para lookup rápido
-      const balanceMap = {};
-      const proposalsMap = {};
 
-      // Mapear o balance mais recente para cada lead
-      if (balanceData) {
-        balanceData.forEach(balance => {
-          if (balance.lead_id) {
-            if (!balanceMap[balance.lead_id] || 
-                new Date(balance.updated_at) > new Date(balanceMap[balance.lead_id].updated_at)) {
-              balanceMap[balance.lead_id] = balance;
-            }
-          }
-        });
-      }
 
-      // Mapear a proposta mais recente para cada lead
-      if (proposalsData) {
-        proposalsData.forEach(proposal => {
+
+
+      // Criar um mapa com os dados das propostas por lead_id
+      const proposalsMap = new Map();
+      if (proposals) {
+        proposals.forEach(proposal => {
           if (proposal.lead_id) {
-            if (!proposalsMap[proposal.lead_id] || 
-                new Date(proposal.created_at) > new Date(proposalsMap[proposal.lead_id].created_at)) {
-              proposalsMap[proposal.lead_id] = proposal;
+            // Se já existe uma proposta para este lead, manter a mais recente
+            const existing = proposalsMap.get(proposal.lead_id);
+            if (!existing || new Date(proposal.updated_at || proposal.created_at) > new Date(existing.updated_at || existing.created_at)) {
+              proposalsMap.set(proposal.lead_id, proposal);
             }
           }
         });
       }
 
-      // Combinar os dados
-      const completeLeads = leads.map(lead => {
-        const balance = balanceMap[lead.id];
-        const proposal = proposalsMap[lead.id];
-
-        return {
+      // Adicionar informação sobre propostas aos leads
+      const leadsWithProposalInfo = leads ? leads.map(lead => {
+        const proposal = proposalsMap.get(lead.id);
+        const leadWithProposal = {
           ...lead,
-          balance: balance?.balance || null,
-          simulation: balance?.simulation || null,
-          error_reason: balance?.error_reason || null,
-          balance_updated_at: balance?.updated_at || null,
-          proposal_id: proposal?.proposal_id || null,
+          hasProposals: proposalsMap.has(lead.id),
           proposal_status: proposal?.status || null,
-          proposal_value: proposal?.value || proposal?.amount || null,
+          proposal_value: proposal?.value || null,
+          proposal_id: proposal?.proposal_id || null,
           proposal_created_at: proposal?.created_at || null,
-          formalization_link: proposal?.formalization_link || proposal?.link_formalizacao || null,
-          pix_key: proposal?.pix_key || proposal?.chave_pix || null,
-          status_detail: proposal?.status_detail || proposal?.status_detalhado || null,
-          updated_at: balance?.updated_at || lead.updated_at || lead.created_at
+          proposal_updated_at: proposal?.updated_at || null
         };
-      });
+        
 
-      logger.info(`[LEADS] Retornando ${completeLeads.length} leads completos`);
-      return res.json({ success: true, data: completeLeads });
+        
+        return leadWithProposal;
+      }) : [];
+
+      logger.info(`[LEADS-OPTIMIZED] Retornando ${leadsWithProposalInfo?.length || 0} leads completos`);
+      return res.json({ success: true, data: leadsWithProposalInfo || [] });
     } catch (err) {
       logger.error('LeadController.listComplete error:', err.message || err);
       return res.status(500).json({ success: false, message: err.message });
@@ -113,15 +105,30 @@ class LeadController {
       const { id } = req.params;
       const clientId = req.user.id;
       
-      const { data: lead, error } = await supabaseAdmin
+      logger.info(`[LEADS] Buscando lead ${id} para cliente ${clientId}`);
+      
+      // Primeiro verificar se o lead existe e pertence ao cliente
+      const { data: leads, error } = await supabaseAdmin
         .from('leads')
         .select('*')
-        .eq('id', id);
-      if (error) throw error;
-      if (!lead || String(lead.client_id).trim() !== String(clientId).trim()) {
-        console.log('[DEBUG] Lead não encontrado ou client_id não bate');
+        .eq('id', id)
+        .eq('client_id', clientId);
+        
+      if (error) {
+        logger.error(`[LEADS] Erro ao buscar lead ${id}:`, error.message);
+        throw error;
+      }
+      
+      // Verificar se encontrou algum lead
+      if (!leads || leads.length === 0) {
+        logger.warn(`[LEADS] Lead ${id} não encontrado para cliente ${clientId}`);
         return res.status(404).json({ success: false, message: 'Lead não encontrado' });
       }
+      
+      // Se encontrou múltiplos leads (caso raro), pegar o primeiro
+      const lead = leads[0];
+      
+      logger.info(`[LEADS] Lead ${id} encontrado com sucesso`);
       return res.json({ success: true, data: lead });
     } catch (err) {
       logger.error('LeadController.getById error:', err.message || err);
@@ -132,14 +139,50 @@ class LeadController {
   async create(req, res) {
     try {
       const clientId = req.user.id;
+      
+      // Preparar payload tratando campos vazios
       const payload = {
         client_id: clientId,
-        name: req.body.name,
-        email: req.body.email,
-        phone: req.body.phone,
-        status: req.body.status,
-        data: req.body.data || {}
+        name: req.body.name || null,
+        cpf: req.body.cpf || null,
+        email: req.body.email || null,
+        phone: req.body.phone || null,
+        status: req.body.status || null,
+        data: req.body.data || {},
+        // Campos adicionais da tabela leads
+        rg: req.body.rg || null,
+        nationality: req.body.nationality || null,
+        is_pep: req.body.is_pep || false,
+        birth: req.body.birth || null,
+        marital_status: req.body.marital_status || null,
+        person_type: req.body.person_type || null,
+        mother_name: req.body.mother_name || null,
+        // Endereço
+        cep: req.body.cep || null,
+        estado: req.body.estado || null,
+        cidade: req.body.cidade || null,
+        bairro: req.body.bairro || null,
+        rua: req.body.rua || null,
+        numero: req.body.numero || null,
+        // Campos financeiros
+        balance: req.body.balance || null,
+        pix: req.body.pix || null,
+        pix_key: req.body.pix_key || null,
+        simulation: req.body.simulation || null,
+        balance_error: req.body.balance_error || null,
+        proposal_error: req.body.proposal_error || null,
+        parcelas: req.body.parcelas || null,
+        // Outros campos
+        provider: req.body.provider || 'cartos'
       };
+
+      // Remover campos vazios para evitar erros de tipo
+      Object.keys(payload).forEach(key => {
+        if (payload[key] === '' || payload[key] === undefined) {
+          payload[key] = null;
+        }
+      });
+
       const { data: saved, error } = await supabaseAdmin
         .from('leads')
         .insert([payload])
@@ -157,26 +200,53 @@ class LeadController {
       const { id } = req.params;
       const clientId = req.user.id;
       
+      logger.info(`[LEADS] Atualizando lead ${id} para cliente ${clientId}`);
+      
       const { data: existing, error } = await supabaseAdmin
         .from('leads')
         .select('*')
-        .eq('id', id);
-      if (error) throw error;
-      if (!existing || existing.client_id !== clientId) {
+        .eq('id', id)
+        .eq('client_id', clientId)
+        .single();
+        
+      if (error) {
+        logger.error(`[LEADS] Erro ao buscar lead ${id}:`, error.message);
+        throw error;
+      }
+      
+      if (!existing) {
+        logger.warn(`[LEADS] Lead ${id} não encontrado para cliente ${clientId}`);
         return res.status(404).json({ success: false, message: 'Lead não encontrado' });
       }
       
       const updateData = {};
-      ['name','email','phone','status','data'].forEach(field => {
-        if (req.body[field] !== undefined) updateData[field] = req.body[field];
+      ['name','cpf','email','phone','status','data','rg','nationality','is_pep','birth','marital_status','person_type','mother_name','cep','estado','cidade','bairro','rua','numero','balance','pix','pix_key','simulation','balance_error','proposal_error','parcelas','provider'].forEach(field => {
+        if (req.body[field] !== undefined) {
+          // Tratar campos vazios
+          if (req.body[field] === '' || req.body[field] === undefined) {
+            updateData[field] = null;
+          } else {
+            updateData[field] = req.body[field];
+          }
+        }
       });
+      
+      logger.info(`[LEADS] Dados para atualização:`, updateData);
       
       const { data: updated, error: updateError } = await supabaseAdmin
         .from('leads')
         .update(updateData)
         .eq('id', id)
-        .select();
-      if (updateError) throw updateError;
+        .eq('client_id', clientId)
+        .select()
+        .single();
+        
+      if (updateError) {
+        logger.error(`[LEADS] Erro ao atualizar lead ${id}:`, updateError.message);
+        throw updateError;
+      }
+      
+      logger.info(`[LEADS] Lead ${id} atualizado com sucesso`);
       return res.json({ success: true, data: updated });
     } catch (err) {
       logger.error('LeadController.update error:', err.message || err);
@@ -256,6 +326,47 @@ class LeadController {
       return res.json({ success: true, message: 'Consulta iniciada com sucesso' });
     } catch (err) {
       logger.error('LeadController.repeatQuery error:', err.message || err);
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+  async getProposals(req, res) {
+    try {
+      const { id } = req.params;
+      const clientId = req.user.id;
+      
+      logger.info(`[LEADS] Buscando propostas para lead ${id} do cliente ${clientId}`);
+      
+      // Verificar se o lead existe e pertence ao cliente
+      const { data: lead, error: leadError } = await supabaseAdmin
+        .from('leads')
+        .select('id, name')
+        .eq('id', id)
+        .eq('client_id', clientId)
+        .single();
+
+      if (leadError || !lead) {
+        logger.warn(`[LEADS] Lead ${id} não encontrado para cliente ${clientId}`);
+        return res.status(404).json({ success: false, message: 'Lead não encontrado' });
+      }
+
+      // Buscar propostas da tabela proposals
+      const { data: proposals, error } = await supabaseAdmin
+        .from('proposals')
+        .select('*')
+        .eq('lead_id', id)
+        .eq('client_id', clientId)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        logger.error(`[LEADS] Erro ao buscar propostas para lead ${id}:`, error.message);
+        throw error;
+      }
+      
+      logger.info(`[LEADS] Encontradas ${proposals?.length || 0} propostas para lead ${id}`);
+      return res.json({ success: true, data: proposals || [] });
+    } catch (err) {
+      logger.error('LeadController.getProposals error:', err.message || err);
       return res.status(500).json({ success: false, message: err.message });
     }
   }
