@@ -11,13 +11,21 @@ const rateLimit = require('express-rate-limit');
 const slowDown = require('express-slow-down');
 const { sanitizeRequest } = require('./middleware/sanitizationMiddleware');
 const { requestLogger, errorLogger } = require('./middleware/requestLogger');
-const { sanitizeInput } = require('./middleware/validationMiddleware');
 const session = require('express-session');
 const flash = require('connect-flash');
 const config = require('./config');
 const userApiKeyMiddleware = require('./middleware/userApiKeyMiddleware');
 const { requireAuth } = require('./middleware/auth');
 const { refreshTokens, applyRefreshedTokens } = require('./middleware/tokenRefresh');
+const { 
+  monitorLoginAttempts, 
+  monitorDataAccess, 
+  monitorFinancialTransactions, 
+  detectSuspiciousActivity, 
+  rateLimiter, 
+  securityHeaders, 
+  sanitizeInput 
+} = require('./middleware/securityMiddleware');
 const adminRoutes = require('./routes/adminRoutes');
 const apiRoutes = require('./routes/apiRoutes');
 const whatsappCredentialRoutes = require('./routes/whatsappCredentialRoutes');
@@ -260,6 +268,16 @@ app.use(sanitizeRequest(['body', 'query', 'params']));
 
 // Middleware de renovação automática de tokens
 app.use(refreshTokens);
+
+// Middleware de segurança cibernética (apenas headers e detecção de atividades suspeitas)
+app.use(securityHeaders);
+app.use(detectSuspiciousActivity);
+
+// Rate limiting personalizado (substitui o do helmet para ter mais controle)
+app.use(rateLimiter(100, 15 * 60 * 1000)); // 100 requests por 15 minutos
+
+// Sanitização de entrada para prevenir XSS
+app.use(sanitizeInput);
 
 // 🚀 Frontend é servido pelo Vite (desenvolvimento) ou Nginx (produção)
 // Backend focado apenas em APIs - Arquitetura mais limpa e performática

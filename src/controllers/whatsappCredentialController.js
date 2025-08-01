@@ -1,6 +1,7 @@
 const logger = require('../utils/logger');
 const EvolutionService = require('../services/evolutionService');
 const WhatsappService = require('../services/whatsappService');
+const smsRateLimitService = require('../services/smsRateLimitService');
 const config = require('../config');
 const { supabaseAdmin } = require('../config/supabase');
 const axios = require('axios'); // Adicionado para o novo método
@@ -1677,12 +1678,29 @@ class WhatsappCredentialController {
         logger.warn(`[REQUEST_VERIFICATION_CODE] Credencial não encontrada para phoneNumberId ${phoneNumberId}:`, credentialError);
       }
 
+      // Verificar rate limiting antes de fazer a requisição
+      const rateLimitCheck = smsRateLimitService.canRequestSms(phoneNumberId, clientId);
+      if (!rateLimitCheck.allowed) {
+        logger.warn(`[REQUEST_VERIFICATION_CODE] Rate limit excedido para ${phoneNumberId}:`, rateLimitCheck);
+        
+        return res.status(429).json({
+          success: false,
+          error: rateLimitCheck.message,
+          code: 'RATE_LIMIT_EXCEEDED',
+          reason: rateLimitCheck.reason,
+          retryAfter: rateLimitCheck.retryAfter
+        });
+      }
+
       // Solicitar código na Meta API usando o WhatsappService
       try {
         const requestResult = await WhatsappService.requestVerificationCode(phoneNumberId, accessToken, codeMethod, language);
 
         if (requestResult.success) {
           logger.info(`[REQUEST_VERIFICATION_CODE] Código solicitado com sucesso:`, requestResult.data);
+
+          // Registrar tentativa bem-sucedida no rate limiting
+          smsRateLimitService.recordSmsRequest(phoneNumberId, clientId, true);
 
           // Atualizar status da credencial no banco
           if (credential) {
@@ -1714,6 +1732,9 @@ class WhatsappCredentialController {
           // Erro retornado pelo WhatsappService
           logger.error(`[REQUEST_VERIFICATION_CODE] Erro do WhatsappService:`, requestResult.error);
           
+          // Registrar tentativa falhada no rate limiting
+          smsRateLimitService.recordSmsRequest(phoneNumberId, clientId, false);
+          
           // Atualizar status da credencial com erro
           if (credential) {
             await supabaseAdmin
@@ -1725,7 +1746,10 @@ class WhatsappCredentialController {
                   ...credential.metadata,
                   sms_request_error: requestResult.error,
                   sms_request_error_code: requestResult.code,
-                  sms_request_error_details: requestResult.details
+                  sms_request_error_title: requestResult.userTitle,
+                  sms_request_error_details: requestResult.details,
+                  sms_request_meta_code: requestResult.metaCode,
+                  sms_request_meta_subcode: requestResult.metaSubcode
                 }
               })
               .eq('id', credential.id);
@@ -1734,7 +1758,11 @@ class WhatsappCredentialController {
           return res.status(400).json({
             success: false,
             error: requestResult.error,
-            code: requestResult.code
+            userTitle: requestResult.userTitle,
+            code: requestResult.code,
+            metaCode: requestResult.metaCode,
+            metaSubcode: requestResult.metaSubcode,
+            details: requestResult.details
           });
         }
 
@@ -1768,6 +1796,34 @@ class WhatsappCredentialController {
       return res.status(500).json({
         success: false,
         error: 'Erro interno do servidor'
+      });
+    }
+  }
+
+  // Novo método para verificar status do rate limiting de SMS
+  async getSmsRateLimitStatus(req, res) {
+    try {
+      const { phoneNumberId } = req.params;
+      const clientId = req.clientId;
+
+      if (!phoneNumberId) {
+        return res.status(400).json({
+          success: false,
+          error: 'phoneNumberId é obrigatório'
+        });
+      }
+
+      const stats = smsRateLimitService.getSmsStats(phoneNumberId, clientId);
+      
+      return res.status(200).json({
+        success: true,
+        data: stats
+      });
+    } catch (err) {
+      logger.error('[GET_SMS_RATE_LIMIT_STATUS] Erro:', err);
+      return res.status(500).json({
+        success: false,
+        error: 'Erro ao verificar status do rate limiting'
       });
     }
   }
