@@ -5,6 +5,8 @@ import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import Navbar from '../Navbar';
 import { QRCodeSVG } from 'qrcode.react';
+import { ErrorModal } from '../ErrorModal';
+import { useErrorModal } from '../../hooks/useErrorModal';
 
 export function EvolutionCredentialsPage() {
   const [credentials, setCredentials] = useState<EvolutionCredential[]>([]);
@@ -60,6 +62,20 @@ export function EvolutionCredentialsPage() {
   // Estados para modal de confirmação de SMS
   const [showSMSConfirmation, setShowSMSConfirmation] = useState(false);
   const [selectedCredentialForSMS, setSelectedCredentialForSMS] = useState<EvolutionCredential | null>(null);
+
+  // Estado para confirmação de novo SMS
+  const [pendingNewSMS, setPendingNewSMS] = useState(false);
+
+  // Hook para gerenciar modais de erro
+  const { modalState, showError, showWarning, showInfo, showSuccess, closeModal } = useErrorModal();
+
+  // Monitorar fechamento do modal de aviso para executar novo SMS
+  useEffect(() => {
+    if (!modalState.isOpen && pendingNewSMS) {
+      // Se o modal foi fechado e estava pendente novo SMS, executar
+      executeNewSMS();
+    }
+  }, [modalState.isOpen, pendingNewSMS]);
 
   // Adicionar novo número na Meta
   const handleAddMetaPhoneNumber = async (e: React.FormEvent) => {
@@ -374,11 +390,11 @@ export function EvolutionCredentialsPage() {
                   setShowVerificationModal(true);
                 } else {
                   // Mostrar mensagem de sucesso sem solicitar SMS
-                  alert('Credencial criada com sucesso! Você pode solicitar o código de verificação posteriormente através do botão "Enviar SMS" no card da credencial.');
+                  showSuccess('Credencial criada com sucesso! Você pode solicitar o código de verificação posteriormente através do botão "Enviar SMS" no card da credencial.', 'Credencial Criada');
                 }
               } else {
                 // Mostrar mensagem baseada no status
-                alert(result.data.message);
+                showInfo(result.data.message, 'Status da Credencial');
               }
             } else {
               // Erro específico - não salvou no Supabase
@@ -418,7 +434,7 @@ export function EvolutionCredentialsPage() {
         await loadCredentials();
         
         // Mostrar mensagem de sucesso
-        alert('Número verificado com sucesso!');
+        showSuccess('Número verificado com sucesso!', 'Verificação Concluída');
       } else {
         setVerificationStep('input');
         setVerificationError(result.error || 'Erro ao verificar código');
@@ -453,9 +469,60 @@ export function EvolutionCredentialsPage() {
     }
   };
 
+  // Função para verificar status do rate limiting
+  const checkSmsRateLimit = async (phoneNumberId: string) => {
+    try {
+      const response = await api.evolution.getSmsRateLimitStatus(phoneNumberId);
+      const result = await response.json();
+      
+      if (result.success && result.data) {
+        const stats = result.data;
+        if (stats.isBlocked) {
+          const blockedUntil = new Date(stats.blockedUntil!);
+          const now = new Date();
+          const minutesLeft = Math.ceil((blockedUntil.getTime() - now.getTime()) / 1000 / 60);
+          
+          showError(
+            `Número bloqueado por muitas tentativas. Tente novamente em ${minutesLeft} minutos.`,
+            'Número Bloqueado'
+          );
+          return false;
+        }
+        
+        if (stats.attempts > 0) {
+          const lastRequest = new Date(stats.lastRequest!);
+          const now = new Date();
+          const minutesSinceLast = Math.ceil((now.getTime() - lastRequest.getTime()) / 1000 / 60);
+          
+          if (minutesSinceLast < 5) {
+            const minutesLeft = 5 - minutesSinceLast;
+            showError(
+              `Aguarde ${minutesLeft} minutos antes de solicitar um novo SMS.`,
+              'Aguarde um Pouco'
+            );
+            return false;
+          }
+        }
+      }
+      
+      return true;
+    } catch (err) {
+      console.warn('⚠️ Erro ao verificar rate limiting, continuando...', err);
+      return true; // Continuar mesmo se não conseguir verificar
+    }
+  };
+
   // Função para solicitar código de verificação via SMS
   const handleRequestVerificationCode = async (phoneNumberId: string, accessToken: string) => {
     try {
+      console.log('📱 Verificando rate limiting antes de solicitar SMS...');
+      
+      // Verificar rate limiting primeiro
+      const canRequest = await checkSmsRateLimit(phoneNumberId);
+      if (!canRequest) {
+        return false;
+      }
+      
       console.log('📱 Solicitando código de verificação via SMS...');
       
       const response = await api.evolution.requestVerificationCode({
@@ -469,16 +536,61 @@ export function EvolutionCredentialsPage() {
       
       if (result.success) {
         console.log('✅ Código de verificação solicitado com sucesso');
-        alert('Código de verificação enviado via SMS! Verifique seu telefone.');
+        
+        // Salvar dados para o modal de verificação
+        setPhoneNumberId(phoneNumberId);
+        setMetaPhoneData(prev => ({ ...prev, accessToken }));
+        setVerificationStep('input');
+        
+        // Mostrar modal de verificação
+        setShowVerificationModal(true);
+        
+        // Mostrar mensagem de sucesso
+        showSuccess('Código de verificação enviado via SMS! Digite o código recebido.', 'SMS Enviado');
         return true;
       } else {
-        console.error('❌ Erro ao solicitar código:', result.error);
-        alert('Erro ao solicitar código: ' + result.error);
+        console.error('❌ Erro ao solicitar código:', result);
+        
+        // Verificar se é erro de rate limiting
+        if (result.code === 'RATE_LIMIT_EXCEEDED') {
+          let retryMessage = result.error;
+          if (result.retryAfter) {
+            const retryDate = new Date(result.retryAfter);
+            const now = new Date();
+            const minutesLeft = Math.ceil((retryDate.getTime() - now.getTime()) / 1000 / 60);
+            retryMessage = `${result.error} (Tente novamente em ${minutesLeft} minutos)`;
+          }
+          
+          showError(
+            retryMessage,
+            'Limite de Tentativas Excedido',
+            result.metaCode,
+            result.metaSubcode
+          );
+          return false;
+        }
+        
+        // Exibir erro detalhado da Meta API
+        let errorMessage = result.error || 'Erro desconhecido';
+        
+        if (result.userTitle) {
+          errorMessage = `${result.userTitle}: ${result.error}`;
+        }
+        
+        showError(
+          errorMessage,
+          'Erro ao Solicitar SMS',
+          result.metaCode,
+          result.metaSubcode
+        );
         return false;
       }
     } catch (err) {
       console.error('❌ Erro ao solicitar código de verificação:', err);
-      alert('Erro ao solicitar código: ' + (err instanceof Error ? err.message : String(err)));
+      showError(
+        'Erro ao solicitar código: ' + (err instanceof Error ? err.message : String(err)),
+        'Erro de Conexão'
+      );
       return false;
     }
   };
@@ -486,7 +598,7 @@ export function EvolutionCredentialsPage() {
   // Função para solicitar SMS de verificação para credencial 'ads'
   const handleRequestSMS = async (credential: EvolutionCredential) => {
     if (!credential.wpp_number_id || !credential.wpp_access_token) {
-      alert('Credencial não possui dados necessários para solicitar SMS. Verifique se o número foi registrado corretamente.');
+      showWarning('Credencial não possui dados necessários para solicitar SMS. Verifique se o número foi registrado corretamente.', 'Dados Insuficientes');
       return;
     }
 
@@ -517,11 +629,28 @@ export function EvolutionCredentialsPage() {
       }
     } catch (err) {
       console.error('❌ Erro ao solicitar SMS:', err);
-      alert('Erro ao solicitar SMS: ' + (err instanceof Error ? err.message : String(err)));
+      showError('Erro ao solicitar SMS: ' + (err instanceof Error ? err.message : String(err)), 'Erro de Conexão');
     } finally {
       // Fechar modal
       setShowSMSConfirmation(false);
       setSelectedCredentialForSMS(null);
+    }
+  };
+
+  // Função para solicitar novo SMS após confirmação
+  const handleRequestNewSMS = () => {
+    setPendingNewSMS(true);
+    showWarning(
+      'Tem certeza que deseja enviar um novo SMS? Esta ação não pode ser desfeita.',
+      'Confirmar Novo SMS'
+    );
+  };
+
+  // Função para executar novo SMS após confirmação
+  const executeNewSMS = () => {
+    if (pendingNewSMS && phoneNumberId && metaPhoneData.accessToken) {
+      handleRequestVerificationCode(phoneNumberId, metaPhoneData.accessToken);
+      setPendingNewSMS(false);
     }
   };
 
@@ -2248,11 +2377,7 @@ export function EvolutionCredentialsPage() {
                       <div className="flex justify-between items-center">
                         <button
                           type="button"
-                          onClick={() => {
-                            if (confirm('Tem certeza que deseja enviar um novo SMS? Esta ação não pode ser desfeita.')) {
-                              handleRequestVerificationCode(phoneNumberId, metaPhoneData.accessToken);
-                            }
-                          }}
+                          onClick={handleRequestNewSMS}
                           className="px-3 py-2 rounded-md bg-green-600 text-white hover:bg-green-700 transition-colors text-sm"
                         >
                           📱 Solicitar SMS
@@ -2455,6 +2580,17 @@ export function EvolutionCredentialsPage() {
             </div>
           </Dialog>
         </Transition>
+
+        {/* Modal de Erro Customizado */}
+        <ErrorModal
+          isOpen={modalState.isOpen}
+          onClose={closeModal}
+          title={modalState.title}
+          message={modalState.message}
+          type={modalState.type}
+          metaCode={modalState.metaCode}
+          metaSubcode={modalState.metaSubcode}
+        />
       </div>
     </>
   );

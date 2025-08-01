@@ -1074,44 +1074,88 @@ class WhatsappService {
         logger.error(`[WHATSAPP] Resposta de erro da API:`, error.response.data);
         
         const errorData = error.response.data.error;
+        const responseData = error.response.data;
+        
         if (errorData) {
+          // Capturar campos específicos da Meta API
+          const userTitle = responseData.error_user_title || errorData.error_user_title;
+          const userMessage = responseData.error_user_msg || errorData.error_user_msg;
+          const errorCode = errorData.code;
+          const errorSubcode = errorData.error_subcode;
+          
+          // Log detalhado do erro
+          logger.error(`[WHATSAPP] Detalhes do erro:`, {
+            code: errorCode,
+            subcode: errorSubcode,
+            userTitle,
+            userMessage,
+            fullError: errorData
+          });
+          
           // Erro específico para código já solicitado
-          if (errorData.code === 100 && errorData.error_subcode === 2388004) {
+          if (errorCode === 100 && errorSubcode === 2388004) {
             return {
               success: false,
-              error: 'Código já foi solicitado. Aguarde alguns minutos antes de solicitar novamente.',
+              error: userMessage || 'Código já foi solicitado. Aguarde alguns minutos antes de solicitar novamente.',
+              userTitle: userTitle || 'Código já solicitado',
               code: 'CODE_ALREADY_REQUESTED',
+              metaCode: errorCode,
+              metaSubcode: errorSubcode,
               details: errorData
             };
           }
           
           // Erro específico para número não pendente de verificação
-          if (errorData.code === 100 && errorData.error_subcode === 2388005) {
+          if (errorCode === 100 && errorSubcode === 2388005) {
             return {
               success: false,
-              error: 'Número não está pendente de verificação.',
+              error: userMessage || 'Número não está pendente de verificação.',
+              userTitle: userTitle || 'Número não pendente',
               code: 'NUMBER_NOT_PENDING_VERIFICATION',
+              metaCode: errorCode,
+              metaSubcode: errorSubcode,
               details: errorData
             };
           }
           
+          // Erro genérico com campos da Meta
           return {
             success: false,
-            error: errorData.message || 'Erro ao solicitar código de verificação',
+            error: userMessage || errorData.message || 'Erro ao solicitar código de verificação',
+            userTitle: userTitle || 'Erro na solicitação',
+            code: 'META_API_ERROR',
+            metaCode: errorCode,
+            metaSubcode: errorSubcode,
             details: errorData
+          };
+        }
+        
+        // Se não há error específico, verificar se há campos de erro no nível da resposta
+        const userTitle = responseData.error_user_title;
+        const userMessage = responseData.error_user_msg;
+        
+        if (userTitle || userMessage) {
+          return {
+            success: false,
+            error: userMessage || 'Erro na API da Meta',
+            userTitle: userTitle || 'Erro na API',
+            code: 'META_API_ERROR',
+            details: responseData
           };
         }
         
         return {
           success: false,
           error: 'Erro na API da Meta',
-          details: error.response.data
+          code: 'META_API_ERROR',
+          details: responseData
         };
       }
       
       return {
         success: false,
-        error: error.message
+        error: error.message,
+        code: 'NETWORK_ERROR'
       };
     }
   }

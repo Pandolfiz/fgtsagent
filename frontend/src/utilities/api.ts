@@ -316,6 +316,16 @@ export const evolutionCredentialsApi = {
         body: JSON.stringify(data)
       });
       return response;
+    },
+
+    getSmsRateLimitStatus: async (phoneNumberId: string) => {
+      const response = await apiFetch(`/api/whatsapp-credentials/sms-rate-limit/${phoneNumberId}`, {
+        method: 'GET',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      return response;
     }
 };
 
