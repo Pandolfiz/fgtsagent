@@ -295,7 +295,7 @@ export default function Navbar({ fullWidth }) {
             <Menu.Items className="absolute right-0 z-50 mt-1 w-56 rounded-lg bg-gradient-to-br from-emerald-950/95 via-cyan-950/95 to-blue-950/95 backdrop-blur-sm border border-cyan-500 shadow-lg focus:outline-none">
               {[
                 { icon: <FaUser className="mr-2 h-5 w-5" />, label: 'Perfil', onClick: () => navigate('/profile') },
-                { icon: <FaCog className="mr-2 h-5 w-5" />, label: 'Configurações', onClick: () => navigate('/settings') },
+                // { icon: <FaCog className="mr-2 h-5 w-5" />, label: 'Configurações', onClick: () => navigate('/settings') },
                 { icon: <FaSignOutAlt className="mr-2 h-5 w-5" />, label: 'Sair', onClick: handleLogout }
               ].map(item => (
                 <Menu.Item key={item.label}>

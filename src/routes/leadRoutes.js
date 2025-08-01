@@ -20,6 +20,9 @@ router.post('/:id/repeat-query', leadController.repeatQuery);
 // Obter lead por ID
 router.get('/:id', leadController.getById);
 
+// Obter histórico de propostas de um lead
+router.get('/:id/proposals', leadController.getProposals);
+
 // Criar novo lead
 router.post('/', leadController.create);
 

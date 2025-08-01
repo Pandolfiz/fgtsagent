@@ -1,5 +1,6 @@
 const { supabase, supabaseAdmin } = require('../config/supabase');
 const logger = require('../utils/logger');
+const { optimizedDashboardQuery, optimizedSelect } = require('../utils/supabaseOptimized');
 
 async function getDashboardStats(req, userId, period = 'daily') {
   try {
@@ -236,7 +237,7 @@ async function getDashboardStats(req, userId, period = 'daily') {
     // Calcular métricas
     const totalBalance = Object.values(latestBalanceByLead)
       .reduce((sum, item) => sum + parseFloat(item.balance || 0), 0);
-    const totalSimulation = Object.values(latestBalanceByLead)
+    const totalsimulation = Object.values(latestBalanceByLead)
       .reduce((sum, item) => sum + parseFloat(item.simulation || 0), 0);
     const totalProposals = proposalsData ? proposalsData.length : 0;
     const totalPaidProposals = proposalsData
@@ -799,7 +800,7 @@ async function getDashboardStats(req, userId, period = 'daily') {
             current.setUTCDate(current.getUTCDate() + 1);
           }
           
-          // Agora filtramos os dados para cada semana
+          // Agora filtramos as propostas para cada semana
           for (const [weekKey, weekData] of weeks.entries()) {
             const weekStart = createSaoPauloDate(
               weekData.startDate.getUTCFullYear(),
@@ -846,18 +847,24 @@ async function getDashboardStats(req, userId, period = 'daily') {
       // Montar lista de leads para tabela (apenas leads com registro em balance)
       leadsList = leadsWithBalance.map(l => {
         const bal = latestBalanceByLead[l.id];
-        logger.info(`[DASHBOARD-DEBUG] Lead: ${l.name} (${l.cpf}) | Balance: ${bal && bal.balance} | Simulation: ${bal && bal.simulation}`);
+        logger.info(`[DASHBOARD-DEBUG] Lead: ${l.name} (${l.cpf}) | Balance: ${bal && bal.balance} | simulation: ${bal && bal.simulation}`);
         
         const safeDate = createSafeDate(bal && bal.updated_at, 'leadsList');
         
+        // Verificar se o lead tem propostas
+        const leadProposals = proposalsData ? proposalsData.filter(p => p.lead_id === l.id) : [];
+        const hasProposals = leadProposals.length > 0;
+        
         return {
+          id: l.id, // Adicionar o ID do lead
           name: l.name || '-',
           cpf: l.cpf || '-',
           saldo: bal && bal.balance != null && bal.balance !== '' ? `R$ ${Number(bal.balance).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '',
           simulado: bal && bal.simulation != null && bal.simulation !== '' ? `R$ ${Number(bal.simulation).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}` : '',
           updated_at: bal && bal.updated_at && !isNaN(safeDate.getTime()) ? safeDate.toLocaleString('pt-BR') : '',
           raw_date: safeDate, // Data segura para ordenação
-          erro: bal && bal.error_reason ? bal.error_reason : ''
+          erro: bal && bal.error_reason ? bal.error_reason : '',
+          hasProposals: hasProposals // Indicador se o lead tem propostas
         };
       }).sort((a, b) => {
         // Ordenação segura com validação de tipo
@@ -886,7 +893,7 @@ async function getDashboardStats(req, userId, period = 'daily') {
       periodStart: req.query.startDate || null,
       periodEnd: req.query.endDate || null,
       totalBalance: `R$ ${totalBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
-      totalSimulation: `R$ ${totalSimulation.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
+      totalSimulation: `R$ ${totalsimulation.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,
       totalProposals,
       totalPaidProposals,
       totalProposalsValue: `R$ ${totalProposalsValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`,

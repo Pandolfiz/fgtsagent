@@ -31,6 +31,9 @@ router.post('/verify-whatsapp-code', whatsappCredentialController.verifyWhatsApp
 router.post('/check-verification-status', whatsappCredentialController.checkVerificationStatus);
 router.post('/request-verification-code', whatsappCredentialController.requestVerificationCode);
 
+// Rota para verificar status do rate limiting de SMS
+router.get('/sms-rate-limit/:phoneNumberId', whatsappCredentialController.getSmsRateLimitStatus);
+
 // Obter credencial por ID
 router.get('/:id', whatsappCredentialController.getById);
 

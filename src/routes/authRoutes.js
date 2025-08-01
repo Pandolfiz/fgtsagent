@@ -728,4 +728,310 @@ router.get('/test-auth', async (req, res) => {
   }
 });
 
+// GET /api/auth/profile - Buscar perfil do usuário
+router.get('/profile', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    logger.info(`[AUTH] Buscando perfil do usuário: ${userId}`);
+    
+    const { data: profile, error } = await supabaseAdmin
+      .from('user_profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    
+    if (error) {
+      logger.error(`[AUTH] Erro ao buscar perfil: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao buscar perfil do usuário'
+      });
+    }
+    
+    if (!profile) {
+      // Criar perfil se não existir
+      const { data: newProfile, error: createError } = await supabaseAdmin
+        .from('user_profiles')
+        .insert({
+          id: userId,
+          email: req.user.email,
+          first_name: req.user.user_metadata?.first_name || '',
+          last_name: req.user.user_metadata?.last_name || '',
+          full_name: req.user.user_metadata?.full_name || '',
+          phone: req.user.user_metadata?.phone || '',
+          avatar_url: req.user.user_metadata?.avatar_url || ''
+        })
+        .select()
+        .single();
+      
+      if (createError) {
+        logger.error(`[AUTH] Erro ao criar perfil: ${createError.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao criar perfil do usuário'
+        });
+      }
+      
+      return res.json({
+        success: true,
+        profile: newProfile
+      });
+    }
+    
+    return res.json({
+      success: true,
+      profile
+    });
+    
+  } catch (error) {
+    logger.error(`[AUTH] Erro interno ao buscar perfil: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// PUT /api/auth/profile - Atualizar perfil do usuário
+router.put('/profile', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { first_name, last_name, email, phone, cpf_cnpj, avatar_url } = req.body;
+    
+    logger.info(`[AUTH] Atualizando perfil do usuário: ${userId}`);
+    
+    // Validar dados
+    if (!first_name && !last_name && !email && !phone && !cpf_cnpj && !avatar_url) {
+      return res.status(400).json({
+        success: false,
+        message: 'Pelo menos um campo deve ser fornecido para atualização'
+      });
+    }
+    
+    // Validar CPF/CNPJ se fornecido
+    if (cpf_cnpj) {
+      const cleanedCpfCnpj = cpf_cnpj.replace(/\D/g, '');
+      if (cleanedCpfCnpj.length !== 11 && cleanedCpfCnpj.length !== 14) {
+        return res.status(400).json({
+          success: false,
+          message: 'CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos'
+        });
+      }
+    }
+    
+    const updateData = {};
+    if (first_name !== undefined) updateData.first_name = first_name;
+    if (last_name !== undefined) updateData.last_name = last_name;
+    if (email !== undefined) updateData.email = email;
+    if (phone !== undefined) updateData.phone = phone;
+    if (cpf_cnpj !== undefined) updateData.cpf_cnpj = cpf_cnpj.replace(/\D/g, ''); // Armazenar apenas números
+    if (avatar_url !== undefined) updateData.avatar_url = avatar_url;
+    
+    // Atualizar perfil
+    const { data: profile, error } = await supabaseAdmin
+      .from('user_profiles')
+      .upsert({
+        id: userId,
+        ...updateData,
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      logger.error(`[AUTH] Erro ao atualizar perfil: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao atualizar perfil do usuário'
+      });
+    }
+    
+    // Atualizar metadados do usuário no Supabase Auth
+    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      user_metadata: {
+        first_name: profile.first_name,
+        last_name: profile.last_name,
+        full_name: `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+        phone: profile.phone,
+        cpf_cnpj: profile.cpf_cnpj,
+        avatar_url: profile.avatar_url
+      }
+    });
+    
+    if (authError) {
+      logger.warn(`[AUTH] Erro ao atualizar metadados do usuário: ${authError.message}`);
+      // Não falhar a operação se apenas os metadados falharem
+    }
+    
+    logger.info(`[AUTH] Perfil atualizado com sucesso para usuário: ${userId}`);
+    
+    return res.json({
+      success: true,
+      profile,
+      message: 'Perfil atualizado com sucesso'
+    });
+    
+  } catch (error) {
+    logger.error(`[AUTH] Erro interno ao atualizar perfil: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+module.exports = router;
+router.get('/profile', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    logger.info(`[AUTH] Buscando perfil do usuário: ${userId}`);
+    
+    const { data: profile, error } = await supabaseAdmin
+      .from('user_profiles')
+      .select('*')
+      .eq('id', userId)
+      .single();
+    
+    if (error) {
+      logger.error(`[AUTH] Erro ao buscar perfil: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao buscar perfil do usuário'
+      });
+    }
+    
+    if (!profile) {
+      // Criar perfil se não existir
+      const { data: newProfile, error: createError } = await supabaseAdmin
+        .from('user_profiles')
+        .insert({
+          id: userId,
+          email: req.user.email,
+          first_name: req.user.user_metadata?.first_name || '',
+          last_name: req.user.user_metadata?.last_name || '',
+          full_name: req.user.user_metadata?.full_name || '',
+          phone: req.user.user_metadata?.phone || '',
+          avatar_url: req.user.user_metadata?.avatar_url || ''
+        })
+        .select()
+        .single();
+      
+      if (createError) {
+        logger.error(`[AUTH] Erro ao criar perfil: ${createError.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao criar perfil do usuário'
+        });
+      }
+      
+      return res.json({
+        success: true,
+        profile: newProfile
+      });
+    }
+    
+    return res.json({
+      success: true,
+      profile
+    });
+    
+  } catch (error) {
+    logger.error(`[AUTH] Erro interno ao buscar perfil: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// PUT /api/auth/profile - Atualizar perfil do usuário
+router.put('/profile', requireAuth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { first_name, last_name, email, phone, cpf_cnpj, avatar_url } = req.body;
+    
+    logger.info(`[AUTH] Atualizando perfil do usuário: ${userId}`);
+    
+    // Validar dados
+    if (!first_name && !last_name && !email && !phone && !cpf_cnpj && !avatar_url) {
+      return res.status(400).json({
+        success: false,
+        message: 'Pelo menos um campo deve ser fornecido para atualização'
+      });
+    }
+    
+    // Validar CPF/CNPJ se fornecido
+    if (cpf_cnpj) {
+      const cleanedCpfCnpj = cpf_cnpj.replace(/\D/g, '');
+      if (cleanedCpfCnpj.length !== 11 && cleanedCpfCnpj.length !== 14) {
+        return res.status(400).json({
+          success: false,
+          message: 'CPF deve ter 11 dígitos ou CNPJ deve ter 14 dígitos'
+        });
+      }
+    }
+    
+    const updateData = {};
+    if (first_name !== undefined) updateData.first_name = first_name;
+    if (last_name !== undefined) updateData.last_name = last_name;
+    if (email !== undefined) updateData.email = email;
+    if (phone !== undefined) updateData.phone = phone;
+    if (cpf_cnpj !== undefined) updateData.cpf_cnpj = cpf_cnpj.replace(/\D/g, ''); // Armazenar apenas números
+    if (avatar_url !== undefined) updateData.avatar_url = avatar_url;
+    
+    // Atualizar perfil
+    const { data: profile, error } = await supabaseAdmin
+      .from('user_profiles')
+      .upsert({
+        id: userId,
+        ...updateData,
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+    
+    if (error) {
+      logger.error(`[AUTH] Erro ao atualizar perfil: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao atualizar perfil do usuário'
+      });
+    }
+    
+    // Atualizar metadados do usuário no Supabase Auth
+    const { error: authError } = await supabaseAdmin.auth.admin.updateUserById(userId, {
+      user_metadata: {
+        first_name: profile.first_name,
+        last_name: profile.last_name,
+        full_name: `${profile.first_name || ''} ${profile.last_name || ''}`.trim(),
+        phone: profile.phone,
+        cpf_cnpj: profile.cpf_cnpj,
+        avatar_url: profile.avatar_url
+      }
+    });
+    
+    if (authError) {
+      logger.warn(`[AUTH] Erro ao atualizar metadados do usuário: ${authError.message}`);
+      // Não falhar a operação se apenas os metadados falharem
+    }
+    
+    logger.info(`[AUTH] Perfil atualizado com sucesso para usuário: ${userId}`);
+    
+    return res.json({
+      success: true,
+      profile,
+      message: 'Perfil atualizado com sucesso'
+    });
+    
+  } catch (error) {
+    logger.error(`[AUTH] Erro interno ao atualizar perfil: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
 module.exports = router;

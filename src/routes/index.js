@@ -71,6 +71,9 @@ router.get('/test-templates', async (req, res) => {
   }
 });
 
+// Rotas de health (públicas) - DEVE vir ANTES das rotas principais
+router.use('/api/health', require('./healthRoutes'));
+
 // Rotas principais
 router.use('/api', apiRoutes);
 router.use('/auth', authRoutes);
@@ -94,5 +97,17 @@ router.use('/api/knowledge-base', require('./knowledgeBaseRoutes'));
 
 // Rotas do Stripe
 router.use('/api/stripe', require('./stripeRoutes'));
+
+// Rotas de configurações
+// router.use('/api/settings', require('./settingsRoutes'));
+
+// Rotas de consentimentos LGPD
+router.use('/api/consent', require('./consentRoutes'));
+
+module.exports = router; 
+// router.use('/api/settings', require('./settingsRoutes'));
+
+// Rotas de consentimentos LGPD
+router.use('/api/consent', require('./consentRoutes'));
 
 module.exports = router; 

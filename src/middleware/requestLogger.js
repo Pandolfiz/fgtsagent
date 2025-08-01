@@ -215,17 +215,25 @@ function requestLogger(req, res, next) {
     req.suspiciousActivity = true;
   }
   
-  // Interceptar resposta
+  // Interceptar resposta (apenas uma vez)
   const originalSend = res.send;
-  const originalJson = res.json;
+  let responseLogged = false;
   
   res.send = function(data) {
-    logResponse(requestData, res, startTime, data);
+    if (!responseLogged) {
+      logResponse(requestData, res, startTime, data);
+      responseLogged = true;
+    }
     originalSend.call(this, data);
   };
   
+  // Interceptar JSON (mas não logar se já foi logado via send)
+  const originalJson = res.json;
   res.json = function(data) {
-    logResponse(requestData, res, startTime, data);
+    if (!responseLogged) {
+      logResponse(requestData, res, startTime, data);
+      responseLogged = true;
+    }
     originalJson.call(this, data);
   };
   

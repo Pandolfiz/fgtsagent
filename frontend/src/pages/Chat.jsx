@@ -98,6 +98,8 @@ export default function Chat() {
   const [connectionStatus, setConnectionStatus] = useState(null)
   const [autoResponseContacts, setAutoResponseContacts] = useState({})
   const [forceUpdate, setForceUpdate] = useState(0)
+  const [isSyncing, setIsSyncing] = useState(false)
+  const [lastSyncTime, setLastSyncTime] = useState(null)
   const messagesEndRef = useRef(null)
   const lastMessageIdRef = useRef(null) // Referência para o último ID de mensagem
   const timeoutsRef = useRef([])
@@ -589,6 +591,23 @@ export default function Chat() {
     fetchContacts();
   }, [currentUser, isMobileView, navigate]);
 
+  // Sincronização inteligente - atualizar contatos a cada 30 segundos
+  useEffect(() => {
+    if (!currentUser?.id) return;
+
+    console.log('[CHAT] Iniciando sincronização inteligente...');
+    
+    const intervalId = setInterval(() => {
+      console.log('[CHAT] Sincronização inteligente - atualizando contatos...');
+      syncContacts();
+    }, 30000); // 30 segundos
+
+    return () => {
+      console.log('[CHAT] Parando sincronização inteligente...');
+      clearInterval(intervalId);
+    };
+  }, []); // Remover dependência currentUser para evitar múltiplas execuções
+
   // Função para visualizar detalhes do banco de dados (debug)
   const debugDatabase = async () => {
     if (!currentUser?.id) return;
@@ -765,16 +784,19 @@ export default function Chat() {
     // Primeiro carregamento
     fetchMessages(false);
     
-    // Implementação temporária: Polling a cada 10 segundos (silencioso)
+    console.log('[CHAT] Iniciando polling de mensagens para:', currentContact?.remote_jid);
+    
+    // Polling inteligente: a cada 15 segundos (silencioso)
     const intervalId = setInterval(() => {
       fetchMessages(true);
-    }, 10000);
+    }, 15000);
       
     return () => {
+      console.log('[CHAT] Parando polling de mensagens para:', currentContact?.remote_jid);
       isMounted = false;
       clearInterval(intervalId);
     };
-  }, [currentContact, currentUser, navigate]);
+  }, [currentContact?.remote_jid]); // Apenas dependência do ID do contato, não do objeto completo
 
   // Identifica quando novas mensagens são enviadas pelo usuário atual
   useEffect(() => {
@@ -800,6 +822,60 @@ export default function Chat() {
       setShouldScrollToBottom(false);
     }
   }, [shouldScrollToBottom]);
+
+  // Função para sincronização inteligente de contatos
+  const syncContacts = async () => {
+    if (!currentUser?.id) return;
+    
+    try {
+      setIsSyncing(true);
+      console.log('[CHAT] Sincronização inteligente - atualizando contatos...');
+      
+      const contactsResponse = await fetch('/api/contacts', {
+        credentials: 'include'
+      });
+      
+      if (!contactsResponse.ok) {
+        throw new Error(`Erro ${contactsResponse.status} ao buscar contatos`);
+      }
+      
+      const contactsData = await contactsResponse.json();
+      
+      if (!contactsData.success) {
+        throw new Error(contactsData.message || 'Erro ao buscar contatos');
+      }
+      
+      const contactsList = contactsData.contacts || [];
+      
+      if (contactsList.length > 0) {
+        setContacts(contactsList);
+        
+        // Atualizar o estado de exibição
+        const sortedContacts = [...contactsList].sort((a, b) => {
+          if (!a.last_message_time) return 1;
+          if (!b.last_message_time) return -1;
+          return new Date(b.last_message_time) - new Date(a.last_message_time);
+        });
+        setDisplayContacts(sortedContacts);
+        
+        // Manter o contato atual se ainda existir
+        if (currentContact) {
+          const updatedCurrentContact = contactsList.find(c => c.remote_jid === currentContact.remote_jid);
+          if (updatedCurrentContact) {
+            setCurrentContact(updatedCurrentContact);
+          }
+        }
+      }
+      
+      setLastSyncTime(new Date());
+      console.log('[CHAT] Contatos sincronizados com sucesso');
+      
+    } catch (error) {
+      console.error('[CHAT] Erro na sincronização de contatos:', error);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Função para recarregar dados
   const handleRefresh = async () => {
@@ -1236,6 +1312,16 @@ export default function Chat() {
   };
 
   // Formatação de data
+  // Função para formatar horário da última sincronização
+  const formatLastSyncTime = (date) => {
+    if (!date) return null;
+    return date.toLocaleTimeString('pt-BR', { 
+      hour: '2-digit', 
+      minute: '2-digit',
+      second: '2-digit'
+    });
+  };
+
   const formatDate = (dateString) => {
     if (!dateString) return '';
     try {
@@ -2298,6 +2384,12 @@ export default function Chat() {
         </div>
         
         <div className="flex space-x-3 ml-2">
+          {isUpdating && (
+            <div className="flex items-center gap-1 text-cyan-300 text-xs">
+              <FaSpinner className="w-3 h-3 animate-spin" />
+              <span>Atualizando...</span>
+            </div>
+          )}
           <button className="text-cyan-300 hover:text-cyan-100 p-2" aria-label="Ligar">
             <FaPhone className={screenWidth < 360 ? "text-sm" : "text-lg"} />
           </button>
@@ -2356,13 +2448,45 @@ export default function Chat() {
                 <div className="flex-shrink-0 flex-grow-0 min-w-0 w-full md:basis-1/4 md:max-w-[25%] border-r border-cyan-800/50 flex flex-col h-full p-0">
                   <div className="p-2 border-b border-cyan-800/50">
                     <div className="flex justify-between items-center mb-2">
-                      <h2 className="text-lg font-semibold text-cyan-100">Conversas</h2>
-                      <button 
-                        className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-full p-2 hover:from-cyan-500 hover:to-blue-500 transition shadow-lg"
-                        onClick={handleCreateContact}
-                      >
-                        <FaPlus />
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-lg font-semibold text-cyan-100">Conversas</h2>
+                        {isSyncing && (
+                          <div className="flex items-center gap-1 text-cyan-300 text-xs">
+                            <FaSpinner className="w-3 h-3 animate-spin" />
+                            <span>Sincronizando...</span>
+                          </div>
+                        )}
+                        {lastSyncTime && !isSyncing && (
+                          <div className="text-cyan-300 text-xs">
+                            Última: {formatLastSyncTime(lastSyncTime)}
+                          </div>
+                        )}
+                        {connectionStatus && (
+                          <div className={`flex items-center gap-1 text-xs ${
+                            connectionStatus.connected ? 'text-emerald-300' : 'text-red-300'
+                          }`}>
+                            <div className={`w-2 h-2 rounded-full ${
+                              connectionStatus.connected ? 'bg-emerald-500' : 'bg-red-500'
+                            }`}></div>
+                            <span>{connectionStatus.connected ? 'Conectado' : 'Desconectado'}</span>
+                          </div>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => syncContacts()}
+                          className="p-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors"
+                          title="Sincronizar contatos"
+                        >
+                          <FaSpinner className={`w-3 h-3 text-white ${isSyncing ? 'animate-spin' : ''}`} />
+                        </button>
+                        <button 
+                          className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-full p-2 hover:from-cyan-500 hover:to-blue-500 transition shadow-lg"
+                          onClick={handleCreateContact}
+                        >
+                          <FaPlus />
+                        </button>
+                      </div>
                     </div>
                     <div className="relative">
                       <input
