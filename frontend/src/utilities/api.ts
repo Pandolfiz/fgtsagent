@@ -196,6 +196,12 @@ export const evolutionCredentialsApi = {
     return response.json();
   },
 
+  // Verificar status de credencial WhatsApp Business via Evolution API
+  checkEvolutionStatus: async (id: string): Promise<ApiResponse<{ credential_id: string; phone: string; instance_name: string; status: string; evolution_data: any }>> => {
+    const response = await apiFetch(`${API_URL}/whatsapp-credentials/${id}/check-evolution-status`);
+    return response.json();
+  },
+
     // Gerenciamento de números na API oficial da Meta
     addPhoneNumber: async (data: {
       phoneNumber: string;
@@ -326,7 +332,18 @@ export const evolutionCredentialsApi = {
         }
       });
       return response;
-    }
+    },
+
+  // Processar autenticação da Meta API
+  processFacebookAuth: async (code: string) => {
+    return await apiFetch('/api/whatsapp-credentials/facebook/auth', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ code }),
+    });
+  }
 };
 
 // API para usuários

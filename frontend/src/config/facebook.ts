@@ -1,10 +1,10 @@
 // Configuração do Facebook SDK
 export const FACEBOOK_CONFIG = {
   // App ID do Facebook (substitua pelo valor real)
-  APP_ID: import.meta.env.VITE_APP_META_APP_ID || 'your_facebook_app_id_here',
+  APP_ID: import.meta.env.VITE_APP_META_APP_ID || 'your_META_APP_ID_here',
 
   // Config ID para WhatsApp Business API (substitua pelo valor real)
-  CONFIG_ID: import.meta.env.VITE_APP_META_CONFIG_ID || 'your_facebook_config_id_here',
+  CONFIG_ID: import.meta.env.VITE_APP_META_CONFIG_ID || 'your_META_APP_CONFIG_ID_here',
 
   // Versão da API do Facebook
   API_VERSION: 'v23.0',
@@ -47,8 +47,8 @@ export const FACEBOOK_CONFIG = {
 
 // Verificar se as configurações estão definidas
 export const isFacebookConfigured = () => {
-  const hasValidConfig = FACEBOOK_CONFIG.APP_ID !== 'your_facebook_app_id_here' &&
-                        FACEBOOK_CONFIG.CONFIG_ID !== 'your_facebook_config_id_here';
+  const hasValidConfig = FACEBOOK_CONFIG.APP_ID !== 'your_META_APP_ID_here' &&
+                        FACEBOOK_CONFIG.CONFIG_ID !== 'your_META_APP_CONFIG_ID_here';
 
   // Facebook SDK requer HTTPS obrigatoriamente
   const isSecureConnection = window.location.protocol === 'https:';

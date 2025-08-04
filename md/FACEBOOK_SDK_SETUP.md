@@ -56,8 +56,8 @@ Crie um arquivo `.env` no diretório `frontend/`:
 
 ```env
 # Facebook SDK Configuration
-VITE_APP_META_APP_ID=your_facebook_app_id_here
-VITE_APP_META_CONFIG_ID=your_facebook_config_id_here
+VITE_APP_META_APP_ID=your_META_APP_ID_here
+VITE_APP_META_CONFIG_ID=your_META_APP_CONFIG_ID_here
 
 # API Configuration
 VITE_API_URL=http://localhost:3000

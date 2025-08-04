@@ -292,17 +292,25 @@ export function WhatsappCredentialsPage() {
     try {
       console.log('🔄 Processando código de autorização...');
       
-      // Por enquanto, apenas simular sucesso
-      // TODO: Implementar endpoint no backend para processar código
-      console.log('✅ Código de autorização recebido:', code);
+      // Enviar código para o backend processar
+      const response = await api.whatsappCredentials.processFacebookAuth(code);
+      const result = await response.json();
       
-      setMetaSignupStatus('connected');
-      showSuccess('Conta do WhatsApp Business conectada com sucesso!', 'Conexão Realizada');
-      
-      // Recarregar credenciais
-      setTimeout(() => {
-        loadCredentials();
-      }, 2000);
+      if (result.success) {
+        console.log('✅ Autenticação da Meta processada com sucesso:', result.data);
+        
+        setMetaSignupStatus('connected');
+        showSuccess(result.message || 'Conta do WhatsApp Business conectada com sucesso!', 'Conexão Realizada');
+        
+        // Recarregar credenciais
+        setTimeout(() => {
+          loadCredentials();
+        }, 2000);
+      } else {
+        console.error('❌ Erro na autenticação da Meta:', result.message);
+        setMetaSignupStatus('error');
+        showError(result.message || 'Erro ao processar autenticação da Meta', 'Erro de Conexão');
+      }
       
     } catch (err) {
       console.error('❌ Erro ao processar código de autorização:', err);
@@ -540,11 +548,10 @@ export function WhatsappCredentialsPage() {
     
     if (type === 'whatsapp_business') {
       // Mostrar formulário atual para WhatsApp Business
-    setShowAddModal(true);
+      setShowAddModal(true);
     } else {
-      // Para anúncios, mostrar formulário específico
-      setAdsFormData({ agent_name: '', phone: '' });
-      setShowAdsModal(true);
+      // Para anúncios, abrir modal do Meta Signup (igual ao botão "Conectar Meta")
+      handleOpenMetaSignup();
     }
   };
 
@@ -1426,9 +1433,24 @@ export function WhatsappCredentialsPage() {
     setError(null);
 
     try {
-      // Recarregar credenciais para obter status atualizado da Evolution API
-      await loadCredentials();
-      console.log('✅ Status da Evolution API atualizado');
+      // Fazer verificação real do status via Evolution API
+      const response = await api.evolution.checkEvolutionStatus(credential.id);
+      
+      if (response.success && response.data) {
+        // Atualizar a credencial na lista com o novo status
+        setCredentials(prev => 
+          prev.map(cred => 
+            cred.id === credential.id 
+              ? { ...cred, status: response.data!.status }
+              : cred
+          )
+        );
+        
+        console.log('✅ Status da Evolution API verificado:', response.data);
+        showSuccess('Status verificado com sucesso!', 'Verificação Realizada');
+      } else {
+        setError(response.message || 'Erro ao verificar status da Evolution API');
+      }
     } catch (err) {
       console.error('❌ Erro ao verificar status da Evolution API:', err);
       setError('Erro ao verificar status: ' + (err instanceof Error ? err.message : String(err)));
@@ -1803,8 +1825,8 @@ export function WhatsappCredentialsPage() {
                   {/* Info grid mais compacto */}
                   <div className="grid grid-cols-2 gap-2 mb-3">
                     <div className="text-center p-2 rounded-lg bg-white/5">
-                      <p className="text-xs text-cyan-300 mb-1">Instância</p>
-                      <p className="font-medium text-white truncate text-xs">{credential.instance_name || '-'}</p>
+                      <p className="text-xs text-cyan-300 mb-1">Agente</p>
+                      <p className="font-medium text-white truncate text-xs">{credential.agent_name || '-'}</p>
                     </div>
                     <div className="text-center p-2 rounded-lg bg-white/5">
                       <p className="text-xs text-cyan-300 mb-1">Criado em</p>
@@ -1988,11 +2010,11 @@ export function WhatsappCredentialsPage() {
                             </h4>
                             <p className="text-gray-300 text-sm leading-relaxed">
                               Use a API oficial do WhatsApp para campanhas de marketing e anúncios em massa. 
-                              Requer configuração especial com nossa equipe.
+                              Conecte sua conta do WhatsApp Business através do Facebook.
                             </p>
                             <div className="mt-3 flex items-center text-purple-300 text-sm">
-                              <FaHourglass className="mr-2" />
-                              Requer agendamento de configuração
+                              <FaFacebook className="mr-2" />
+                              Conectar via Facebook
                             </div>
                           </div>
                         </div>

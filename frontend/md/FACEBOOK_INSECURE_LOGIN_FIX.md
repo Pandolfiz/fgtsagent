@@ -46,8 +46,8 @@ server: {
 **Configuração atualizada em `src/config/facebook.ts`:**
 ```typescript
 export const isFacebookConfigured = () => {
-  const hasValidConfig = FACEBOOK_CONFIG.APP_ID !== 'your_facebook_app_id_here' && 
-                        FACEBOOK_CONFIG.CONFIG_ID !== 'your_facebook_config_id_here';
+  const hasValidConfig = FACEBOOK_CONFIG.APP_ID !== 'your_META_APP_ID_here' && 
+                        FACEBOOK_CONFIG.CONFIG_ID !== 'your_META_APP_CONFIG_ID_here';
   
   const isSecureConnection = window.location.protocol === 'https:' || 
                            window.location.hostname === 'localhost' ||
