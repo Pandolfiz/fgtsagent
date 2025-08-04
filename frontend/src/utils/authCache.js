@@ -20,7 +20,7 @@ class AuthCache {
   // Adicionar requisição pendente
   addPendingRequest(key, promise) {
     this.pendingRequests.set(key, promise);
-    
+
     // Limpar quando a requisição for resolvida
     promise.finally(() => {
       this.pendingRequests.delete(key);
@@ -36,7 +36,7 @@ class AuthCache {
   hasValidCache(key) {
     const cached = this.cache.get(key);
     if (!cached) return false;
-    
+
     const now = Date.now();
     return (now - cached.timestamp) < this.cacheTimeout;
   }
@@ -78,19 +78,19 @@ const authCache = new AuthCache();
 // Função para fazer requisição com cache
 export async function cachedFetch(url, options = {}) {
   const key = authCache.getCacheKey(url, options.headers);
-  
+
   // Verificar se há uma requisição pendente
   if (authCache.hasPendingRequest(key)) {
     console.log('[AuthCache] Aguardando requisição pendente para:', url);
     return authCache.getPendingRequest(key);
   }
-  
+
   // Verificar se há cache válido
   if (authCache.hasValidCache(key)) {
     console.log('[AuthCache] Usando cache para:', url);
     return authCache.getCache(key);
   }
-  
+
   // Fazer nova requisição
   console.log('[AuthCache] Fazendo nova requisição para:', url);
   const promise = fetch(url, options).then(async (response) => {
@@ -101,10 +101,10 @@ export async function cachedFetch(url, options = {}) {
     }
     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
   });
-  
+
   // Adicionar à lista de requisições pendentes
   authCache.addPendingRequest(key, promise);
-  
+
   return promise;
 }
 
@@ -113,4 +113,4 @@ setInterval(() => {
   authCache.cleanup();
 }, 60000); // A cada minuto
 
-export default authCache; 
+export default authCache;

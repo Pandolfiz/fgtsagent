@@ -12,13 +12,28 @@ const logger = require('../utils/logger');
 router.get('/', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
-    logger.info(`Buscando contatos para usuário: ${userId}`);
+    const instanceId = req.query.instance;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 15;
+    const offset = (page - 1) * limit;
+    
+    logger.info(`[CONTACTS] Página ${page} (${limit} contatos) para usuário: ${userId}${instanceId ? `, instância: ${instanceId}` : ', todas as instâncias'}`);
     
     const startTime = Date.now();
-    const { data: contactsData, error } = await supabase
+    let query = supabase
       .from('contacts')
       .select('*')
-      .eq('client_id', userId);
+      .eq('client_id', userId)
+      .order('update_at', { ascending: false })
+      .range(offset, offset + limit - 1);
+    
+    // Se uma instância específica foi solicitada, filtrar diretamente por instance_id
+    if (instanceId) {
+      query = query.eq('instance_id', instanceId);
+      logger.info(`[CONTACTS] Filtrando por instância: ${instanceId}`);
+    }
+    
+    const { data: contactsData, error } = await query;
     
     const duration = Date.now() - startTime;
     logger.info(`Consulta de contatos finalizada em ${duration}ms`);
@@ -47,12 +62,25 @@ router.get('/', requireAuth, async (req, res) => {
       remote_jid: contact.remote_jid,
       client_id: contact.client_id,
       agent_state: contact.agent_state || 'human',
-      lead_id: contact.lead_id
+      lead_id: contact.lead_id,
+      instance_id: contact.instance_id || instanceId || null // Usar instance_id do contato ou do filtro
     }));
+    
+    // Verificar se há mais páginas
+    const hasMore = formattedContacts.length === limit;
+    
+    logger.info(`[CONTACTS] ✅ Página ${page}: ${formattedContacts.length} contatos${instanceId ? ` para instância ${instanceId}` : ' (todas as instâncias)'}, hasMore: ${hasMore}`);
     
     return res.json({
       success: true,
-      contacts: formattedContacts
+      contacts: formattedContacts,
+      pagination: {
+        page,
+        limit,
+        hasMore,
+        total: formattedContacts.length
+      },
+      hasMore // Compatibilidade com frontend
     });
   } catch (error) {
     logger.error('Erro ao processar solicitação de contatos:', error);

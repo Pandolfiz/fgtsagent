@@ -33,10 +33,10 @@ const CookieConsent = () => {
     setConsent(newConsent);
     setShowBanner(false);
     setShowSettings(false);
-    
+
     // Disparar evento para outros componentes
-    window.dispatchEvent(new CustomEvent('cookieConsentUpdated', { 
-      detail: newConsent 
+    window.dispatchEvent(new CustomEvent('cookieConsentUpdated', {
+      detail: newConsent
     }));
   };
 
@@ -86,11 +86,11 @@ const CookieConsent = () => {
                   </h3>
                 </div>
                 <p className="text-cyan-200 text-sm">
-                  Utilizamos cookies para melhorar sua experiência, analisar o tráfego e personalizar conteúdo. 
+                  Utilizamos cookies para melhorar sua experiência, analisar o tráfego e personalizar conteúdo.
                   Você pode escolher quais tipos de cookies aceitar.
                 </p>
               </div>
-              
+
               <div className="flex flex-col sm:flex-row gap-2">
                 <button
                   onClick={() => setShowSettings(true)}
@@ -268,4 +268,4 @@ const CookieConsent = () => {
   );
 };
 
-export default CookieConsent; 
+export default CookieConsent;

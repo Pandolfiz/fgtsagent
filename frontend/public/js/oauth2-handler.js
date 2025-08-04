@@ -8,7 +8,7 @@ const OAuth2Handler = {
   popupWindow: null,
   popupCheckInterval: null,
   callbackFunction: null,
-  
+
   /**
    * Inicia o fluxo OAuth2 abrindo uma janela popup
    * @param {string} provider - O provedor OAuth2 (ex: 'microsoft')
@@ -20,43 +20,43 @@ const OAuth2Handler = {
   startOAuth2Flow(provider, organizationId, credentialName, scope = '', callback = null) {
     // Salvar callback para uso posterior
     this.callbackFunction = callback;
-    
+
     // Construir a URL para o popup (usando URL genérica sem ID da organização no caminho)
     const authUrl = `/api/credentials/oauth2/popup/${provider}`;
     const queryParams = new URLSearchParams();
-    
+
     // Passar organizationId como parâmetro na query
     queryParams.append('organizationId', organizationId);
     if (scope) queryParams.append('scope', scope);
     if (credentialName) queryParams.append('credentialName', credentialName);
-    
+
     const fullAuthUrl = `${authUrl}?${queryParams.toString()}`;
-    
+
     // Configurações da janela popup
     const width = 600;
     const height = 700;
     const left = (window.innerWidth - width) / 2;
     const top = (window.innerHeight - height) / 2;
-    
+
     // Abrir o popup
-    this.popupWindow = window.open(fullAuthUrl, 'oauth2Popup', 
+    this.popupWindow = window.open(fullAuthUrl, 'oauth2Popup',
       `width=${width},height=${height},left=${left},top=${top},toolbar=0,location=0,status=0,menubar=0`);
-    
+
     // Verificar se o popup foi bloqueado
     if (!this.popupWindow || this.popupWindow.closed || typeof this.popupWindow.closed === 'undefined') {
       showNotification('A janela pop-up foi bloqueada. Por favor, permita pop-ups para este site e tente novamente.', 'error');
       return false;
     }
-    
+
     // Iniciar verificação periódica do popup
     this.startPopupCheck();
-    
+
     // Configurar listener para mensagens do popup
     this.setupMessageListener();
-    
+
     return true;
   },
-  
+
   /**
    * Verifica periodicamente se o popup foi fechado
    */
@@ -65,7 +65,7 @@ const OAuth2Handler = {
     if (this.popupCheckInterval) {
       clearInterval(this.popupCheckInterval);
     }
-    
+
     // Configurar novo intervalo
     this.popupCheckInterval = setInterval(() => {
       if (!this.popupWindow || this.popupWindow.closed) {
@@ -74,14 +74,14 @@ const OAuth2Handler = {
       }
     }, 500);
   },
-  
+
   /**
    * Configura um listener para mensagens do popup
    */
   setupMessageListener() {
     window.addEventListener('message', this.handlePostMessage.bind(this), false);
   },
-  
+
   /**
    * Trata mensagens recebidas do popup
    * @param {MessageEvent} event - Evento de mensagem
@@ -100,26 +100,26 @@ const OAuth2Handler = {
       } catch (e) {
         console.warn('Não foi possível confirmar o recebimento para a origem:', e);
       }
-      
+
       const { success, status, error, message, credentialId, provider, organizationId } = event.data;
-      
+
       // Determinar se foi bem-sucedido baseado nos campos disponíveis
       const isSuccess = success || status === 'success';
-      
+
       // Fechar o popup se ainda estiver aberto
       if (this.popupWindow && !this.popupWindow.closed) {
         this.popupWindow.close();
       }
-      
+
       // Limpar o intervalo de verificação
       if (this.popupCheckInterval) {
         clearInterval(this.popupCheckInterval);
       }
-      
+
       // Mostrar notificação apropriada
       if (isSuccess) {
         showNotification(message || `Credencial ${provider || ''} configurada com sucesso!`, 'success');
-        
+
         // Recarregar a lista de credenciais se estiver na página da organização
         if (typeof refreshCredentials === 'function' && organizationId) {
           setTimeout(() => refreshCredentials(organizationId), 1000);
@@ -127,7 +127,7 @@ const OAuth2Handler = {
       } else {
         showNotification(message || `Erro na autenticação: ${error}`, 'error');
       }
-      
+
       // Chamar função de callback se existir
       if (typeof this.callbackFunction === 'function') {
         this.callbackFunction({
@@ -141,7 +141,7 @@ const OAuth2Handler = {
       }
     }
   },
-  
+
   /**
    * Manipula o fechamento do popup sem mensagem explícita
    */
@@ -167,12 +167,12 @@ if (typeof showNotification !== 'function') {
         close: true,
         gravity: 'top',
         position: 'right',
-        backgroundColor: type === 'success' ? '#4caf50' : 
-                        type === 'error' ? '#f44336' : 
+        backgroundColor: type === 'success' ? '#4caf50' :
+                        type === 'error' ? '#f44336' :
                         type === 'warning' ? '#ff9800' : '#2196f3'
       }).showToast();
     } else {
       alert(message);
     }
   };
-} 
+}

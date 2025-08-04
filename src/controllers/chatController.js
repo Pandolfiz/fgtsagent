@@ -205,4 +205,75 @@ exports.getLastMessage = async (req, res) => {
       error: error.message || 'Erro ao buscar última mensagem'
     });
   }
+};
+
+// Obter mensagens de uma conversa com paginação
+exports.getMessages = async (req, res) => {
+  try {
+    const conversationId = req.params.conversationId;
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20;
+    const instanceId = req.query.instance;
+    
+    if (!conversationId) {
+      throw new AppError('ID da conversa é obrigatório', 400);
+    }
+
+    logger.info(`[CHAT] Buscando mensagens - conversa: ${conversationId}, página: ${page}, limite: ${limit}`);
+
+    // Buscar mensagens ordenadas por timestamp descendente (mais recentes primeiro)
+    // Para paginação de chat: página 1 = mensagens mais recentes
+    const { data: messages, error } = await supabaseAdmin
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('timestamp', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1);
+
+    if (error) {
+      logger.error(`Erro ao buscar mensagens: ${error.message}`);
+      throw new Error(error.message);
+    }
+
+    // Processar mensagens e manter ordem do banco (mais recentes primeiro para paginação)
+    const processedMessages = (messages || [])
+      .map(msg => ({
+        id: msg.id,
+        content: msg.content,
+        sender_id: msg.sender_id,
+        receiver_id: msg.recipient_id,
+        created_at: msg.timestamp,
+        timestamp: msg.timestamp,
+        is_read: msg.status === 'read',
+        role: msg.role || 'USER'
+      }));
+    
+    // Sempre manter mensagens mais recentes primeiro para exibição correta
+    // O frontend fará scroll automático para as mensagens mais recentes
+    const finalMessages = processedMessages; // Sempre: mais recente → mais antiga
+
+    const hasMore = messages?.length === limit;
+
+    logger.info(`[CHAT] ✅ ${finalMessages.length} mensagens encontradas para ${conversationId} (página ${page})`);
+    
+    return res.status(200).json({
+      success: true,
+      messages: finalMessages,
+      pagination: {
+        page,
+        limit,
+        hasMore,
+        total: finalMessages.length
+      },
+      hasMore, // Compatibilidade com frontend
+      total: finalMessages.length,
+      limit: limit
+    });
+  } catch (error) {
+    logger.error('Erro ao buscar mensagens:', error);
+    return res.status(error.statusCode || 500).json({
+      success: false,
+      error: error.message || 'Erro ao buscar mensagens'
+    });
+  }
 }; 

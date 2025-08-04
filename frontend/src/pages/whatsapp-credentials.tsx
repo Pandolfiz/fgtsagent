@@ -2,4 +2,4 @@ import { WhatsappCredentialsPage } from '../components/whatsapp-credentials/What
 
 export default function EvolutionCredentialsRoute() {
   return <WhatsappCredentialsPage />
-} 
+}

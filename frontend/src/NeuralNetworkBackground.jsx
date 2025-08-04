@@ -7,7 +7,7 @@ const COLORS = ['#00fff7', '#00bcd4', '#2196f3'];
 
 function useWindowSize() {
   const [size, setSize] = React.useState({ width: window.innerWidth, height: window.innerHeight });
-  
+
   React.useEffect(() => {
     function onResize() {
       setSize({ width: window.innerWidth, height: window.innerHeight });
@@ -15,7 +15,7 @@ function useWindowSize() {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  
+
   return size;
 }
 
@@ -28,7 +28,7 @@ export default function NeuralNetworkBackground() {
   function getNodeX(layer) {
     return ((layer + 1) * width) / (LAYERS + 1);
   }
-  
+
   function getNodeY(layer, i) {
     const nodes = NODES_PER_LAYER[layer];
     return ((i + 1) * height) / (nodes + 1);
@@ -55,32 +55,32 @@ export default function NeuralNetworkBackground() {
   // Animação simples
   useEffect(() => {
     let running = true;
-    
+
     function animate() {
       if (!running) return;
-      
+
       setNodes(prev => prev.map((node) => {
         const t = Date.now() / 2000 + node.phase; // Animação mais lenta
         const offset = Math.sin(t) * 5; // Amplitude reduzida
         const offsetY = Math.cos(t * 0.7) * 3; // Amplitude reduzida
-        
+
         return {
           ...node,
           x: node.baseX + offset,
           y: node.baseY + offsetY,
         };
       }));
-      
+
       if (running) {
         animRef.current = requestAnimationFrame(animate);
       }
     }
-    
+
     animRef.current = requestAnimationFrame(animate);
-    
-    return () => { 
-      running = false; 
-      cancelAnimationFrame(animRef.current); 
+
+    return () => {
+      running = false;
+      cancelAnimationFrame(animRef.current);
     };
   }, []);
 
@@ -90,20 +90,20 @@ export default function NeuralNetworkBackground() {
   );
 
   return (
-    <div style={{ 
-      position: 'fixed', 
-      top: 0, 
-      left: 0, 
-      width: '100vw', 
-      height: '100vh', 
-      zIndex: -10, 
-      pointerEvents: 'none', 
+    <div style={{
+      position: 'fixed',
+      top: 0,
+      left: 0,
+      width: '100vw',
+      height: '100vh',
+      zIndex: -10,
+      pointerEvents: 'none',
       overflow: 'hidden'
     }}>
-      <svg 
-        width="100%" 
-        height="100%" 
-        viewBox={`0 0 ${width} ${height}`} 
+      <svg
+        width="100%"
+        height="100%"
+        viewBox={`0 0 ${width} ${height}`}
         style={{ display: 'block' }}
       >
         {/* Linhas */}
@@ -138,4 +138,4 @@ export default function NeuralNetworkBackground() {
       </svg>
     </div>
   );
-} 
+}

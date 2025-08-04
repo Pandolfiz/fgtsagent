@@ -31,7 +31,7 @@ class WhatsappService {
    * @param {string} userId - ID do usuário que está enviando a mensagem
    * @returns {Promise<object>} - Resposta da API
    */
-  async sendTextMessage(to, message, userId) {
+  async sendTextMessage(to, message, userId, instanceId = null) {
     try {
       if (!userId) {
         logger.error('ID do usuário não fornecido para enviar mensagem');
@@ -41,8 +41,7 @@ class WhatsappService {
         };
       }
 
-      logger.info(`Iniciando envio de mensagem para ${to} pelo usuário ${userId}`);
-      logger.info(`Tipo de userId: ${typeof userId}, Valor: ${userId}`);
+      logger.info(`Iniciando envio de mensagem para ${to} pelo usuário ${userId}${instanceId ? `, instância: ${instanceId}` : ''}`);
       
       // Se userId não for uma string, converter para string
       if (typeof userId !== 'string') {
@@ -50,16 +49,12 @@ class WhatsappService {
         logger.info(`UserId convertido para string: ${userId}`);
       }
       
-      // Verificar se userId está no formato UUID (para diagnóstico)
-      const isUUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId);
-      logger.info(`UserId é um UUID válido? ${isUUID}`);
-      
       // Obter credenciais do usuário
       let credentials;
       try {
-        credentials = await credentialsService.getWhatsappCredentials(userId);
+        credentials = await credentialsService.getWhatsappCredentials(userId, instanceId);
         logger.info('Credenciais obtidas com sucesso');
-        logger.info(`Credenciais: phoneNumberId=${credentials.phoneNumberId}, businessAccountId=${credentials.businessAccountId}`);
+        logger.info(`Tipo de conexão: ${credentials.connectionType}`);
       } catch (credError) {
         logger.error(`Erro ao obter credenciais: ${credError.message}`);
         return {
@@ -68,6 +63,117 @@ class WhatsappService {
           error_details: credError.message
         };
       }
+      
+      // Decidir qual API usar baseado no tipo de conexão
+      if (credentials.connectionType === 'whatsapp_business') {
+        // Usar Evolution API
+        logger.info('Usando Evolution API para envio de mensagem');
+        return await this._sendViaEvolutionAPI(to, message, credentials);
+      } else {
+        // Usar API oficial da Meta
+        logger.info('Usando API oficial da Meta para envio de mensagem');
+        return await this._sendViaMetaAPI(to, message, credentials);
+      }
+    } catch (error) {
+      logger.error(`Erro ao enviar mensagem: ${error.message}`);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Método privado para envio via Evolution API
+  async _sendViaEvolutionAPI(to, message, credentials) {
+    try {
+      logger.info('Iniciando envio via Evolution API');
+      
+      // Importar EvolutionService dinamicamente para evitar dependência circular
+      const EvolutionService = require('./evolutionService');
+      
+      // Criar instância do EvolutionService
+      const evolutionService = new EvolutionService({
+        baseUrl: credentials.evolutionApiUrl,
+        apiKey: credentials.evolutionApiKey,
+        instanceName: credentials.instanceName,
+        instanceId: credentials.instanceId
+      });
+      
+      // Formatar número para Evolution API (deve terminar com @c.us)
+      let formattedTo = to.replace(/\D/g, '');
+      if (!formattedTo.endsWith('@c.us')) {
+        formattedTo = formattedTo + '@c.us';
+      }
+      
+      logger.info(`Enviando via Evolution API para: ${formattedTo}`);
+      
+      // Tentar primeiro via webhook (conforme solicitado)
+      const webhookResult = await evolutionService.sendMessageViaWebhook(
+        formattedTo, 
+        message, 
+        credentials.instanceId, 
+        credentials.instanceName
+      );
+      
+      if (webhookResult.success) {
+        logger.info('Mensagem enviada com sucesso via webhook Evolution');
+        return {
+          success: true,
+          data: {
+            messages: [{
+              id: `evolution_${Date.now()}`,
+              to: formattedTo
+            }]
+          }
+        };
+      } else {
+        logger.warn(`Webhook falhou: ${webhookResult.error}. Tentando via REST API...`);
+        
+        // Fallback para REST API
+        const restResult = await evolutionService.sendTextMessage(formattedTo, message);
+        
+        if (restResult.success) {
+          logger.info('Mensagem enviada com sucesso via REST API Evolution');
+          return {
+            success: true,
+            data: {
+              messages: [{
+                id: `evolution_${Date.now()}`,
+                to: formattedTo
+              }]
+            }
+          };
+        } else {
+          throw new Error(`REST API também falhou: ${restResult.error}`);
+        }
+      }
+    } catch (error) {
+      logger.error(`Erro ao enviar via Evolution API: ${error.message}`);
+      
+      // Verificar se é erro de conectividade
+      if (error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND')) {
+        logger.warn('Evolution API está offline. Mensagem será salva como pending para reenvio posterior.');
+        return {
+          success: false,
+          error: 'Evolution API temporariamente indisponível',
+          error_details: 'A mensagem foi salva e será reenviada quando a API estiver online',
+          should_retry: true,
+          status: 'pending'
+        };
+      }
+      
+      return {
+        success: false,
+        error: `Erro Evolution API: ${error.message}`,
+        should_retry: false
+      };
+    }
+  }
+
+  // Método privado para envio via Meta API
+  async _sendViaMetaAPI(to, message, credentials) {
+    try {
+      logger.info('Iniciando envio via Meta API');
       
       // Verificar se todas as credenciais necessárias estão presentes
       if (!credentials.accessToken) {

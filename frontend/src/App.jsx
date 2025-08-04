@@ -22,8 +22,6 @@ import SupabaseTest from './pages/SupabaseTest.jsx';
 import CookieConsent from './components/CookieConsent.jsx';
 
 
-
-
 export default function App() {
   return (
     <>
@@ -41,24 +39,24 @@ export default function App() {
         <Route path="/agents/:id" element={<AgentView />} />
         <Route path="/profile" element={<Profile />} />
         {/* <Route path="/settings" element={<Settings />} /> */}
-        
+
         {/* Páginas legais */}
         <Route path="/terms-of-use" element={<TermsOfUse />} />
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
-        
+
         {/* Página de diagnóstico do Supabase */}
         <Route path="/supabase-diagnostico" element={<SupabaseTest />} />
-        
+
         {/* Rota de callback para compatibilidade (agora apenas redireciona para login) */}
         <Route path="/auth/callback" element={<AuthCallback />} />
-        
+
         {/* Rotas de erro */}
         <Route path="/error" element={<ErrorPage />} />
-        
+
         {/* Rota 404 para qualquer outra URL */}
         <Route path="*" element={<NotFound />} />
       </Routes>
-      
+
       {/* Banner de Consentimento de Cookies */}
       <CookieConsent />
     </>
