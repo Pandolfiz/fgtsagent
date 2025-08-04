@@ -866,7 +866,7 @@ class WhatsappCredentialController {
           .from('whatsapp_credentials')
           .update({
             status: status,
-            status_description: `Status verificado via Evolution API: ${status}`,
+            status_description: `Status verificado via: ${status}`,
             metadata: {
               ...credential.metadata,
               last_evolution_status_check: new Date().toISOString(),
