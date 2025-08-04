@@ -121,6 +121,20 @@ function Portal({ children }) {
   return ReactDOM.createPortal(children, portalRoot)
 }
 
+// Adicione a função de mapeamento no topo do componente (após imports)
+function mapMaritalStatus(status) {
+  if (!status) return '';
+  const normalized = status.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  switch (normalized) {
+    case 'solteiro': return 'single';
+    case 'casado': return 'married';
+    case 'divorciado': return 'divorced';
+    case 'viuvo':
+    case 'viúvo': return 'widowed';
+    default: return '';
+  }
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [period, setPeriod] = useState('daily')
@@ -1405,11 +1419,11 @@ export default function Dashboard() {
           motherName: leadData.mother_name || leadData.motherName || '',
           email: leadData.email || '',
           birthDate: leadData.birth || leadData.birthDate || '',
-          maritalStatus: leadData.marital_status || leadData.maritalStatus || '',
+          maritalStatus: mapMaritalStatus(leadData.marital_status || leadData.maritalStatus),
           phone: leadData.phone || '',
           postalCode: leadData.cep || leadData.postalCode || '',
-          addressNumber: leadData.address_number || leadData.addressNumber || '',
-          chavePix: leadData.chave_pix || leadData.chavePix || ''
+          addressNumber: leadData.numero || leadData.address_number || leadData.addressNumber || '',
+          chavePix: leadData.pix_key || leadData.chave_pix || leadData.chavePix || ''
         }
 
         setProposalFormData(formData)
