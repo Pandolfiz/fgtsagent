@@ -54,6 +54,7 @@ router.get('/:id/qrcode', whatsappCredentialController.fetchQrCode);
 
 // Verificar status de número WhatsApp via API da Meta
 router.get('/:id/check-status', whatsappCredentialController.checkPhoneNumberStatus);
+router.get('/:id/check-evolution-status', whatsappCredentialController.checkEvolutionStatus);
 
 // Webhook para receber mensagens enviadas do n8n
 router.post('/webhook/receivedWhatsApp', async (req, res) => {
@@ -93,5 +94,8 @@ router.post('/webhook/receivedWhatsApp', async (req, res) => {
     });
   }
 });
+
+// Rota para processar autenticação da Meta API
+router.post('/facebook/auth', requireAuth, whatsappCredentialController.processFacebookAuth);
 
 module.exports = router; 

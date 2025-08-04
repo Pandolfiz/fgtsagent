@@ -11,11 +11,26 @@ class WhatsappCredentialController {
   async list(req, res) {
     try {
       const clientId = req.clientId;
+      logger.info(`[WHATSAPP-CREDENTIALS] Buscando credenciais para clientId: ${clientId}`);
+      logger.info(`[WHATSAPP-CREDENTIALS] req.user: ${JSON.stringify(req.user?.id)}`);
+      logger.info(`[WHATSAPP-CREDENTIALS] req.clientId: ${clientId}`);
+      
       // Buscar todas as credenciais do cliente
       const { data: creds, error } = await supabaseAdmin
         .from('whatsapp_credentials')
         .select('*')
         .eq('client_id', clientId);
+      
+      logger.info(`[WHATSAPP-CREDENTIALS] Resultado da busca: ${creds?.length || 0} credenciais encontradas`);
+      if (creds && creds.length > 0) {
+        logger.info(`[WHATSAPP-CREDENTIALS] Credenciais encontradas:`, creds.map(c => ({
+          id: c.id,
+          name: c.agent_name || c.instance_name,
+          status: c.status,
+          connection_type: c.connection_type
+        })));
+      }
+      
       if (error) throw error;
       
       // Para cada credencial, buscar e atualizar status da instância
@@ -68,7 +83,7 @@ class WhatsappCredentialController {
               if (instances && Array.isArray(instances)) {
                 const instance = instances.find(i => i.instance?.instanceName === cred.instance_name);
                 if (instance) {
-                  cred.status = instance.instance.status;
+                  cred.status = instance.instance.state; // ✅ Corrigido: usa 'state' em vez de 'status'
                   continue;
                 }
               }
@@ -760,6 +775,140 @@ class WhatsappCredentialController {
       
     } catch (err) {
       logger.error(`[STATUS] Erro ao verificar status: ${err.message}`);
+      return res.status(500).json({ success: false, message: err.message });
+    }
+  }
+
+  // Verificar status de credencial WhatsApp Business via Evolution API
+  async checkEvolutionStatus(req, res) {
+    try {
+      const { id } = req.params;
+      
+      logger.info(`[EVOLUTION-STATUS] Verificando status da Evolution API para credencial: ${id}`);
+      
+      // Buscar credencial
+      const { data: creds, error } = await supabaseAdmin
+        .from('whatsapp_credentials')
+        .select('*')
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      const credential = creds && creds[0];
+      if (!credential || credential.client_id !== req.clientId) {
+        return res.status(404).json({ success: false, message: 'Credencial não encontrada' });
+      }
+      
+      // Verificar se é uma credencial WhatsApp Business
+      if (credential.connection_type !== 'whatsapp_business') {
+        return res.status(400).json({ 
+          success: false, 
+          message: 'Esta credencial não é do tipo WhatsApp Business' 
+        });
+      }
+      
+      // Verificar status via Evolution API
+      try {
+        const service = EvolutionService.fromCredential(credential);
+        
+        // Tentar buscar status da instância
+        let status = 'unknown';
+        let evolutionData = null;
+          
+          try {
+            logger.info(`[EVOLUTION-STATUS] Tentando connectionState para instância: ${credential.instance_name}`);
+            const state = await service.fetchConnectionState();
+            
+            // Log apenas os campos específicos para evitar "Max depth reached"
+            const stateValue = state?.state;
+            const instanceName = state?.instance?.instanceName;
+            logger.info(`[EVOLUTION-STATUS] connectionState retornou - state: ${stateValue}, instanceName: ${instanceName}`);
+            
+            if (state && state.state) {
+              status = state.state;
+              evolutionData = state;
+              logger.info(`[EVOLUTION-STATUS] Status encontrado via connectionState: ${status}`);
+            } else {
+              logger.warn(`[EVOLUTION-STATUS] connectionState não retornou state válido`);
+            }
+          } catch (stateErr) {
+            logger.warn(`[EVOLUTION-STATUS] Erro ao buscar status via connectionState: ${stateErr.message}`);
+          }
+          
+          // Se não encontrou via connectionState, tentar fetchInstances como fallback
+          if (status === 'unknown') {
+            try {
+              const instances = await service.fetchInstances();
+              logger.info(`[EVOLUTION-STATUS] fetchInstances retornou ${instances ? instances.length : 0} instâncias`);
+              
+              if (instances && Array.isArray(instances)) {
+                logger.info(`[EVOLUTION-STATUS] Array de instâncias encontrado, procurando por: ${credential.instance_name}`);
+                const instance = instances.find(i => i.name === credential.instance_name);
+                if (instance) {
+                  status = instance.connectionStatus; // ✅ Corrigido: usa 'connectionStatus' da estrutura real
+                  evolutionData = instance;
+                  logger.info(`[EVOLUTION-STATUS] Status encontrado via fetchInstances: ${status}`);
+                } else {
+                  logger.warn(`[EVOLUTION-STATUS] Instância '${credential.instance_name}' não encontrada no array de instâncias`);
+                  const availableInstances = instances.map(i => i.name).filter(Boolean);
+                  logger.info(`[EVOLUTION-STATUS] Instâncias disponíveis: ${availableInstances.join(', ')}`);
+                }
+              } else {
+                logger.warn(`[EVOLUTION-STATUS] fetchInstances não retornou array válido`);
+              }
+            } catch (fetchErr) {
+              logger.warn(`[EVOLUTION-STATUS] Erro ao buscar instância via fetchInstances: ${fetchErr.message}`);
+            }
+          }
+        
+        // Atualizar status no banco de dados
+        const { data: updateResult, error: updateError } = await supabaseAdmin
+          .from('whatsapp_credentials')
+          .update({
+            status: status,
+            status_description: `Status verificado: ${status}`,
+            metadata: {
+              ...credential.metadata,
+              last_evolution_status_check: new Date().toISOString(),
+              evolution_api_status: status,
+              evolution_data: evolutionData
+            }
+          })
+          .eq('id', credential.id)
+          .select()
+          .single();
+        
+        if (updateError) {
+          logger.warn(`[EVOLUTION-STATUS] Erro ao atualizar status no banco: ${updateError.message}`);
+        }
+        
+        return res.json({
+          success: true,
+          data: {
+            credential_id: id,
+            phone: credential.phone,
+            instance_name: credential.instance_name,
+            status: status,
+            evolution_data: evolutionData
+          }
+        });
+        
+      } catch (evolutionErr) {
+        logger.error(`[EVOLUTION-STATUS] Erro ao verificar status via Evolution API: ${evolutionErr.message}`);
+        return res.status(400).json({
+          success: false,
+          message: 'Erro ao verificar status via Evolution API: ' + evolutionErr.message,
+          data: {
+            credential_id: id,
+            phone: credential.phone,
+            instance_name: credential.instance_name,
+            status: 'unknown'
+          }
+        });
+      }
+      
+    } catch (err) {
+      logger.error(`[EVOLUTION-STATUS] Erro ao verificar status da Evolution API: ${err.message}`);
       return res.status(500).json({ success: false, message: err.message });
     }
   }
@@ -1825,6 +1974,222 @@ class WhatsappCredentialController {
         success: false,
         error: 'Erro ao verificar status do rate limiting'
       });
+    }
+  }
+
+  // Processar autenticação da Meta API
+  async processFacebookAuth(req, res) {
+    try {
+      const { code } = req.body;
+      const clientId = req.clientId;
+      
+      if (!code) {
+        return res.status(400).json({
+          success: false,
+          message: 'Código de autorização é obrigatório'
+        });
+      }
+
+      logger.info(`[META-AUTH] Processando autenticação da Meta para cliente: ${clientId}`);
+
+      // 1. Trocar código por access token
+      const tokenResponse = await this.exchangeCodeForToken(code);
+      if (!tokenResponse.success) {
+        return res.status(400).json({
+          success: false,
+          message: 'Erro ao trocar código por access token',
+          error: tokenResponse.error
+        });
+      }
+
+      const { access_token, token_type, expires_in } = tokenResponse.data;
+
+      // 2. Buscar dados da conta WhatsApp Business
+      const whatsappData = await this.getWhatsAppBusinessAccount(access_token);
+      if (!whatsappData.success) {
+        return res.status(400).json({
+          success: false,
+          message: 'Erro ao buscar dados da conta WhatsApp Business',
+          error: whatsappData.error
+        });
+      }
+
+      const { id: whatsappBusinessAccountId, name, phone_numbers } = whatsappData.data;
+
+      // 3. Verificar se já existe credencial para este cliente
+      const { data: existingCredential, error: checkError } = await supabaseAdmin
+        .from('whatsapp_credentials')
+        .select('*')
+        .eq('client_id', clientId)
+        .eq('connection_type', 'ads')
+        .single();
+
+      if (checkError && checkError.code !== 'PGRST116') {
+        logger.error(`[META-AUTH] Erro ao verificar credencial existente: ${checkError.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro interno do servidor'
+        });
+      }
+
+      // 4. Preparar dados da credencial
+      const phoneNumber = phone_numbers[0];
+      const credentialData = {
+        client_id: clientId,
+        phone: phoneNumber.phone_number,
+        instance_name: name,
+        agent_name: name,
+        wpp_access_token: access_token,
+        wpp_business_account_id: whatsappBusinessAccountId,
+        wpp_number_id: phoneNumber.id,
+        connection_type: 'ads',
+        status: 'connected',
+        status_description: 'Conta conectada via Meta API',
+        metadata: {
+          access_token,
+          token_type,
+          expires_in,
+          whatsapp_business_account_id: whatsappBusinessAccountId,
+          phone_number_id: phoneNumber.id,
+          verified_name: phoneNumber.verified_name,
+          quality_rating: phoneNumber.quality_rating,
+          code_verification_status: phoneNumber.code_verification_status,
+          display_phone_number: phoneNumber.display_phone_number,
+          currency: whatsappData.data.currency,
+          timezone_id: whatsappData.data.timezone_id,
+          message_template_namespace: whatsappData.data.message_template_namespace,
+          phone_numbers: phone_numbers,
+          last_meta_auth: new Date().toISOString()
+        }
+      };
+
+      let result;
+      if (existingCredential) {
+        // 5a. Atualizar credencial existente
+        logger.info(`[META-AUTH] Atualizando credencial existente: ${existingCredential.id}`);
+        
+        const { data: updateResult, error: updateError } = await supabaseAdmin
+          .from('whatsapp_credentials')
+          .update(credentialData)
+          .eq('id', existingCredential.id)
+          .select()
+          .single();
+
+        if (updateError) {
+          logger.error(`[META-AUTH] Erro ao atualizar credencial: ${updateError.message}`);
+          return res.status(500).json({
+            success: false,
+            message: 'Erro ao atualizar credencial'
+          });
+        }
+
+        result = updateResult;
+      } else {
+        // 5b. Criar nova credencial
+        logger.info(`[META-AUTH] Criando nova credencial para cliente: ${clientId}`);
+        
+        const { data: createResult, error: createError } = await supabaseAdmin
+          .from('whatsapp_credentials')
+          .insert(credentialData)
+          .select()
+          .single();
+
+        if (createError) {
+          logger.error(`[META-AUTH] Erro ao criar credencial: ${createError.message}`);
+          return res.status(500).json({
+            success: false,
+            message: 'Erro ao criar credencial'
+          });
+        }
+
+        result = createResult;
+      }
+
+      logger.info(`[META-AUTH] Autenticação da Meta processada com sucesso para credencial: ${result.id}`);
+
+      return res.json({
+        success: true,
+        message: 'Conta do WhatsApp Business conectada com sucesso!',
+        data: {
+          credential_id: result.id,
+          phone: result.phone,
+          instance_name: result.instance_name,
+          status: result.status,
+          whatsapp_business_account_id: whatsappBusinessAccountId,
+          phone_number_id: phoneNumber.id
+        }
+      });
+
+    } catch (err) {
+      logger.error(`[META-AUTH] Erro ao processar autenticação da Meta: ${err.message}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro interno do servidor'
+      });
+    }
+  }
+
+  // Trocar código de autorização por access token
+  async exchangeCodeForToken(code) {
+    try {
+      const response = await axios.post('https://graph.facebook.com/v18.0/oauth/access_token', {
+        client_id: process.env.META_APP_ID,
+        client_secret: process.env.META_APP_SECRET,
+        redirect_uri: process.env.META_REDIRECT_URI,
+        code: code
+      });
+
+      return {
+        success: true,
+        data: response.data
+      };
+    } catch (error) {
+      logger.error(`[META-AUTH] Erro ao trocar código por token: ${error.message}`);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Buscar dados da conta WhatsApp Business
+  async getWhatsAppBusinessAccount(accessToken) {
+    try {
+      // Primeiro, buscar as contas do usuário
+      const accountsResponse = await axios.get(`https://graph.facebook.com/v18.0/me/accounts?access_token=${accessToken}`);
+      
+      if (!accountsResponse.data.data || accountsResponse.data.data.length === 0) {
+        return {
+          success: false,
+          error: 'Nenhuma conta encontrada'
+        };
+      }
+
+      // Buscar WhatsApp Business Accounts
+      const wabaResponse = await axios.get(`https://graph.facebook.com/v18.0/me?fields=whatsapp_business_accounts&access_token=${accessToken}`);
+      
+      if (!wabaResponse.data.whatsapp_business_accounts || wabaResponse.data.whatsapp_business_accounts.data.length === 0) {
+        return {
+          success: false,
+          error: 'Nenhuma conta WhatsApp Business encontrada'
+        };
+      }
+
+      const wabaId = wabaResponse.data.whatsapp_business_accounts.data[0].id;
+
+      // Buscar detalhes da conta WhatsApp Business
+      const wabaDetailsResponse = await axios.get(`https://graph.facebook.com/v18.0/${wabaId}?fields=id,name,currency,timezone_id,message_template_namespace,phone_numbers&access_token=${accessToken}`);
+
+      return {
+        success: true,
+        data: wabaDetailsResponse.data
+      };
+    } catch (error) {
+      logger.error(`[META-AUTH] Erro ao buscar dados da conta WhatsApp Business: ${error.message}`);
+      return {
+        success: false,
+        error: error.message
+      };
     }
   }
 }

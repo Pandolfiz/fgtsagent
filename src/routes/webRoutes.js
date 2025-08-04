@@ -918,7 +918,7 @@ router.post('/whatsapp-credentials', requireAuth, commonViewData, async (req, re
     });
     await cred.save();
     // Atribuir status retornado pela API para exibição imediata
-    cred.status = apiRes.instance.status;
+    cred.status = apiRes.instance.state; // ✅ Corrigido: usa 'state' em vez de 'status'
     
     // Extrair QR Code da resposta
     const qrcodeObj = apiRes.qrcode;

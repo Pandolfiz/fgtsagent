@@ -28,10 +28,28 @@ async function getContactsByJids(remoteJids) {
   return data;
 }
 
-async function updateState({ remote_jid, agent_state }) {
+async function updateState({ remote_jid, agent_state, agent_status }) {
+  // ✅ SINCRONIZAÇÃO AUTOMÁTICA: Determinar agent_status baseado no agent_state
+  let finalAgentStatus = agent_status;
+  if (!finalAgentStatus) {
+    switch (agent_state) {
+      case 'ai':
+        finalAgentStatus = 'full';
+        break;
+      case 'human':
+        finalAgentStatus = 'half';
+        break;
+      default:
+        finalAgentStatus = 'full'; // padrão
+    }
+  }
+  
   const { data, error } = await supabaseAdmin
     .from('contacts')
-    .update({ agent_state })
+    .update({ 
+      agent_state,
+      agent_status: finalAgentStatus
+    })
     .eq('remote_jid', remote_jid)
     .select()
     .single();

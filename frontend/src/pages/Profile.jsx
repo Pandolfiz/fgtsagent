@@ -32,7 +32,7 @@ export default function Profile() {
   const [isUploading, setIsUploading] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [message, setMessage] = useState({ type: '', text: '' })
-  
+
   // Estados do formulário
   const [formData, setFormData] = useState({
     first_name: '',
@@ -42,7 +42,7 @@ export default function Profile() {
     cpf_cnpj: '',
     avatar_url: ''
   })
-  
+
   // Estados para alteração de senha
   const [passwordData, setPasswordData] = useState({
     current_password: '',
@@ -79,7 +79,7 @@ export default function Profile() {
       const response = await fetch('/api/auth/profile', {
         credentials: 'include'
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         if (data.success) {
@@ -92,7 +92,7 @@ export default function Profile() {
             cpf_cnpj: profile.cpf_cnpj || '',
             avatar_url: profile.avatar_url || ''
           })
-          
+
           // Definir preview do avatar se existir
           if (profile.avatar_url) {
             setAvatarPreview(profile.avatar_url)
@@ -106,12 +106,12 @@ export default function Profile() {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target
-    
+
     // Validação específica para CPF/CNPJ
     if (name === 'cpf_cnpj') {
       const cleaned = value.replace(/\D/g, '')
       let formatted = cleaned
-      
+
       if (cleaned.length <= 11) {
         // Formatar como CPF
         formatted = cleaned.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, '$1.$2.$3-$4')
@@ -119,7 +119,7 @@ export default function Profile() {
         // Formatar como CNPJ
         formatted = cleaned.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5')
       }
-      
+
       setFormData(prev => ({
         ...prev,
         [name]: formatted
@@ -148,22 +148,22 @@ export default function Profile() {
         setMessage({ type: 'error', text: 'Por favor, selecione apenas arquivos de imagem.' })
         return
       }
-      
+
       // Validar tamanho (máximo 5MB)
       if (file.size > 5 * 1024 * 1024) {
         setMessage({ type: 'error', text: 'A imagem deve ter no máximo 5MB.' })
         return
       }
-      
+
       setAvatarFile(file)
-      
+
       // Criar preview
       const reader = new FileReader()
       reader.onload = (e) => {
         setAvatarPreview(e.target.result)
       }
       reader.readAsDataURL(file)
-      
+
       setMessage({ type: 'success', text: 'Imagem selecionada com sucesso!' })
     }
   }
@@ -179,14 +179,14 @@ export default function Profile() {
 
   const uploadAvatar = async () => {
     if (!avatarFile) return null
-    
+
     try {
       setIsUploading(true)
-      
+
       // Criar nome único para o arquivo
       const fileExt = avatarFile.name.split('.').pop()
       const fileName = `${currentUser.id}-${Date.now()}.${fileExt}`
-      
+
       // Upload para Supabase Storage
       const { data, error } = await supabase.storage
         .from('avatars')
@@ -194,14 +194,14 @@ export default function Profile() {
           cacheControl: '3600',
           upsert: false
         })
-      
+
       if (error) throw error
-      
+
       // Obter URL pública
       const { data: { publicUrl } } = supabase.storage
         .from('avatars')
         .getPublicUrl(fileName)
-      
+
       return publicUrl
     } catch (error) {
       console.error('Erro ao fazer upload:', error)
@@ -216,9 +216,9 @@ export default function Profile() {
     try {
       setIsSaving(true)
       setMessage({ type: '', text: '' })
-      
+
       let avatarUrl = formData.avatar_url
-      
+
       // Fazer upload do avatar se houver arquivo novo
       if (avatarFile) {
         const uploadedUrl = await uploadAvatar()
@@ -228,7 +228,7 @@ export default function Profile() {
           return // Erro no upload
         }
       }
-      
+
       const response = await fetch('/api/auth/profile', {
         method: 'PUT',
         headers: {
@@ -243,7 +243,7 @@ export default function Profile() {
           avatar_url: avatarUrl
         })
       })
-      
+
       if (response.ok) {
         const data = await response.json()
         if (data.success) {
@@ -269,16 +269,16 @@ export default function Profile() {
         setMessage({ type: 'error', text: 'As senhas não coincidem.' })
         return
       }
-      
+
       if (passwordData.new_password.length < 6) {
         setMessage({ type: 'error', text: 'A nova senha deve ter pelo menos 6 caracteres.' })
         return
       }
-      
+
       const { error } = await supabase.auth.updateUser({
         password: passwordData.new_password
       })
-      
+
       if (error) {
         setMessage({ type: 'error', text: error.message })
       } else {
@@ -328,8 +328,8 @@ export default function Profile() {
           {/* Mensagem de feedback */}
           {message.text && (
             <div className={`mb-6 p-4 rounded-lg flex items-center gap-3 ${
-              message.type === 'success' 
-                ? 'bg-green-900/50 border border-green-500 text-green-200' 
+              message.type === 'success'
+                ? 'bg-green-900/50 border border-green-500 text-green-200'
                 : 'bg-red-900/50 border border-red-500 text-red-200'
             }`}>
               {message.type === 'success' ? <FaCheckCircle /> : <FaExclamationTriangle />}
@@ -409,7 +409,7 @@ export default function Profile() {
                     className="w-full px-4 py-2 bg-gray-800/50 border border-cyan-500/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-cyan-400 focus:ring-1 focus:ring-cyan-400 transition-colors"
                   />
                                  </div>
- 
+
                  {/* CPF/CNPJ */}
                  <div>
                    <label className="block text-cyan-200 text-sm font-medium mb-2">
@@ -426,14 +426,14 @@ export default function Profile() {
                      required
                    />
                  </div>
- 
+
                  {/* Avatar Upload */}
                 <div>
                   <label className="block text-cyan-200 text-sm font-medium mb-2">
                     <FaImage className="inline w-4 h-4 mr-2" />
                     Foto de Perfil
                   </label>
-                  
+
                   <div className="space-y-4">
                     {/* Preview do avatar */}
                     {avatarPreview && (
@@ -452,7 +452,7 @@ export default function Profile() {
                         </button>
                       </div>
                     )}
-                    
+
                     {/* Upload de arquivo */}
                     <div className="flex items-center gap-4">
                       <input
@@ -592,4 +592,4 @@ export default function Profile() {
       </div>
     </div>
   )
-} 
+}

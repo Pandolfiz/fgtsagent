@@ -93,6 +93,15 @@ async function startServer() {
       if (!isDatabaseConfigured) {
         logger.warn('ATENÇÃO: Banco de dados não está corretamente configurado. Algumas funcionalidades podem não funcionar.');
       }
+      
+      // Iniciar MessageReprocessor para mensagens pendentes
+      try {
+        const messageReprocessor = require('./services/messageReprocessor');
+        messageReprocessor.startProcessing();
+        logger.info('MessageReprocessor iniciado com sucesso');
+      } catch (error) {
+        logger.error('Erro ao iniciar MessageReprocessor:', error.message);
+      }
     });
   } catch (err) {
     logger.error(`Erro fatal ao iniciar servidor: ${err.message}`);

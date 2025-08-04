@@ -14,79 +14,88 @@ class CredentialsService {
    * @param {string} userId - ID do usuário no sistema
    * @returns {Promise<Object>} - Credenciais do WhatsApp
    */
-  async getWhatsappCredentials(userId) {
+  async getWhatsappCredentials(userId, instanceId = null) {
     try {
       if (!userId) {
         logger.error('ID do usuário não fornecido para buscar credenciais do WhatsApp');
         throw new Error('ID do usuário é obrigatório para obter credenciais do WhatsApp');
       }
 
-      logger.info(`Buscando credenciais do WhatsApp para o usuário: ${userId}`);
-      logger.info(`Token de acesso do WhatsApp presente no .env: ${whatsappConfig.accessToken ? 'Sim' : 'Não'}`);
+      logger.info(`Buscando credenciais do WhatsApp para o usuário: ${userId}${instanceId ? `, instância: ${instanceId}` : ''}`);
       
-      // Verificar se o token de acesso está configurado
-      if (!whatsappConfig.accessToken) {
-        logger.error('WHATSAPP_ACCESS_TOKEN não configurado no arquivo .env');
-        throw new Error('Token de acesso do WhatsApp não configurado no .env');
+      // Construir query base
+      let query = supabaseAdmin
+        .from('whatsapp_credentials')
+        .select('*');
+      
+      // Se instanceId foi fornecido, filtrar por ele
+      if (instanceId) {
+        query = query.eq('id', instanceId);
+      } else {
+        // Caso contrário, filtrar por client_id
+        query = query.eq('client_id', userId);
       }
       
-      // Realizar uma consulta simplificada e direta usando a conexão ADMIN do Supabase
-      logger.info(`Consultando tabela 'whatsapp_credentials' para o cliente: ${userId} (usando credenciais admin)`);
-      
-      const { data, error } = await supabaseAdmin
-        .from('whatsapp_credentials')
-        .select('*')
-        .limit(10);
-      
-      logger.info(`Resposta da consulta admin ao Supabase: ${JSON.stringify({
-        sucesso: !error,
-        registros: data ? data.length : 0,
-        erro: error ? error.message : 'nenhum'
-      })}`);
+      const { data, error } = await query;
       
       if (error) {
         logger.error(`Erro na consulta admin ao Supabase: ${error.message}`);
         throw new Error(`Falha ao consultar tabela whatsapp_credentials: ${error.message}`);
       }
       
-      // Verificar explicitamente se temos registros
+      // Verificar se temos registros
       if (!data || data.length === 0) {
-        logger.error('Nenhum registro encontrado na tabela whatsapp_credentials (admin)');
-        throw new Error('Tabela whatsapp_credentials vazia');
+        logger.error('Nenhum registro encontrado na tabela whatsapp_credentials');
+        throw new Error('Credenciais do WhatsApp não encontradas');
       }
       
-      // Filtrar para o usuário específico
-      let userCredentials = data.filter(cred => cred.client_id === userId);
-      
-      // Se não encontrou para este usuário, usar o primeiro registro
-      if (!userCredentials || userCredentials.length === 0) {
-        logger.warn(`Nenhuma credencial encontrada para o usuário ${userId}. Usando a primeira disponível.`);
-        userCredentials = [data[0]];
-      }
-      
-      // Registro encontrado
-      const credential = userCredentials[0];
+      // Usar o primeiro registro encontrado
+      const credential = data[0];
       logger.info(`Usando credencial: ${JSON.stringify({
         id: credential.id,
         client_id: credential.client_id,
+        connection_type: credential.connection_type,
         wpp_number_id: credential.wpp_number_id,
         wpp_business_account_id: credential.wpp_business_account_id
       })}`);
       
-      // Verificar se os campos necessários estão presentes
-      if (!credential.wpp_number_id || !credential.wpp_business_account_id) {
-        logger.error('Credencial encontrada com campos obrigatórios vazios');
-        throw new Error('Credenciais do WhatsApp incompletas. Configure wpp_number_id e wpp_business_account_id.');
+      // Retornar credenciais baseado no tipo de conexão
+      if (credential.connection_type === 'whatsapp_business') {
+        // Para Evolution API
+        logger.info('Retornando credenciais para Evolution API');
+        return {
+          connectionType: 'whatsapp_business',
+          instanceId: credential.id,
+          instanceName: credential.instance_name,
+          phone: credential.phone,
+          // Evolution API não precisa de accessToken, usa apikey da configuração
+          evolutionApiUrl: process.env.EVOLUTION_API_URL,
+          evolutionApiKey: process.env.EVOLUTION_API_KEY
+        };
+      } else {
+        // Para API oficial da Meta (ads)
+        logger.info('Retornando credenciais para API oficial da Meta');
+        
+        // Verificar se os campos necessários estão presentes
+        if (!credential.wpp_number_id || !credential.wpp_business_account_id) {
+          logger.error('Credencial ADS encontrada com campos obrigatórios vazios');
+          throw new Error('Credenciais do WhatsApp ADS incompletas. Configure wpp_number_id e wpp_business_account_id.');
+        }
+        
+        if (!whatsappConfig.accessToken) {
+          logger.error('WHATSAPP_ACCESS_TOKEN não configurado no arquivo .env');
+          throw new Error('Token de acesso do WhatsApp não configurado no .env');
+        }
+        
+        return {
+          connectionType: 'ads',
+          accessToken: whatsappConfig.accessToken,
+          phoneNumberId: credential.wpp_number_id,
+          businessAccountId: credential.wpp_business_account_id,
+          apiVersion: whatsappConfig.apiVersion,
+          baseUrl: whatsappConfig.baseUrl
+        };
       }
-      
-      // Retornar as credenciais encontradas
-      return {
-        accessToken: whatsappConfig.accessToken,
-        phoneNumberId: credential.wpp_number_id,
-        businessAccountId: credential.wpp_business_account_id,
-        apiVersion: whatsappConfig.apiVersion,
-        baseUrl: whatsappConfig.baseUrl
-      };
     } catch (error) {
       logger.error(`Erro ao processar credenciais do WhatsApp: ${error.message}`);
       throw error;

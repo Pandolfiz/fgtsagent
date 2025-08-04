@@ -62,7 +62,7 @@ class EvolutionService {
       logger.info(`Buscando instâncias em: ${endpoint}`);
       
       const response = await axios.get(endpoint, {
-        headers: { apikey: config.evolutionApi.apiKey }
+        headers: { apikey: this.apiKey }
       });
 
       if (!response.data) {
@@ -89,7 +89,7 @@ class EvolutionService {
       const endpoint = `${this.baseUrl}/instance/connectionState/${encodeURIComponent(this.instanceName)}`;
       logger.info(`Buscando estado de conexão em: ${endpoint}`);
       const response = await axios.get(endpoint, {
-        headers: { apikey: config.evolutionApi.apiKey }
+        headers: { apikey: this.apiKey }
       });
       return response.data;
     } catch (err) {
@@ -166,6 +166,50 @@ class EvolutionService {
   // Envia mensagem via WebSocket
   async sendMessage(to, message) {
     throw new Error('Envio de mensagem via WebSocket não está mais disponível. Use sendTextMessage via REST API.');
+  }
+
+  // Envia mensagem via webhook n8n
+  async sendMessageViaWebhook(to, message, instanceId, instanceName) {
+    try {
+      logger.info(`Enviando mensagem via webhook para ${to}`);
+      
+      const webhookUrl = 'https://n8n-n8n.8cgx4t.easypanel.host/webhook/sendMessageEvolution';
+      
+      const payload = {
+        to: to,
+        message: message,
+        instanceId: instanceId,
+        instanceName: instanceName
+      };
+      
+      logger.info(`Payload para webhook: ${JSON.stringify(payload)}`);
+      
+      const response = await axios.post(webhookUrl, payload, {
+        headers: { 
+          'Content-Type': 'application/json' 
+        },
+        timeout: 10000 // 10 segundos de timeout
+      });
+
+      logger.info('Mensagem enviada com sucesso via webhook:', response.data);
+      return {
+        success: true,
+        data: response.data
+      };
+    } catch (err) {
+      logger.error('Erro ao enviar mensagem via webhook:', err.message);
+      if (err.response) {
+        logger.error('Detalhes do erro:', err.response.status, err.response.data);
+        return {
+          success: false,
+          error: `Erro da webhook: ${err.response.status} - ${JSON.stringify(err.response.data)}`
+        };
+      }
+      return {
+        success: false,
+        error: err.message
+      };
+    }
   }
 
   // Busca QR Code de uma instância

@@ -32,11 +32,11 @@ const SignupSuccess = () => {
       <LandingNavbar />
       <div className="min-h-screen bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 relative overflow-hidden pt-20">
         <NeuralNetworkBackground />
-      
+
       <div className="relative z-10 min-h-screen flex items-center justify-center p-4">
         <div className="max-w-md w-full">
           <div className="bg-white/10 rounded-2xl shadow-2xl backdrop-blur-lg border border-cyan-400/30 p-8 card-futuristic text-center">
-            
+
             {/* Ícone de sucesso */}
             <div className="mb-6">
               <CheckCircle className="w-16 h-16 text-emerald-400 mx-auto mb-4" />
@@ -67,7 +67,7 @@ const SignupSuccess = () => {
                 <h3 className="text-lg font-semibold text-white mb-3">
                   Próximos passos:
                 </h3>
-                
+
                 <div className="space-y-3 text-sm">
                   <div className="flex items-start">
                     <Mail className="w-4 h-4 text-cyan-400 mr-3 mt-0.5 flex-shrink-0" />
@@ -80,7 +80,7 @@ const SignupSuccess = () => {
                       </p>
                     </div>
                   </div>
-                  
+
                   <div className="flex items-start">
                     <ExternalLink className="w-4 h-4 text-cyan-400 mr-3 mt-0.5 flex-shrink-0" />
                     <div>
@@ -104,7 +104,7 @@ const SignupSuccess = () => {
               >
                 Fazer Login
               </a>
-              
+
               <p className="text-xs text-cyan-300/60">
                 Problemas? Entre em contato conosco:{' '}
                 <a href="mailto:suporte@fgtsagent.com" className="text-cyan-400 hover:text-cyan-300 underline">
@@ -120,4 +120,4 @@ const SignupSuccess = () => {
   );
 };
 
-export default SignupSuccess; 
+export default SignupSuccess;

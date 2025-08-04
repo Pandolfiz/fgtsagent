@@ -1,10 +1,271 @@
 import React, { useState, useEffect, useRef } from 'react'
 import Navbar from '../components/Navbar'
-import { FaSearch, FaEllipsisV, FaPaperclip, FaMicrophone, FaSmile, FaPhone, FaVideo, FaPlus, FaArrowLeft, FaSpinner, FaExclamationTriangle, FaWallet, FaCalculator, FaFileAlt, FaTimesCircle, FaCheckCircle, FaInfoCircle, FaIdCard, FaRegCopy } from 'react-icons/fa'
+import { FaSearch, FaEllipsisV, FaPaperclip, FaMicrophone, FaSmile, FaPhone, FaVideo, FaPlus, FaArrowLeft, FaSpinner, FaExclamationTriangle, FaWallet, FaCalculator, FaFileAlt, FaTimesCircle, FaCheckCircle, FaInfoCircle, FaIdCard, FaRegCopy, FaChevronDown, FaCheck, FaClock } from 'react-icons/fa'
 import { IoSend } from 'react-icons/io5'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../utilities/apiFetch';
 import { cachedFetch } from '../utils/authCache'
+
+// ✅ SEGURANÇA: Logger condicional para produção
+const secureLog = {
+  info: (message, data) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(message, data);
+    }
+  },
+  error: (message, error) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.error(message, error);
+    }
+  },
+  warn: (message, data) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(message, data);
+    }
+  }
+};
+
+// ✅ SEGURANÇA: Funções de sanitização e validação robustas
+const SECURITY_CONFIG = {
+  MAX_MESSAGE_LENGTH: 1000,
+  MAX_SEARCH_LENGTH: 100,
+  RATE_LIMIT_DELAY: 1000, // 1 segundo entre envios
+  MAX_REQUESTS_PER_MINUTE: 60, // Máximo de requisições por minuto
+  BACKOFF_MULTIPLIER: 2, // Multiplicador para backoff exponencial
+  SESSION_CHECK_INTERVAL: 5 * 60 * 1000, // 5 minutos
+  DANGEROUS_PATTERNS: /[<>\"'&]|javascript:|data:|vbscript:|on\w+\s*=|expression\s*\(|eval\s*\(/gi
+};
+
+// ✅ SEGURANÇA: Sanitização robusta de conteúdo
+const sanitizeContent = (content) => {
+  if (typeof content !== 'string') return '';
+  
+  // Remover caracteres de controle perigosos
+  let sanitized = content.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
+  
+  // Remover padrões perigosos
+  sanitized = sanitized.replace(SECURITY_CONFIG.DANGEROUS_PATTERNS, '');
+  
+  // Escapar HTML
+  sanitized = sanitized
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;');
+  
+  return sanitized.trim();
+};
+
+// ✅ SEGURANÇA: Validação rigorosa de entrada
+const validateUserInput = (input, type = 'message') => {
+  // ✅ VALIDAÇÃO: Verificar tipo de entrada
+  if (typeof input !== 'string') {
+    return { valid: false, error: 'Input deve ser uma string' };
+  }
+  
+  // ✅ VALIDAÇÃO: Verificar se não é null ou undefined
+  if (input === null || input === undefined) {
+    return { valid: false, error: 'Input não pode ser nulo' };
+  }
+  
+  const trimmed = input.trim();
+  
+  // ✅ VALIDAÇÃO: Verificar se não é apenas espaços
+  if (!trimmed) {
+    return { valid: false, error: 'Input não pode estar vazio' };
+  }
+  
+  // ✅ VALIDAÇÃO: Verificar caracteres de controle
+  if (/[\u0000-\u001F\u007F-\u009F]/.test(trimmed)) {
+    return { valid: false, error: 'Input contém caracteres de controle inválidos' };
+  }
+  
+  switch (type) {
+    case 'message':
+      if (trimmed.length > SECURITY_CONFIG.MAX_MESSAGE_LENGTH) {
+        return { valid: false, error: `Mensagem muito longa (máximo ${SECURITY_CONFIG.MAX_MESSAGE_LENGTH} caracteres)` };
+      }
+      
+      // ✅ VALIDAÇÃO: Verificar padrões perigosos
+      if (SECURITY_CONFIG.DANGEROUS_PATTERNS.test(trimmed)) {
+        return { valid: false, error: 'Conteúdo não permitido' };
+      }
+      
+      // ✅ VALIDAÇÃO: Verificar URLs suspeitas
+      if (/https?:\/\/[^\s]+/.test(trimmed)) {
+        return { valid: false, error: 'URLs não são permitidas em mensagens' };
+      }
+      
+      return { valid: true, value: sanitizeContent(trimmed) };
+      
+    case 'search':
+      if (trimmed.length > SECURITY_CONFIG.MAX_SEARCH_LENGTH) {
+        return { valid: false, error: 'Busca muito longa' };
+      }
+      
+      // ✅ VALIDAÇÃO: Verificar padrões perigosos em busca
+      if (SECURITY_CONFIG.DANGEROUS_PATTERNS.test(trimmed)) {
+        return { valid: false, error: 'Termo de busca contém caracteres inválidos' };
+      }
+      
+      return { valid: true, value: sanitizeContent(trimmed) };
+      
+    case 'phone':
+      // ✅ VALIDAÇÃO: Formato de telefone
+      const phoneRegex = /^[0-9]{10,15}$/;
+      if (!phoneRegex.test(trimmed)) {
+        return { valid: false, error: 'Formato de telefone inválido' };
+      }
+      
+      return { valid: true, value: trimmed };
+      
+    default:
+      return { valid: true, value: sanitizeContent(trimmed) };
+  }
+};
+
+// ✅ SEGURANÇA: Obter token CSRF com validação
+const getCSRFToken = () => {
+  const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  
+  // ✅ VALIDAÇÃO: Verificar se o token tem formato válido
+  if (token && typeof token === 'string' && token.length >= 32) {
+    return token;
+  }
+  
+  return '';
+};
+
+// ✅ SEGURANÇA: Validação de estado
+const validateState = (state, type) => {
+  if (!state || typeof state !== 'object') {
+    return { valid: false, error: 'Estado inválido' };
+  }
+  
+  switch (type) {
+    case 'user':
+      if (!state.id || typeof state.id !== 'string') {
+        return { valid: false, error: 'ID de usuário inválido' };
+      }
+      return { valid: true };
+      
+    case 'contact':
+      if (!state.remote_jid || typeof state.remote_jid !== 'string') {
+        return { valid: false, error: 'ID de contato inválido' };
+      }
+      return { valid: true };
+      
+    case 'message':
+      if (!state.content || typeof state.content !== 'string') {
+        return { valid: false, error: 'Conteúdo de mensagem inválido' };
+      }
+      return { valid: true };
+      
+    default:
+      return { valid: true };
+  }
+};
+
+// ✅ SEGURANÇA: Sistema de rate limiting
+const rateLimiter = {
+  requests: [],
+  isBlocked: false,
+  blockUntil: 0,
+  
+  canMakeRequest() {
+    const now = Date.now();
+    
+    // Se está bloqueado, verificar se já pode fazer requisições novamente
+    if (this.isBlocked && now < this.blockUntil) {
+      return false;
+    }
+    
+    // Limpar requisições antigas (mais de 1 minuto)
+    this.requests = this.requests.filter(time => now - time < 60000);
+    
+    // Verificar se excedeu o limite
+    if (this.requests.length >= SECURITY_CONFIG.MAX_REQUESTS_PER_MINUTE) {
+      this.isBlocked = true;
+      this.blockUntil = now + 60000; // Bloquear por 1 minuto
+      return false;
+    }
+    
+    return true;
+  },
+  
+  recordRequest() {
+    if (this.canMakeRequest()) {
+      this.requests.push(Date.now());
+      return true;
+    }
+    return false;
+  },
+  
+  getRemainingRequests() {
+    const now = Date.now();
+    this.requests = this.requests.filter(time => now - time < 60000);
+    return Math.max(0, SECURITY_CONFIG.MAX_REQUESTS_PER_MINUTE - this.requests.length);
+  }
+};
+
+// ✅ SEGURANÇA: Garantir que token CSRF esteja carregado
+const ensureCSRFToken = async () => {
+  let token = getCSRFToken();
+  if (token) {
+    return token;
+  }
+  
+  // Se não há token, tentar carregar
+  try {
+    console.log('[CSRF] Token não encontrado, tentando carregar...');
+    const response = await fetch('/api/auth/csrf-token', {
+      method: 'GET',
+      credentials: 'include',
+      headers: {
+        'Accept': 'application/json'
+      }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      if (data.success && data.csrfToken) {
+        const metaTag = document.querySelector('meta[name="csrf-token"]');
+        if (metaTag) {
+          metaTag.setAttribute('content', data.csrfToken);
+          console.log('[CSRF] Token carregado dinamicamente:', data.csrfToken.substring(0, 10) + '...');
+          return data.csrfToken;
+        }
+      }
+    }
+  } catch (error) {
+    console.error('[CSRF] Erro ao carregar token dinamicamente:', error);
+  }
+  
+  return '';
+};
+
+// ✅ SEGURANÇA: Verificar sessão
+const checkSession = async () => {
+  try {
+    const response = await fetch('/api/auth/check-session', {
+      credentials: 'include',
+      headers: {
+        'X-CSRF-Token': getCSRFToken()
+      }
+    });
+    
+    if (!response.ok) {
+      window.location.href = '/login?error=session_expired&message=Sua sessão expirou. Por favor, faça login novamente.';
+      return false;
+    }
+    
+    return true;
+  } catch (error) {
+    console.error('Erro ao verificar sessão:', error);
+    return false;
+  }
+};
 
 // Função auxiliar para gerar IDs de mensagem únicos
 function generateMessageId() {
@@ -28,7 +289,7 @@ function debounce(func, wait) {
 function formataMoeda(valor) {
   // Se o valor for null, undefined ou não numérico, retornar null
   if (valor === null || valor === undefined) {
-    console.log("formataMoeda: valor nulo ou indefinido");
+
     return null;
   }
   
@@ -38,7 +299,7 @@ function formataMoeda(valor) {
     
     // Verificar se já é um número
     if (typeof valor === 'number') {
-      console.log(`formataMoeda: valor já é número: ${valor}`);
+
       numero = valor;
     } else {
       // Tentar converter string para número
@@ -49,12 +310,12 @@ function formataMoeda(valor) {
         .replace(/#/g, '');   // Remover pontos temporários
       
       numero = parseFloat(valorLimpo);
-      console.log(`formataMoeda: convertido string "${valor}" para número: ${numero}`);
+
     }
     
     // Verificar se a conversão resultou em um número válido
     if (isNaN(numero)) {
-      console.warn(`formataMoeda: não foi possível converter "${valor}" para número`);
+
       return null;
     }
     
@@ -65,7 +326,7 @@ function formataMoeda(valor) {
       minimumFractionDigits: 2
     }).format(numero);
     
-    console.log(`formataMoeda: valor formatado com sucesso: ${numero} -> ${formatado}`);
+
     return formatado;
   } catch (error) {
     console.error(`Erro ao formatar valor monetário: ${error.message}`);
@@ -97,15 +358,73 @@ export default function Chat() {
   const [isRefreshing, setIsRefreshing] = useState(false)
   const [connectionStatus, setConnectionStatus] = useState(null)
   const [autoResponseContacts, setAutoResponseContacts] = useState({})
-  const [forceUpdate, setForceUpdate] = useState(0)
+
   const [isSyncing, setIsSyncing] = useState(false)
   const [lastSyncTime, setLastSyncTime] = useState(null)
-  const messagesEndRef = useRef(null)
+  const messagesContainerRef = useRef(null);
   const lastMessageIdRef = useRef(null) // Referência para o último ID de mensagem
   const timeoutsRef = useRef([])
   const intervalsRef = useRef([])
+  
+  // ✅ SEGURANÇA: Função de cleanup seguro
+  const cleanupResources = () => {
+    // Limpar todos os timeouts
+    timeoutsRef.current.forEach(timeoutId => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    });
+    timeoutsRef.current = [];
+    
+    // Limpar todos os intervals
+    intervalsRef.current.forEach(intervalId => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    });
+    intervalsRef.current = [];
+  };
+  
   const navigate = useNavigate()
   const [agentMode, setAgentMode] = useState('full');
+  
+  // Estados para gerenciar instâncias
+  const [instances, setInstances] = useState([])
+  
+
+  const [selectedInstanceId, setSelectedInstanceId] = useState('all') // 'all' para todas as instâncias
+  const [isLoadingInstances, setIsLoadingInstances] = useState(false)
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const dropdownRef = useRef(null)
+  const currentIntervalRef = useRef(30000); // ✅ Ref para polling adaptativo
+  const lastMessageRef = useRef(null); // ✅ Ref para última mensagem (evitar loops)
+  const scrollTimeoutRef = useRef(null); // ✅ Ref para debounce do scroll
+  const contactsContainerRef = useRef(null); // ✅ Ref para container de contatos
+  const contactsScrollTimeoutRef = useRef(null); // ✅ Ref para debounce do scroll de contatos
+  const [contactInstances, setContactInstances] = useState({}) // Mapa de contato -> instância
+  
+  // Estados para paginação e performance
+  const [contactsPage, setContactsPage] = useState(1)
+  const [hasMoreContacts, setHasMoreContacts] = useState(true)
+  const [isLoadingMoreContacts, setIsLoadingMoreContacts] = useState(false)
+  
+  // Estados para paginação de mensagens (scroll infinito)
+  const [messagesPage, setMessagesPage] = useState(1)
+  const [hasMoreMessages, setHasMoreMessages] = useState(true)
+  const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false)
+  
+  // Estados para UX melhorada
+  const [isAtBottom, setIsAtBottom] = useState(true)
+  const [unreadCount, setUnreadCount] = useState(0)
+  const [isOnline, setIsOnline] = useState(navigator.onLine)
+  const [retryQueue, setRetryQueue] = useState([]) // ✅ Fila de operações para retry
+  // Removido: isMessagesReady - não é mais necessário
+  const [isInitialLoad, setIsInitialLoad] = useState(false) // ✅ Evita scrolls conflitantes
+  const [allowInfiniteScroll, setAllowInfiniteScroll] = useState(false) // ✅ Controla quando scroll infinito pode ser ativado
+  const [lastStatusUpdate, setLastStatusUpdate] = useState('1970-01-01T00:00:00Z') // ✅ Controla última atualização de status
+  
+  const CONTACTS_PER_PAGE = 15
+  const MESSAGES_PER_PAGE = 20
   
   // Estilos para dispositivos móveis usando variáveis CSS personalizadas
   const mobileStyles = {
@@ -151,8 +470,7 @@ export default function Chat() {
   };
 
   // Estado para controlar quando deve rolar a tela
-  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(false);
-  const [prevMessagesLength, setPrevMessagesLength] = useState(0);
+  // Removido: variáveis de scroll complexo não necessárias
 
   // Estados para os dados do contato
   const [contactData, setContactData] = useState({
@@ -175,20 +493,93 @@ export default function Chat() {
 
   // Log inicial para diagnóstico
   useEffect(() => {
-    console.log('Componente Chat inicializado');
-    console.log('Estado inicial de contactData:', contactData);
+    
   }, []);
 
-  // Cleanup de timeouts e intervals quando o componente for desmontado
+  // ✅ SEGURANÇA: Listener para detectar mudanças na conectividade e verificar sessão
+  useEffect(() => {
+    const handleOnline = () => {
+      setIsOnline(true);
+      console.log('[NETWORK] ✅ Conexão restaurada - processando fila de retry');
+      // Processar fila de retry quando voltar online
+      if (retryQueue.length > 0) {
+        processRetryQueue();
+      }
+    };
+    
+    const handleOffline = () => {
+      setIsOnline(false);
+      console.log('[NETWORK] ❌ Conexão perdida - modo offline ativado');
+    };
+    
+    // ✅ SEGURANÇA: Verificação periódica de sessão
+    const sessionCheckInterval = setInterval(async () => {
+      if (currentUser && !document.hidden) {
+        const sessionValid = await checkSession();
+        if (!sessionValid) {
+          setError('Sessão expirada. Redirecionando...');
+        }
+      }
+    }, SECURITY_CONFIG.SESSION_CHECK_INTERVAL);
+    
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+    
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+      clearInterval(sessionCheckInterval);
+    };
+  }, [retryQueue, currentUser]);
+
+  // ✅ Função para processar fila de retry
+  const processRetryQueue = async () => {
+    if (!isOnline || retryQueue.length === 0) return;
+    
+    console.log(`[RETRY] 🔄 Processando ${retryQueue.length} operações pendentes`);
+    
+    for (const operation of retryQueue) {
+      try {
+        await operation.execute();
+        console.log(`[RETRY] ✅ Operação executada: ${operation.type}`);
+      } catch (error) {
+        console.error(`[RETRY] ❌ Falha na operação ${operation.type}:`, error);
+      }
+    }
+    
+    setRetryQueue([]);
+  };
+
+  // ✅ SEGURANÇA: Cleanup de timeouts e intervals quando o componente for desmontado
   useEffect(() => {
     return () => {
-      // Limpar todos os timeouts
-      timeoutsRef.current.forEach(timeoutId => clearTimeout(timeoutId));
-      timeoutsRef.current = [];
+      // Usar função de cleanup robusta
+      cleanupResources();
       
-      // Limpar todos os intervals
-      intervalsRef.current.forEach(intervalId => clearInterval(intervalId));
-      intervalsRef.current = [];
+      // ✅ Cleanup adicional de refs específicos
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+        scrollTimeoutRef.current = null;
+      }
+      
+      if (contactsScrollTimeoutRef.current) {
+        clearTimeout(contactsScrollTimeoutRef.current);
+        contactsScrollTimeoutRef.current = null;
+      }
+    };
+  }, []);
+
+  // Fechar dropdown quando clicar fora
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setDropdownOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
 
@@ -346,7 +737,7 @@ export default function Chat() {
           count: data.count
         });
         
-        console.log(`Resultado do teste de conexão: ${data.success ? 'Sucesso' : 'Falha'}`);
+        // Teste de conexão concluído
       } catch (error) {
         console.error("Erro ao testar conexão:", error);
         setConnectionStatus({
@@ -378,15 +769,15 @@ export default function Chat() {
         console.error(`Erro ao buscar usuário:`, data);
         throw new Error(`Erro ao buscar usuário: ${data?.message || 'Erro desconhecido'}`);
       }
-      console.log('Resposta completa da API /api/auth/me:', data);
+  
       
       // Verificar e extrair o objeto user da resposta
       if (data.success && data.user) {
-        console.log('Usuário obtido via API:', data.user);
+
         return data.user; // Retornar o objeto user, não a resposta completa
       } else if (data.id) {
         // Se a API retornar o usuário diretamente sem wrapper
-        console.log('Usuário obtido diretamente da API:', data);
+
         return data;
       } else {
         console.error('Formato de resposta inesperado:', data);
@@ -409,7 +800,7 @@ export default function Chat() {
         const userData = await fetchUserFromApi();
         
         if (userData && userData.id) {
-          console.log(`Usuário autenticado com ID: ${userData.id}`);
+          // Usuário autenticado
           setCurrentUser(userData);
           
           // Após obter o usuário, atualiza o status da conexão para garantir
@@ -463,29 +854,214 @@ export default function Chat() {
     fetchAgentMode();
   }, []);
 
-  // Função para determinar se o botão AI deve estar ligado para cada contato
+  // ✅ REMOVIDO: Funções duplicadas de sincronização
+  // Backend agora coordena a sincronização automaticamente
+
+  // Função para verificar se o agente AI está ativo
   const isAgentAiActive = (contact) => {
     if (!contact) return false;
     return contact.agent_state === 'ai';
   };
 
-  // Busca a lista de contatos do usuário quando o usuário é carregado
-  useEffect(() => {
-    if (!currentUser?.id) {
-      console.log("Usuário não disponível para buscar contatos");
-      return;
+  // Função para obter o texto de exibição da instância selecionada
+  const getSelectedInstanceText = () => {
+    if (isLoadingInstances) return 'Carregando...';
+    if (selectedInstanceId === 'all') return 'Todas as instâncias';
+    
+    const selectedInstance = instances.find(instance => instance.id === selectedInstanceId);
+    return selectedInstance?.agent_name || selectedInstance?.instance_name || `Instância ${selectedInstanceId}`;
+  };
+
+  // Função para selecionar uma instância
+  const handleInstanceSelect = (instanceId) => {
+    console.log(`[INSTANCE-SELECT] ��� Selecionando instância: ${instanceId}`);
+    
+    // ✅ LIMPAR CONTATO ATUAL quando instância muda
+    if (currentContact) {
+      console.log(`[INSTANCE-SELECT] ��� Limpando contato atual: ${currentContact.name || currentContact.push_name}`);
+      setCurrentContact(null);
     }
     
-    async function fetchContacts() {
-      try {
+    setSelectedInstanceId(instanceId);
+    setDropdownOpen(false);
+  };
+
+  // Função para obter o nome da instância de um contato
+  const getContactInstanceName = (contact) => {
+
+    
+    // Se já temos instance_id (quando filtrado por instância específica ou quando o contato tem instance_id)
+    if (contact.instance_id) {
+      const instance = instances.find(inst => inst.id === contact.instance_id);
+      const result = instance?.agent_name || instance?.instance_name || null;
+
+      return result;
+    }
+    
+    // Se estamos vendo "todas as instâncias" e o contato não tem instance_id, usar o mapa de contatos
+    if (selectedInstanceId === 'all') {
+      const instanceId = contactInstances[contact.remote_jid];
+
+      
+      if (instanceId) {
+        const instance = instances.find(inst => inst.id === instanceId);
+        const instanceName = instance?.agent_name || instance?.instance_name || null;
+        
+
+        return instanceName;
+      } else {
+
+      }
+    }
+    
+
+    return null;
+  };
+
+  // Função para formatar o nome do contato com instância (quando aplicável)
+  const formatContactName = (contact) => {
+    const baseName = contact.name || contact.push_name || 'Contato';
+    
+    // Se "Todas as instâncias" estiver selecionada, incluir nome da instância
+    if (selectedInstanceId === 'all') {
+      const instanceName = getContactInstanceName(contact);
+      if (instanceName) {
+        return { name: baseName, instanceName: instanceName };
+      }
+    }
+    
+    return { name: baseName, instanceName: null };
+  };
+
+  // Função para buscar instâncias dos contatos (SIMPLIFICADA - usar instance_id direto da tabela contacts)
+  const fetchContactInstances = async (contacts) => {
+    try {
+  
+      const instanceMap = {};
+      
+      // Usar diretamente o instance_id da tabela contacts
+      contacts.forEach((contact) => {
+        if (contact.instance_id) {
+          instanceMap[contact.remote_jid] = contact.instance_id;
+  
+        } else {
+          
+        }
+      });
+
+      
+      
+      // Verificar se há instâncias diferentes
+      const uniqueInstances = [...new Set(Object.values(instanceMap))];
+      
+      if (uniqueInstances.length > 1) {
+
+        // Se ainda não estava em "all", mudar automaticamente
+        if (selectedInstanceId !== 'all') {
+          setSelectedInstanceId('all');
+        }
+      } else {
+
+      }
+      
+      setContactInstances(instanceMap);
+      
+    } catch (error) {
+
+    }
+  };
+
+  // Função para buscar instâncias do usuário
+  const fetchInstances = async () => {
+
+    
+    try {
+      setIsLoadingInstances(true);
+      
+      const response = await fetch('/api/whatsapp-credentials', {
+        method: 'GET',
+        credentials: 'include',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (!response?.ok) {
+        if (response?.status === 401) {
+          navigate('/login?error=session_expired&message=Sua sessão expirou. Por favor, faça login novamente.');
+      return;
+        }
+        throw new Error(`Erro ${response?.status || 'desconhecido'} ao buscar instâncias`);
+      }
+      
+      const data = await response.json();
+      
+
+      
+      if (data.success && data.data) {
+
+        
+        // ✅ Filtrar instâncias ativas (incluindo mais status válidos)
+        const activeInstances = data.data.filter(instance => {
+          // Considerar instâncias com status válidos para uso
+          const validStatuses = ['connected', 'open', 'pending', 'ready'];
+          const isActive = validStatuses.includes(instance.status);
+          
+
+          
+          return isActive;
+        });
+        
+
+        setInstances(activeInstances);
+        
+
+        
+        if (activeInstances.length > 0) {
+          console.log(`✅ ${activeInstances.length} instância(s) WhatsApp encontrada(s)`);
+        } else {
+          setInstances([]);
+        }
+      } else {
+        setInstances([]);
+      }
+    } catch (error) {
+
+      setInstances([]);
+      // Não mostrar erro para não interferir na UX se não houver instâncias
+    } finally {
+      setIsLoadingInstances(false);
+    }
+  };
+
+  // ✅ REMOVIDO: Função de sincronização duplicada
+  // Backend agora coordena a sincronização automaticamente
+
+  // Função otimizada para buscar contatos com paginação
+  const fetchContacts = async (instanceId = null, page = 1, reset = true) => {
+    try {
+      if (reset) {
         setIsLoading(true);
         setError(null);
-        
-        console.log(`Buscando contatos para usuário: ${currentUser.id}`);
-        
-        // Buscar contatos via API
+        setContactsPage(1);
+        setHasMoreContacts(true);
+      } else {
+        setIsLoadingMoreContacts(true);
+      }
+      
+      const instanceFilter = instanceId && instanceId !== 'all' ? instanceId : null;
+      console.log(`[CONTACTS] Buscando página ${page} (${CONTACTS_PER_PAGE} contatos)${instanceFilter ? ` - instância: ${instanceFilter}` : ' - todas'}`);
+      
+      // Construir URL da API com paginação e filtro de instância
+      let apiUrl = `/api/contacts?page=${page}&limit=${CONTACTS_PER_PAGE}`;
+      if (instanceFilter) {
+        apiUrl += `&instance=${instanceFilter}`;
+        const instanceName = instances.find(i => i.id === instanceFilter)?.agent_name || 'Desconhecida';
+        console.log(`[CONTACTS] 🔍 Filtrando por instância: ${instanceName} (${instanceFilter})`);
+      }
+      
         const startTime = Date.now();
-        const response = await fetch('/api/contacts', {
+      const response = await fetch(apiUrl, {
           credentials: 'include'
         });
         
@@ -496,34 +1072,32 @@ export default function Chat() {
           }
           
           const errorData = await response.json();
+          if (response.status === 500 && instanceFilter) {
+            console.error(`[CONTACTS] ❌ Erro 500 para instância ${instanceFilter}: ${errorData.message}`);
+            throw new Error(`Erro ao filtrar por instância "${instanceFilter}": ${errorData.message}`);
+          }
           throw new Error(errorData.message || `Erro ${response.status} ao buscar contatos`);
         }
         
         const data = await response.json();
         const duration = Date.now() - startTime;
         
-        console.log(`Consulta de contatos finalizada em ${duration}ms`);
-        console.log('Resposta completa da API de contatos:', data);
+              // Página carregada com sucesso
         
         if (!data.success) {
           throw new Error(data.message || 'Erro ao buscar contatos');
         }
         
-        // Extrair a lista de contatos do objeto de resposta
         const contactsList = data.contacts || [];
-        console.log(`Contatos encontrados: ${contactsList.length}`, contactsList);
-        
-        // Log para debug - verificar se agent_state e last_message_time estão vindo corretamente
-        contactsList.forEach(contact => {
-          console.log(`Contato ${contact.name || contact.push_name || 'Desconhecido'}: 
-            - agent_state = ${contact.agent_state || 'não definido'}
-            - last_message_time = ${contact.last_message_time || 'não definido'}`);
-        });
-        
-        // Buscar a última mensagem para TODOS os contatos, independente de terem last_message_time
-        const contactsWithLastMessagePromises = contactsList.map(async (contact) => {
+        // ✅ Sanitizar contatos para corrigir dados inconsistentes
+        const sanitizedContacts = contactsList.map(sanitizeContact).filter(Boolean);
+        // ✅ Backend já coordena a sincronização automaticamente
+        const hasMore = data.hasMore || sanitizedContacts.length === CONTACTS_PER_PAGE;
+      
+        if (sanitizedContacts.length > 0) {
+          // Buscar última mensagem para exibição (não para ordenação)
+        const contactsWithLastMessagePromises = sanitizedContacts.map(async (contact) => {
           try {
-            console.log(`Buscando última mensagem para contato: ${contact.remote_jid}`);
             const messagesResponse = await fetch(`/api/chat/messages/${contact.remote_jid}/last`, {
               credentials: 'include'
             });
@@ -531,65 +1105,526 @@ export default function Chat() {
             if (messagesResponse.ok) {
               const messageData = await messagesResponse.json();
               if (messageData.success && messageData.message) {
-                console.log(`Última mensagem para ${contact.name || contact.push_name || 'Desconhecido'}: ${JSON.stringify(messageData.message)}`);
                 return {
                   ...contact,
                   last_message_time: messageData.message.timestamp || messageData.message.created_at,
                   last_message: messageData.message.content
                 };
-              } else {
-                console.log(`Sem mensagens para ${contact.name || contact.push_name || 'Desconhecido'}`);
               }
-            } else {
-              console.error(`Erro na resposta da API para ${contact.remote_jid}: ${messagesResponse.status}`);
             }
           } catch (error) {
-            console.error(`Erro ao buscar última mensagem para ${contact.remote_jid}:`, error);
+              // Silenciar erros individuais
           }
           return contact;
         });
         
-        // Aguardar todas as promessas
         const contactsWithLastMessages = await Promise.all(contactsWithLastMessagePromises);
         
-        // Verificar e usar os valores recebidos da API
-        if (contactsWithLastMessages.length > 0) {
-          console.log('Usando contatos com last_message_time atualizado:');
-          contactsWithLastMessages.forEach(contact => {
-            console.log(`- ${contact.name || contact.push_name || 'Desconhecido'}: last_message_time = ${contact.last_message_time || 'não definido'}`);
-          });
+          // Backend já ordena por update_at - manter ordem original
+          const sortedContacts = contactsWithLastMessages;
           
-          setContacts(contactsWithLastMessages);
-          
-          // Agora também atualizamos o estado de exibição
-          const sortedContacts = [...contactsWithLastMessages].sort((a, b) => {
-            // Se não tiver hora da última mensagem, coloca no final
-            if (!a.last_message_time) return 1;
-            if (!b.last_message_time) return -1;
-            
-            // Ordem decrescente (mais recente primeiro)
-            return new Date(b.last_message_time) - new Date(a.last_message_time);
-          });
+
+        
+        if (reset) {
+          // Primeira carga - substituir lista
+          setContacts(sortedContacts);
           setDisplayContacts(sortedContacts);
           
-          // Se não estiver no modo mobile, seleciona automaticamente o primeiro contato
-          if (!isMobileView) {
-            setCurrentContact(sortedContacts[0]);
+          // Buscar instâncias apenas da primeira página
+
+          if (instances.length > 0) {
+            fetchContactInstances(sortedContacts);
+          }
+          
+          // ✅ PROTEÇÃO CRÍTICA: Não sobrescrever contato durante carregamento inicial
+          if (!isMobileView && sortedContacts.length > 0 && !isInitialLoad && !currentContact) {
+            const firstContact = sortedContacts[0];
+            setCurrentContact(firstContact);
+            console.log('[CONTACTS] ✅ Contato auto-selecionado:', firstContact.push_name || firstContact.name);
+            
+            // ✅ CORREÇÃO: Marcar como carregamento inicial para ativar ancoragem automática
+            setIsInitialLoad(true);
+            
+            // ✅ CORREÇÃO: Carregar mensagens do contato auto-selecionado
+            if (firstContact?.remote_jid) {
+              console.log('[CONTACTS] 📩 Carregando mensagens do contato auto-selecionado:', firstContact.remote_jid);
+              fetchMessages(firstContact.remote_jid, 1, true);
+            }
+          } else if (isInitialLoad) {
+            console.log('[CONTACTS] ⚠️ Bloqueada auto-seleção durante carregamento inicial');
+          } else if (currentContact) {
+            console.log('[CONTACTS] ⚠️ Bloqueada auto-seleção - contato já selecionado:', currentContact.push_name || currentContact.name);
           }
         } else {
-          console.log('Nenhum contato encontrado para este usuário');
+          // Carregamento adicional - anexar à lista existente (backend já ordena)
+          setContacts(prevContacts => {
+            const newContacts = [...prevContacts, ...sortedContacts];
+            const uniqueContacts = newContacts.filter((contact, index, self) => 
+              index === self.findIndex(c => c.remote_jid === contact.remote_jid)
+            );
+            return uniqueContacts; // Backend já ordena por update_at
+          });
+          
+          setDisplayContacts(prevContacts => {
+            const newContacts = [...prevContacts, ...sortedContacts];
+            const uniqueContacts = newContacts.filter((contact, index, self) => 
+              index === self.findIndex(c => c.remote_jid === contact.remote_jid)
+            );
+            return uniqueContacts; // Backend já ordena por update_at
+          });
+          
+          // Buscar instâncias dos novos contatos
+          if (instances.length > 0) {
+            fetchContactInstances(sortedContacts);
+          }
+        }
+        
+        setHasMoreContacts(hasMore);
+        setContactsPage(page);
+        
+                } else {
+        if (reset) {
+          if (instanceFilter) {
+            console.log(`[CONTACTS] ✅ Nenhum contato encontrado para a instância "${instanceFilter}"`);
+            console.log(`[CONTACTS] 💡 Esta instância não possui conversas ativas ainda`);
+          } else {
+            console.log('[CONTACTS] Nenhum contato encontrado');
+          }
+          setContacts([]);
           setDisplayContacts([]);
         }
+        setHasMoreContacts(false);
+        }
       } catch (error) {
-        console.error('Erro ao buscar contatos:', error);
-        setError(`Erro ao buscar contatos: ${error.message}. Por favor, tente novamente.`);
+      console.error('[CONTACTS] Erro ao buscar contatos:', error);
+        // ✅ Usar tratamento robusto de erro
+        handleNetworkError(error, 'buscar contatos');
       } finally {
         setIsLoading(false);
+      setIsLoadingMoreContacts(false);
+    }
+  };
+
+  // Buscar instâncias quando o usuário estiver disponível
+  useEffect(() => {
+    if (currentUser) {
+      fetchInstances();
+    }
+  }, [currentUser]);
+
+  // Recarregar contatos quando a instância selecionada mudar
+  useEffect(() => {
+    if (currentUser) {
+      // ✅ PROTEÇÃO: Não interferir durante carregamento inicial
+      if (isInitialLoad) {
+    
+        return;
       }
+      
+      // Limpar mapa de instâncias apenas quando NÃO for "todas as instâncias"
+      if (selectedInstanceId !== 'all') {
+        setContactInstances({});
+      }
+      // Reset pagination states
+      setContactsPage(1);
+      setHasMoreContacts(true);
+      
+      // ✅ Delay para evitar conflito com ancoragem
+      const delayedFetchTimeoutId = setTimeout(() => {
+        fetchContacts(selectedInstanceId === 'all' ? null : selectedInstanceId, 1, true);
+      }, 200); // 200ms de delay
+      timeoutsRef.current.push(delayedFetchTimeoutId);
+    }
+  }, [selectedInstanceId, currentUser]);
+
+  // Buscar instâncias dos contatos quando as instâncias forem carregadas
+  useEffect(() => {
+    if (instances.length > 0 && contacts.length > 0 && Object.keys(contactInstances).length === 0) {
+  
+      fetchContactInstances(contacts);
+    }
+  }, [instances, contacts]);
+
+
+
+  // Buscar instâncias dos contatos quando as instâncias do usuário forem carregadas
+  useEffect(() => {
+    if (instances.length > 0 && contacts.length > 0) {
+      
+      // ✅ Delay para evitar conflito com ancoragem
+      const delayedInstancesFetchTimeoutId = setTimeout(() => {
+        fetchContactInstances(contacts);
+      }, 300); // 300ms de delay
+      timeoutsRef.current.push(delayedInstancesFetchTimeoutId);
+    }
+  }, [instances, contacts]);
+
+  // ✅ Handler de scroll para contatos com debounce
+  const handleContactsScrollImmediate = (e) => {
+    const container = e.target;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    
+    // ✅ Detectar quando está próximo do final (100px do bottom)
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    
+    if (isNearBottom && hasMoreContacts && !isLoadingMoreContacts && currentUser) {
+      console.log('[CONTACTS] 🔄 Próximo ao final da lista - carregando mais contatos');
+      loadMoreContacts();
+    }
+  };
+  
+  const handleContactsScrollDebounced = (e) => {
+    // ✅ Ações pesadas com debounce se necessário
+    // Por enquanto não há ações pesadas para contatos
+  };
+  
+  const handleContactsScroll = (e) => {
+    // ✅ Executar ações imediatas
+    handleContactsScrollImmediate(e);
+    
+    // ✅ Debounce para ações pesadas (150ms)
+    if (contactsScrollTimeoutRef.current) {
+      clearTimeout(contactsScrollTimeoutRef.current);
     }
     
-    fetchContacts();
-  }, [currentUser, isMobileView, navigate]);
+    contactsScrollTimeoutRef.current = setTimeout(() => {
+      handleContactsScrollDebounced(e);
+    }, 150);
+  };
+
+  // Função para carregar mais contatos (scroll infinito)
+  const loadMoreContacts = () => {
+    if (!isLoadingMoreContacts && hasMoreContacts && currentUser) {
+      const nextPage = contactsPage + 1;
+      console.log(`[CONTACTS] 📄 Carregando mais contatos - página ${nextPage}`);
+      fetchContacts(selectedInstanceId === 'all' ? null : selectedInstanceId, nextPage, false);
+    }
+  };
+
+  // Função para carregar mensagens antigas (scroll infinito)
+  const loadMoreMessages = () => {
+    if (!isLoadingMoreMessages && hasMoreMessages && currentContact) {
+      setIsLoadingMoreMessages(true);
+      const nextPage = messagesPage + 1;
+      fetchMessages(currentContact.remote_jid, nextPage, false);
+    }
+  };
+
+  // ✅ Função para scroll INSTANTÂNEO para o final (mensagens recentes)
+  const scrollToBottom = () => {
+    // ✅ Não interferir durante carregamento inicial
+    if (isInitialLoad) return;
+    
+    const container = messagesContainerRef.current;
+    if (container) {
+      // ✅ Scroll instantâneo sem animação
+      container.scrollTop = container.scrollHeight;
+      setIsAtBottom(true);
+      setUnreadCount(0);
+    }
+  };
+
+  // ✅ Função DEFINITIVA para forçar ancoragem no final
+  // ✅ CORREÇÃO: Debounce para scroll para evitar muitas atualizações
+  const debouncedScrollToEnd = debounce(() => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    
+    const maxScroll = container.scrollHeight - container.clientHeight;
+    container.scrollTop = maxScroll;
+  }, 100);
+
+  const forceScrollToEnd = () => {
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    
+    const scrollToEnd = () => {
+      const maxScroll = container.scrollHeight - container.clientHeight;
+      container.scrollTop = maxScroll;
+    };
+    
+    // ✅ Scroll imediato SEM delays
+    scrollToEnd();
+    
+    return scrollToEnd;
+  };
+
+  // ✅ SEGURANÇA: Função utilitária para sanitizar mensagens do banco (corrige dados inconsistentes)
+  const sanitizeMessage = (msg) => {
+    if (!msg || typeof msg !== 'object') return null;
+    
+    // ✅ Corrigir role NULL ou inválido (Bug encontrado: 5 mensagens com role NULL)
+    let role = msg.role;
+    if (!role || !['ME', 'AI', 'USER'].includes(role)) {
+      // Determinar role baseado em sender_id vs recipient_id
+      role = msg.sender_id === currentUser?.id ? 'ME' : 'USER';
+      console.warn(`[SANITIZE] Mensagem ${msg.id} tinha role inválido "${msg.role}", corrigido para "${role}"`);
+    }
+    
+    // ✅ SEGURANÇA: Sanitizar conteúdo da mensagem
+    const sanitizedContent = sanitizeContent(msg.content || '');
+    
+    // ✅ Garantir que propriedades essenciais existam
+    return {
+      ...msg,
+      id: msg.id || `temp-${Date.now()}-${Math.random()}`,
+      role: role,
+      content: sanitizedContent,
+      created_at: msg.created_at || msg.timestamp || new Date().toISOString(),
+      is_read: msg.is_read ?? false,
+      temp: msg.temp || false
+    };
+  };
+
+  // ✅ Função utilitária para sanitizar contatos
+  const sanitizeContact = (contact) => {
+    if (!contact || typeof contact !== 'object') return null;
+    
+    return {
+      ...contact,
+      remote_jid: contact.remote_jid || contact.id || '',
+      name: contact.name || contact.push_name || 'Contato',
+      phone: contact.phone || (contact.remote_jid || '').split('@')[0] || '',
+      instance_id: contact.instance_id || null,
+      lead_id: contact.lead_id || null
+    };
+  };
+
+  // ✅ SEGURANÇA: Função utilitária para validar entrada do usuário (usando a versão global)
+  const validateUserInputLocal = (input, type = 'message') => {
+    return validateUserInput(input, type);
+  };
+
+  // ✅ SEGURANÇA: Função para tratamento robusto de erros de rede
+  const handleNetworkError = (error, context = 'operação') => {
+    console.error(`[NETWORK ERROR] ${context}:`, error);
+    
+    // ✅ SEGURANÇA: Verificar se é erro de autenticação
+    if (error.message?.includes('401') || error.message?.includes('403')) {
+      setError('Sessão expirada. Redirecionando para login...');
+      setTimeout(() => {
+        window.location.href = '/login?error=session_expired';
+      }, 2000);
+      return;
+    }
+    
+    if (!navigator.onLine) {
+      setError('Sem conexão com a internet. Verifique sua conexão.');
+      return;
+    }
+    
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      setError('Erro de conexão com o servidor. Tente novamente.');
+      return;
+    }
+    
+    if (error.message.includes('JSON')) {
+      setError('Resposta inválida do servidor. Tente atualizar a página.');
+      return;
+    }
+    
+    // ✅ SEGURANÇA: Não expor detalhes internos do erro
+    const userFriendlyMessage = error.message?.includes('security') || error.message?.includes('validation') 
+      ? 'Dados inválidos ou não permitidos'
+      : `Erro na ${context}. Tente novamente.`;
+    
+    setError(userFriendlyMessage);
+  };
+
+  // ✅ Detectar posição do scroll com debounce otimizado para performance
+  
+  const handleScrollImmediate = (e) => {
+    const container = e.target;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    
+    // ✅ Ações IMEDIATAS (não podem ter delay)
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    setIsAtBottom(isNearBottom); // Estado crítico - sem delay
+    
+    // Resetar contador imediatamente se no final
+    if (isNearBottom) {
+      setUnreadCount(0);
+    }
+  };
+  
+  const handleScrollDebounced = (e) => {
+    const container = e.target;
+    const { scrollTop } = container;
+    
+    // ✅ Ações PESADAS com debounce (podem ter delay)
+    // Carregar mensagens antigas só após parar de rolar
+    // ✅ MÚLTIPLAS PROTEÇÕES: Evitar conflitos com ancoragem
+    if (scrollTop < 100 && 
+        hasMoreMessages && 
+        !isLoadingMoreMessages && 
+        allowInfiniteScroll && 
+        !isInitialLoad &&
+        currentContact?.remote_jid) {
+      
+      loadMoreMessages();
+    }
+  };
+  
+  const handleScroll = (e) => {
+    // ✅ Executar ações imediatas
+    handleScrollImmediate(e);
+    
+    // ✅ Debounce para ações pesadas (150ms)
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
+    
+    scrollTimeoutRef.current = setTimeout(() => {
+      handleScrollDebounced(e);
+    }, 150);
+  };
+
+  // Função para verificar se deve mostrar separador de data
+  const shouldShowDateSeparator = (currentMsg, previousMsg) => {
+    if (!previousMsg) return true; // Primeira mensagem sempre mostra data
+    
+    const currentDate = new Date(currentMsg.created_at).toDateString();
+    const previousDate = new Date(previousMsg.created_at).toDateString();
+    return currentDate !== previousDate;
+  };
+
+  // Função para formatar data do separador
+  const formatDateSeparator = (dateString) => {
+    const date = new Date(dateString);
+    const today = new Date();
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    
+    if (date.toDateString() === today.toDateString()) {
+      return 'Hoje';
+    } else if (date.toDateString() === yesterday.toDateString()) {
+      return 'Ontem';
+    } else {
+      return date.toLocaleDateString('pt-BR', { 
+        weekday: 'long', 
+        year: 'numeric', 
+        month: 'long', 
+        day: 'numeric' 
+      });
+    }
+  };
+
+  // Função aprimorada para buscar mensagens com scroll infinito
+  const fetchMessages = async (contactId, page = 1, reset = true) => {
+    if (!contactId) return;
+    
+    try {
+      if (reset) {
+        // ✅ Estados básicos para reset (sem duplicações)
+        setMessages([]);
+        setMessagesPage(1);
+        setHasMoreMessages(true);
+        setUnreadCount(0);
+        setLastStatusUpdate('1970-01-01T00:00:00Z'); // Resetar última atualização
+      }
+      
+      const response = await fetch(`/api/chat/messages/${contactId}?page=${page}&limit=${MESSAGES_PER_PAGE}`, {
+        credentials: 'include'
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Erro ${response.status} ao buscar mensagens`);
+      }
+      
+      const data = await response.json();
+      
+      if (data.success && data.messages) {
+        const newMessages = data.messages;
+        const hasMore = data.hasMore || newMessages.length === MESSAGES_PER_PAGE;
+        
+        // Atualizar estado de paginação
+        setHasMoreMessages(hasMore);
+        setMessagesPage(page);
+        
+        if (reset) {
+          // Primeira carga - reverter para ordem cronológica (antigas → recentes)
+          // para exibir como chat tradicional (mensagens recentes no final da tela)
+          const chronologicalMessages = [...newMessages].reverse();
+          // ✅ Sanitizar mensagens para corrigir dados inconsistentes do banco
+          const sanitizedMessages = chronologicalMessages.map(sanitizeMessage).filter(Boolean);
+          setMessages(sanitizedMessages);
+          
+          // ✅ Estados atualizados ANTES da ancoragem
+          setIsAtBottom(true);
+          
+          // ✅ CRÍTICO: Garantir que isLoading seja false ANTES da ancoragem
+          setIsLoading(false);
+          
+          // ✅ CORREÇÃO: Definir isInitialLoad para ativar ancoragem automática
+          setIsInitialLoad(true);
+          
+          // Ancoragem programada
+          
+        } else {
+          // Carregamento adicional - inserir mensagens antigas no INÍCIO
+          const container = messagesContainerRef.current;
+          const oldScrollHeight = container?.scrollHeight || 0;
+          
+          setMessages(prevMessages => {
+            // ✅ Sanitizar novas mensagens antes de combinar
+            const sanitizedNewMessages = newMessages.map(sanitizeMessage).filter(Boolean);
+            // newMessages vem em ordem reversa (mais recente primeiro) para inserir no topo
+            const combinedMessages = [...sanitizedNewMessages, ...prevMessages];
+            // Remover duplicatas baseado no ID
+            const uniqueMessages = combinedMessages.filter((msg, index, self) => 
+              index === self.findIndex(m => m.id === msg.id)
+            );
+            return uniqueMessages;
+          });
+          
+          // ✅ Preservar posição do scroll após carregar mensagens antigas (com cleanup)
+          const preserveScrollTimeoutId = setTimeout(() => {
+            if (container) {
+              const newScrollHeight = container.scrollHeight;
+              container.scrollTop += (newScrollHeight - oldScrollHeight);
+            }
+          }, 50);
+          timeoutsRef.current.push(preserveScrollTimeoutId); // ✅ Gerenciar cleanup
+        }
+        
+              } else {
+          if (reset) {
+            setMessages([]);
+            setHasMoreMessages(false);
+            setIsAtBottom(true);
+            setIsInitialLoad(false); // ✅ Resetar estado (sem mensagens)
+          }
+        }
+    } catch (error) {
+      console.error('Erro ao buscar mensagens:', error);
+      // ✅ Usar tratamento robusto de erro
+      handleNetworkError(error, 'buscar mensagens');
+      // ✅ Resetar estado em caso de erro
+      if (reset) {
+        setIsInitialLoad(false); // ✅ Resetar estado
+        }
+      } finally {
+      setIsLoadingMoreMessages(false);
+    }
+  };
+
+
+
+  // Busca a lista de contatos do usuário quando o usuário é carregado
+  useEffect(() => {
+    if (!currentUser?.id) {
+      console.log("Usuário não disponível para buscar contatos");
+      return;
+    }
+    
+    // ✅ PROTEÇÃO CRÍTICA: Não recarregar contatos durante carregamento inicial
+    if (isInitialLoad) {
+      console.log('[CONTACTS] ⏸️ Adiando fetchContacts inicial - carregamento em andamento');
+      return;
+    }
+    
+    fetchContacts(selectedInstanceId === 'all' ? null : selectedInstanceId, 1, true);
+  }, [currentUser, isMobileView, navigate]); // ✅ Removida dependência isInitialLoad para evitar re-execução
 
   // Sincronização inteligente - atualizar contatos a cada 30 segundos
   useEffect(() => {
@@ -601,237 +1636,250 @@ export default function Chat() {
       console.log('[CHAT] Sincronização inteligente - atualizando contatos...');
       syncContacts();
     }, 30000); // 30 segundos
-
+      
     return () => {
       console.log('[CHAT] Parando sincronização inteligente...');
       clearInterval(intervalId);
     };
   }, []); // Remover dependência currentUser para evitar múltiplas execuções
 
-  // Função para visualizar detalhes do banco de dados (debug)
-  const debugDatabase = async () => {
-    if (!currentUser?.id) return;
-    
-    setIsRefreshing(true);
-    
-    try {
-      console.log("==== DIAGNÓSTICO DA API ====");
-      
-      // Testar contagem de contatos
-      const countResponse = await fetch('/api/contacts/count', {
-        credentials: 'include'
-      });
-      const countData = await countResponse.json();
-      console.log("Contagem de contatos:", countData);
-      
-      // Testar API de usuário
-      const userResponse = await fetch('/api/auth/me', {
-        credentials: 'include'
-      });
-      const userData = await userResponse.json();
-      console.log("Dados do usuário:", userData);
-      
-      // Testar API de contatos
-      const contactsResponse = await fetch('/api/contacts', {
-        credentials: 'include'
-      });
-      const contactsData = await contactsResponse.json();
-      console.log("Contatos do usuário:", contactsData);
-      
-      setConnectionStatus({
-        connected: true,
-        diagnosticsRun: true,
-        timestamp: new Date().toISOString(),
-        totalContacts: countData.count,
-        userContacts: contactsData.contacts?.length || 0
-      });
-    } catch (error) {
-      console.error("Erro ao executar diagnóstico:", error);
-      setConnectionStatus({
-        connected: false,
-        diagnosticsRun: true,
-        timestamp: new Date().toISOString(),
-        error: error.message
-      });
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
 
-  // Limpar mensagens ao trocar de contato
-  useEffect(() => {
-    if (currentContact) {
-      // Ao trocar de contato, limpar as mensagens sem marcar como carregando
-      // O carregamento será controlado pela função fetchMessages
-      setMessages([]);
-    }
-  }, [currentContact]);
 
-  // Busca as mensagens para o contato selecionado
+  // Removido: useEffect de limpeza desnecessário que interferia com auto scroll
+
+  // Busca as mensagens para o contato selecionado (otimizado com paginação)
   useEffect(() => {
     if (!currentContact || !currentUser?.id) return;
     
     let isMounted = true;
     
-    async function fetchMessages(silent = false) {
-      try {
-        if (!silent && isMounted) {
-          setIsUpdating(true);
-        }
-        
-        console.log(`Buscando mensagens para conversa: ${currentContact.remote_jid}`);
-        
-        // Buscar mensagens da conversa atual via API
-        const response = await fetch(`/api/messages/${currentContact.remote_jid}`, {
-          credentials: 'include'
-        });
-        
-        if (!response.ok) {
-          if (response.status === 401) {
-            navigate('/login?error=session_expired&message=Sua sessão expirou. Por favor, faça login novamente.');
-            return;
-          }
-          
-          const errorData = await response.json();
-          throw new Error(errorData.message || `Erro ${response.status} ao buscar mensagens`);
-        }
-        
-        const data = await response.json();
-        console.log('Resposta completa da API de mensagens:', data);
-        
-        if (!data.success) {
-          throw new Error(data.message || 'Erro ao buscar mensagens');
-        }
-        
-        // Extrair a lista de mensagens do objeto de resposta
-        const messagesList = data.messages || [];
-        console.log(`Mensagens encontradas: ${messagesList.length}`, messagesList);
-        
-        if (isMounted) {
-          // Processar mensagens para identificar corretamente remetente e destinatário
-          const processedMessages = messagesList.map(msg => {
-            // **** FORÇA BRUTA: Garante que TODA mensagem tenha um role válido ****
-            // Definir role se não existir ou for inválido
-            if (!msg.role || !['ME', 'AI', 'USER'].includes(msg.role)) {
-              // Log para informar que estamos forçando um role
-              console.warn(`Forçando um role para mensagem sem role válido: ID=${msg.id}, conteúdo="${msg.content?.substring(0, 15) || ''}", role antigo="${msg.role || 'undefined'}"`);
-              
-              // Usar valor padrão USER ao invés de verificar sender_id
-              msg.role = 'USER';
-            }
-            
-            // **** DEPURAÇÃO: Logando detalhes de cada mensagem ****
-            console.log(`[DEBUG] Mensagem #${msg.id}:
-              - content: ${msg.content?.substring(0, 30)}...
-              - role: ${msg.role}
-              - sender_id: ${msg.sender_id || 'N/A'}
-              - from_me (original): ${msg.from_me}
-              - from_me (baseado no role): ${msg.role === 'ME' || msg.role === 'AI'}
-              - currentUser.id: ${currentUser?.id}
-            `);
-            
-            // **** MÉTODO DIRETO: Define from_me APENAS baseado no role ****
-            return {
-              ...msg,
-              // Tanto 'ME' quanto 'AI' são mensagens enviadas pelo sistema/agente
-              from_me: msg.role === 'ME' || msg.role === 'AI',
-              // Garantir que qualquer role inexistente se torne 'USER'
-              role: msg.role || 'USER' 
-            };
-          });
-          
-          // Ordenar por data se necessário
-          const sortedMessages = processedMessages.sort((a, b) => {
-            return new Date(a.created_at || a.timestamp) - new Date(b.created_at || b.timestamp);
-          });
-          
-          setMessages(sortedMessages);
-          // Desativar o estado de carregamento após obter as mensagens
-          setIsLoading(false);
-          
-          // *** DEPURAÇÃO: Apresentar um resumo de todas as mensagens para verificar o role/posição ***
-          console.log("Resumo das mensagens processadas:");
-          sortedMessages.forEach((m, index) => {
-            const isToDireita = m.role === 'ME' || m.role === 'AI';
-            console.log(`#${index+1}: role="${m.role}", alinhamento="${isToDireita ? 'direita' : 'esquerda'}", conteúdo="${m.content?.substring(0, 25)}..."`);
-          });
-          
-          // Log de diagnóstico detalhado
-          console.log("Mensagens processadas:", sortedMessages.map(m => ({
-            id: m.id,
-            content: m.content?.substring(0, 15) + "...",
-            role: m.role,
-            from_me: m.from_me,
-            sender_id: m.sender_id
-          })));
-        }
-      } catch (error) {
-        console.error('Erro ao buscar mensagens:', error);
-        if (isMounted) {
-          if (!silent) {
-            setError('Erro ao buscar mensagens. Por favor, tente novamente.');
-          }
-          // Mesmo em caso de erro, desativa o estado de carregamento
-          setIsLoading(false);
-        }
-      } finally {
-        if (isMounted) {
-          setIsUpdating(false);
-        }
+    // NOTA: fetchMessages agora é chamado diretamente no handleSelectContact
+    // Este useEffect agora foca apenas no polling de novas mensagens
+    
+    // ✅ POLLING ADAPTATIVO CORRIGIDO
+    let intervalId;
+    
+    const getAdaptiveInterval = () => {
+      // Determinar intervalo baseado na atividade
+      if (document.hidden) {
+        return 60000; // 1 minuto quando aba oculta
+      } else if (isAtBottom) {
+        return 15000; // 15 segundos quando no final (usuário ativo)
+      } else {
+        return 30000; // 30 segundos padrão
       }
-    }
+    };
     
-    // Primeiro carregamento
-    fetchMessages(false);
+    const pollMessages = async () => {
+      try {
+        // Só fazer polling se a página estiver visível e o componente montado
+        if (!document.hidden && isMounted) {
+          
+          // 1. Buscar mensagens novas
+          const response = await fetch(`/api/chat/messages/${currentContact.remote_jid}/last`, {
+            credentials: 'include'
+          });
+          
+          if (response.ok && isMounted) {
+            const data = await response.json();
+            if (data.success && data.message) {
+              // ✅ CORREÇÃO: Verificar se é uma mensagem nova
+              const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
+              if (data.message.id !== lastMessageId) {
+                // Nova mensagem detectada - adicionando incrementalmente
+                
+                // ✅ Sanitizar nova mensagem antes de adicionar
+                const sanitizedMessage = sanitizeMessage(data.message);
+                if (sanitizedMessage) {
+                  // Adicionar apenas a nova mensagem sem recarregar tudo
+                  setMessages(prevMessages => {
+                    // Verificar se a mensagem já existe
+                    const messageExists = prevMessages.some(msg => msg.id === sanitizedMessage.id);
+                    if (!messageExists) {
+                      return [...prevMessages, sanitizedMessage];
+                    }
+                    return prevMessages;
+                  });
+                }
+                
+                // Se não estiver no final, incrementar contador de não lidas
+                if (!isAtBottom) {
+                  setUnreadCount(prev => prev + 1);
+                } else {
+                  // ✅ CORREÇÃO: Scroll automático apenas quando usuário está no final E ativo
+                  if (!isInitialLoad && !isLoading && isAtBottom) {
+                    // ✅ CORREÇÃO: Usar debounce para evitar muitas atualizações
+                    debouncedScrollToEnd();
+                  }
+                }
+              }
+            }
+          }
+
+          // 2. Sincronização Inteligente Aprimorada - Verificar TODAS as mensagens
+          if (messages.length > 0) {
+            // Buscar IDs de todas as mensagens para verificar se foram atualizadas
+            const allMessageIds = messages.map(msg => msg.id);
+            
+            try {
+              const statusResponse = await fetch(
+                `/api/messages/${currentContact.remote_jid}/status-updates?message_ids=${allMessageIds.join(',')}`,
+                { credentials: 'include' }
+              );
+
+              if (statusResponse.ok && isMounted) {
+                const statusData = await statusResponse.json();
+                
+                if (statusData.success && statusData.updates && statusData.updates.length > 0) {
+                  
+                  // ✅ CORREÇÃO: Atualizar status das mensagens existentes com verificação otimizada
+                  setMessages(prevMessages => {
+                    const updatedMessages = [...prevMessages];
+                    let hasChanges = false;
+                    
+                    statusData.updates.forEach(update => {
+                      const messageIndex = updatedMessages.findIndex(msg => msg.id === update.id);
+                      if (messageIndex >= 0) {
+                        const currentMessage = updatedMessages[messageIndex];
+                        
+                        // ✅ CORREÇÃO: Verificação mais robusta de mudanças
+                        const statusChanged = currentMessage.status !== update.status;
+                        const metadataChanged = JSON.stringify(currentMessage.metadata || {}) !== JSON.stringify(update.metadata || {});
+                        
+                        if (statusChanged || metadataChanged) {
+                          updatedMessages[messageIndex] = {
+                            ...currentMessage,
+                            status: update.status,
+                            metadata: update.metadata,
+                            timestamp: update.timestamp
+                          };
+                          hasChanges = true;
+                        }
+                      }
+                    });
+                    
+                    // ✅ CORREÇÃO: Só atualizar se houve mudanças reais
+                    return hasChanges ? updatedMessages : prevMessages;
+                  });
+                  
+                  // Atualizar timestamp da última verificação
+                  setLastStatusUpdate(statusData.current_time);
+                }
+              }
+            } catch (error) {
+              console.error('Erro ao verificar status:', error);
+            }
+          }
+        }
+              } catch (error) {
+          console.error('Erro no polling:', error);
+        }
+    };
     
-    console.log('[CHAT] Iniciando polling de mensagens para:', currentContact?.remote_jid);
+    // ✅ Sistema de polling reativo
+    const scheduleNextPoll = () => {
+      if (!isMounted) return;
+      
+      const newInterval = getAdaptiveInterval();
+      currentIntervalRef.current = newInterval;
+      
+              // Log de polling apenas quando necessário (debug)
+        if (newInterval > 30000) { // Só log se interval for longo (aba oculta)
+          // Reduzindo frequência - aba oculta
+        }
+      
+      intervalId = setTimeout(() => {
+        if (isMounted) {
+          pollMessages().finally(() => {
+            scheduleNextPoll(); // ✅ Reagenda com novo intervalo
+          });
+        }
+      }, newInterval);
+    };
     
-    // Polling inteligente: a cada 15 segundos (silencioso)
-    const intervalId = setInterval(() => {
-      fetchMessages(true);
-    }, 15000);
+    // Iniciar polling reativo
+    scheduleNextPoll();
+    
+    // ✅ Listener para mudanças de visibilidade (reagenda imediatamente)
+    const handleVisibilityChange = () => {
+      if (intervalId) {
+        clearTimeout(intervalId);
+        scheduleNextPoll(); // Reagenda com novo intervalo
+      }
+    };
+    
+    document.addEventListener('visibilitychange', handleVisibilityChange);
       
     return () => {
-      console.log('[CHAT] Parando polling de mensagens para:', currentContact?.remote_jid);
       isMounted = false;
-      clearInterval(intervalId);
+      clearTimeout(intervalId); // ✅ Corrigido: clearTimeout em vez de clearInterval
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [currentContact?.remote_jid]); // Apenas dependência do ID do contato, não do objeto completo
+  }, [currentContact?.remote_jid, currentUser?.id, isAtBottom, lastStatusUpdate]); // ✅ Dependências corretas para polling adaptativo
 
-  // Identifica quando novas mensagens são enviadas pelo usuário atual
+  // ✅ useEffect para garantir ancoragem INSTANTÂNEA após carregamento de mensagens
   useEffect(() => {
-    // Se o número de mensagens aumentou e a última mensagem é do usuário atual
-    if (messages.length > prevMessagesLength && messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      // Verifica se é uma mensagem enviada pelo usuário (ME ou AI)
-      if (lastMessage.role === 'ME' || lastMessage.role === 'AI') {
-        setShouldScrollToBottom(true);
+    if (messages.length > 0 && isInitialLoad && messagesContainerRef.current && !isLoading && isAtBottom) {
+      // Aplicando ancoragem
+      
+      // ✅ PROTEÇÃO EXTRA: Verificar se ainda é o mesmo contato
+      const firstMessageContactId = messages[0]?.remote_jid;
+      const currentContactId = currentContact?.remote_jid;
+      
+      if (firstMessageContactId && currentContactId && firstMessageContactId !== currentContactId) {
+        setIsInitialLoad(false);
+        return;
       }
-    } else {
-      setShouldScrollToBottom(false);
+      
+      // ✅ Aguardar COMPLETAMENTE o DOM ser renderizado (DUPLO rAF)
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          // ✅ Forçar recálculo de layout ANTES do scroll
+          if (messagesContainerRef.current) {
+            messagesContainerRef.current.offsetHeight; // Trigger reflow
+            
+            const container = messagesContainerRef.current;
+            // Layout verificado, aplicando scroll
+            
+            const scrollFunction = forceScrollToEnd();
+            scrollFunction();
+            
+            // ✅ Verificação final e fallback robusto
+            setTimeout(() => {
+              const isAtEnd = Math.abs(container.scrollTop - (container.scrollHeight - container.clientHeight)) < 5;
+              // Verificação final do scroll
+              if (!isAtEnd) {
+                container.scrollTop = container.scrollHeight;
+              }
+            }, 10);
+          }
+          
+          // ✅ CRÍTICO: Só resetar isInitialLoad APÓS toda verificação
+          setIsInitialLoad(false);
+          // Ancoragem concluída
+        });
+      });
     }
-    
-    // Atualiza o contador de mensagens anterior
-    setPrevMessagesLength(messages.length);
-  }, [messages, prevMessagesLength]);
+  }, [messages.length, isInitialLoad, currentContact?.remote_jid, isAtBottom]); // ✅ Adicionada dependência isAtBottom
 
-  // Rola automaticamente para a última mensagem apenas quando necessário
-  useEffect(() => {
-    if (shouldScrollToBottom && messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
-      setShouldScrollToBottom(false);
-    }
-  }, [shouldScrollToBottom]);
 
-  // Função para sincronização inteligente de contatos
+
+
+
+
+
+
+
+  // Função otimizada para sincronização inteligente
   const syncContacts = async () => {
     if (!currentUser?.id) return;
     
     try {
       setIsSyncing(true);
-      console.log('[CHAT] Sincronização inteligente - atualizando contatos...');
+      console.log('[SYNC] 🔄 Sincronização inteligente iniciada...');
       
-      const contactsResponse = await fetch('/api/contacts', {
+      // Sincronizar apenas a primeira página de contatos (otimizado)
+      const contactsResponse = await fetch(`/api/contacts?page=1&limit=${CONTACTS_PER_PAGE}`, {
         credentials: 'include'
       });
       
@@ -848,15 +1896,79 @@ export default function Chat() {
       const contactsList = contactsData.contacts || [];
       
       if (contactsList.length > 0) {
-        setContacts(contactsList);
-        
-        // Atualizar o estado de exibição
-        const sortedContacts = [...contactsList].sort((a, b) => {
-          if (!a.last_message_time) return 1;
-          if (!b.last_message_time) return -1;
-          return new Date(b.last_message_time) - new Date(a.last_message_time);
+        // Buscar última mensagem dos primeiros contatos para exibição (otimizado)
+        const contactsWithLastMessagePromises = contactsList.slice(0, 5).map(async (contact) => {
+          try {
+            const messagesResponse = await fetch(`/api/chat/messages/${contact.remote_jid}/last`, {
+              credentials: 'include'
+            });
+            
+            if (messagesResponse.ok) {
+              const messageData = await messagesResponse.json();
+              if (messageData.success && messageData.message) {
+                return {
+                  ...contact,
+                  last_message_time: messageData.message.timestamp || messageData.message.created_at,
+                  last_message: messageData.message.content
+                };
+              }
+            }
+          } catch (error) {
+            // Silenciar erros
+          }
+          return contact;
         });
-        setDisplayContacts(sortedContacts);
+        
+        const updatedContacts = await Promise.all(contactsWithLastMessagePromises);
+        
+        // Atualizar apenas os contatos que mudaram
+        setContacts(prevContacts => {
+          const newContacts = [...prevContacts];
+          
+          updatedContacts.forEach(updatedContact => {
+            const existingIndex = newContacts.findIndex(c => c.remote_jid === updatedContact.remote_jid);
+            if (existingIndex >= 0) {
+              // Verificar se houve mudança real
+              const existing = newContacts[existingIndex];
+              if (existing.last_message_time !== updatedContact.last_message_time ||
+                  existing.last_message !== updatedContact.last_message) {
+                newContacts[existingIndex] = updatedContact;
+              }
+            } else {
+              // Novo contato
+              newContacts.unshift(updatedContact);
+            }
+          });
+          
+          // Backend já ordena por update_at (sincronizado)
+          return newContacts;
+        });
+        
+        setDisplayContacts(prevContacts => {
+          const newContacts = [...prevContacts];
+          
+          updatedContacts.forEach(updatedContact => {
+            const existingIndex = newContacts.findIndex(c => c.remote_jid === updatedContact.remote_jid);
+            if (existingIndex >= 0) {
+              const existing = newContacts[existingIndex];
+              if (existing.last_message_time !== updatedContact.last_message_time ||
+                  existing.last_message !== updatedContact.last_message) {
+                newContacts[existingIndex] = updatedContact;
+              }
+            } else {
+              newContacts.unshift(updatedContact);
+            }
+          });
+          
+          // Backend já ordena por update_at (sincronizado)
+          return newContacts;
+        });
+        
+        // 🔧 CORREÇÃO: Buscar instâncias dos contatos atualizados
+        if (instances.length > 0 && updatedContacts.length > 0) {
+          console.log('[SYNC] 🔍 Buscando instâncias dos contatos atualizados...');
+          fetchContactInstances(updatedContacts);
+        }
         
         // Manter o contato atual se ainda existir
         if (currentContact) {
@@ -868,16 +1980,107 @@ export default function Chat() {
       }
       
       setLastSyncTime(new Date());
-      console.log('[CHAT] Contatos sincronizados com sucesso');
+      console.log('[SYNC] ✅ Sincronização concluída');
       
     } catch (error) {
-      console.error('[CHAT] Erro na sincronização de contatos:', error);
+      console.error('[SYNC] ❌ Erro na sincronização:', error);
     } finally {
       setIsSyncing(false);
     }
   };
 
-  // Função para recarregar dados
+  // Função para sincronização completa das mensagens (equivalente ao refresh)
+  const syncMessagesComplete = async () => {
+    if (!currentContact?.remote_jid) return;
+    
+    console.log('[SYNC] 🔄 Iniciando sincronização completa das mensagens');
+    
+    try {
+      // ✅ CORREÇÃO: Desabilitar polling temporariamente para evitar conflitos
+      const wasPollingEnabled = !isInitialLoad;
+      setIsInitialLoad(true); // Desabilita polling
+      
+      // Resetar estados para garantir sincronização limpa
+      setMessages([]);
+      setMessagesPage(1);
+      setHasMoreMessages(true);
+      setUnreadCount(0);
+      setLastStatusUpdate('1970-01-01T00:00:00Z');
+      setIsLoading(true);
+      
+      // Recarregar mensagens do contato atual (equivalente ao fetchMessages com reset=true)
+      await fetchMessages(currentContact.remote_jid, 1, true);
+      
+      console.log('[SYNC] 📊 Estado após fetchMessages:', {
+        messagesLength: messages.length,
+        isLoading: isLoading,
+        isInitialLoad: isInitialLoad
+      });
+      
+      // ✅ CORREÇÃO: Forçar scroll após renderização das mensagens
+      console.log('[SYNC] ⏳ Aguardando renderização das mensagens...');
+      
+      // Aguardar renderização completa do DOM com múltiplas tentativas
+      const waitForRender = () => {
+        const container = messagesContainerRef.current;
+        if (container && container.scrollHeight > 0 && messages.length > 0) {
+          console.log('[SYNC] ✅ Mensagens renderizadas, executando scroll...');
+          
+          // Forçar recálculo de layout
+          container.offsetHeight;
+          
+          // Scroll para o final
+          container.scrollTop = container.scrollHeight;
+          
+          console.log('[SYNC] 📊 Scroll executado:', {
+            scrollTop: container.scrollTop,
+            scrollHeight: container.scrollHeight,
+            clientHeight: container.clientHeight,
+            messagesLength: messages.length,
+            isAtEnd: Math.abs(container.scrollTop - (container.scrollHeight - container.clientHeight)) < 5
+          });
+          
+          // Verificação adicional após um pequeno delay
+          setTimeout(() => {
+            const isAtEnd = Math.abs(container.scrollTop - (container.scrollHeight - container.clientHeight)) < 5;
+            if (!isAtEnd) {
+              container.scrollTop = container.scrollHeight;
+              console.log('[SYNC] ✅ Scroll forçado para o final após verificação');
+            } else {
+              console.log('[SYNC] ✅ Scroll já está no final');
+            }
+          }, 50);
+          
+          // ✅ CORREÇÃO: Reabilitar polling após scroll (se estava habilitado antes)
+          setTimeout(() => {
+            if (wasPollingEnabled) {
+              setIsInitialLoad(false);
+              console.log('[SYNC] ✅ Polling reabilitado após sincronização');
+            }
+          }, 100);
+        } else {
+          console.log('[SYNC] ⏳ Aguardando renderização...', {
+            containerExists: !!container,
+            scrollHeight: container?.scrollHeight || 0,
+            messagesLength: messages.length
+          });
+          setTimeout(waitForRender, 100); // Tentar novamente em 100ms
+        }
+      };
+      
+      // Iniciar processo de espera
+      setTimeout(waitForRender, 200);
+      
+      console.log('[SYNC] ✅ Sincronização completa concluída');
+    } catch (error) {
+      console.error('[SYNC] ❌ Erro na sincronização completa:', error);
+      // ✅ CORREÇÃO: Reabilitar polling em caso de erro
+      setIsInitialLoad(false);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleRefresh = async () => {
     setIsRefreshing(true);
     setError(null);
@@ -913,16 +2116,26 @@ export default function Chat() {
       if (contactsList.length > 0) {
         setContacts(contactsList);
         
-        // Também atualizar o estado de exibição
-        const sortedContacts = [...contactsList].sort((a, b) => {
-          if (!a.last_message_time) return 1;
-          if (!b.last_message_time) return -1;
-          return new Date(b.last_message_time) - new Date(a.last_message_time);
-        });
+        // Backend já ordena por update_at (sincronizado com última mensagem)
+        const sortedContacts = contactsList;
         setDisplayContacts(sortedContacts);
         
-        if (!isMobileView && !currentContact && contactsList.length > 0) {
-          setCurrentContact(sortedContacts[0]);
+        // ✅ PROTEÇÃO CRÍTICA: Não sobrescrever contato durante carregamento inicial
+        if (!isMobileView && !currentContact && !isInitialLoad && contactsList.length > 0) {
+          const firstContact = sortedContacts[0];
+          setCurrentContact(firstContact);
+          console.log('[REFRESH] ✅ Contato auto-selecionado:', firstContact.push_name || firstContact.name);
+          
+          // ✅ CORREÇÃO: Marcar como carregamento inicial para ativar ancoragem automática
+          setIsInitialLoad(true);
+          
+          // ✅ CORREÇÃO: Carregar mensagens do contato auto-selecionado
+          if (firstContact?.remote_jid) {
+            console.log('[REFRESH] 📩 Carregando mensagens do contato auto-selecionado:', firstContact.remote_jid);
+            fetchMessages(firstContact.remote_jid, 1, true);
+          }
+        } else if (isInitialLoad) {
+          console.log('[REFRESH] ⚠️ Bloqueada auto-seleção durante carregamento inicial');
         }
       }
       
@@ -941,12 +2154,9 @@ export default function Chat() {
     }
   };
 
-  // Função para alternar a resposta automática para um contato
+  // ✅ SIMPLIFICADO: Função para alternar a resposta automática para um contato
   const toggleAutoResponse = async (contactId, e) => {
     e.stopPropagation(); // Evita que o clique ative a seleção do contato
-    
-    // Log para depuração
-    console.log(`Alterando estado do agente para contato ID: ${contactId}`);
     
     // Encontrar o contato na lista
     const contactIndex = contacts.findIndex(c => {
@@ -960,15 +2170,12 @@ export default function Chat() {
     }
     
     const contact = contacts[contactIndex];
-    console.log("Contato encontrado:", contact);
     
-    // Determinar o estado atual e o novo estado (considerar estado padrão se não existir)
+    // Determinar o estado atual e o novo estado
     const currentState = contact.agent_state === 'ai';
     const newAgentState = currentState ? 'human' : 'ai';
     
-    console.log(`Estado atual: ${contact.agent_state || 'undefined'}, Novo estado: ${newAgentState}`);
-    
-    // Atualiza localmente primeiro (para feedback imediato)
+    // ✅ SIMPLIFICADO: Atualizar apenas agent_state - backend coordena sincronização
     const newContacts = [...contacts];
     newContacts[contactIndex] = {
       ...contact,
@@ -976,7 +2183,7 @@ export default function Chat() {
     };
     setContacts(newContacts);
     
-    // Atualizar também o estado de exibição para manter sincronizado
+    // Atualizar também o estado de exibição
     setDisplayContacts(prev => {
       const displayIndex = prev.findIndex(c => {
         const cId = c.id || c.remote_jid;
@@ -1003,17 +2210,11 @@ export default function Chat() {
       setCurrentContact(updatedCurrentContact);
     }
     
-    // Forçar re-renderização
-    setForceUpdate(prev => prev + 1);
-    
     try {
       // Extrair o remote_jid correto para a chamada de API
       const remoteJid = contact.remote_jid || contactId;
       
-      // Chamar a API para persistir a alteração
-      console.log(`Enviando requisição para API: POST /api/contacts/${remoteJid}/state`);
-      console.log(`Payload: { agent_state: "${newAgentState}" }`);
-      
+      // ✅ SIMPLIFICADO: Enviar apenas agent_state - backend coordena sincronização
       const response = await fetch(`/api/contacts/${remoteJid}/state`, {
         method: 'POST',
         headers: {
@@ -1038,7 +2239,6 @@ export default function Chat() {
       }
       
       const data = await response.json();
-      console.log('Resposta da API:', data);
       
       if (!data.success) {
         throw new Error(data.error || 'Erro ao atualizar estado do agente');
@@ -1083,43 +2283,81 @@ export default function Chat() {
         });
       }
       
-      // Forçar re-renderização novamente após reverter
-      setForceUpdate(prev => prev + 1);
-      
       // Notificar o usuário sobre o erro
       setError(`Erro ao atualizar estado do agente: ${error.message}`);
     }
   };
 
-  // Função processadora de envio de mensagens - separada para poder aplicar debounce
+  // ✅ SEGURANÇA: Função processadora de envio de mensagens - separada para poder aplicar debounce
   const processSendMessage = async (messageContent, messageId) => {
-    if (!messageContent.trim() || !currentContact || !currentUser) return;
+    // ✅ SEGURANÇA: Verificar sessão antes de enviar
+    const sessionValid = await checkSession();
+    if (!sessionValid) {
+      setError('Sessão expirada. Redirecionando para login...');
+      return;
+    }
     
-    // Verificar se é a mesma mensagem sendo enviada novamente em um curto período
+    // ✅ SEGURANÇA: Validação robusta de entrada
+    const validation = validateUserInput(messageContent, 'message');
+    if (!validation.valid) {
+      setError(validation.error);
+      return;
+    }
+    
+    // ✅ SEGURANÇA: Validar estado do usuário e contato
+    const userValidation = validateState(currentUser, 'user');
+    const contactValidation = validateState(currentContact, 'contact');
+    
+    if (!userValidation.valid) {
+      setError(`Erro de estado: ${userValidation.error}`);
+      return;
+    }
+    
+    if (!contactValidation.valid) {
+      setError(`Erro de estado: ${contactValidation.error}`);
+      return;
+    }
+    
+    const sanitizedContent = validation.value;
+    
+    // ✅ SEGURANÇA: Verificar se é a mesma mensagem sendo enviada novamente em um curto período
     if (lastMessageIdRef.current === messageId) {
       console.log('Ignorando envio duplicado com mesmo ID:', messageId);
       return;
     }
     
-    // Verificar se passou tempo suficiente desde o último envio (500ms mínimo)
+    // ✅ SEGURANÇA: Rate limiting robusto
+    if (!rateLimiter.canMakeRequest()) {
+      const remaining = rateLimiter.getRemainingRequests();
+      setError(`Muitas requisições. Aguarde um momento. (${remaining} restantes)`);
+      return;
+    }
+    
     const now = Date.now();
-    if (now - lastMessageTimestamp < 500) {
+    if (now - lastMessageTimestamp < SECURITY_CONFIG.RATE_LIMIT_DELAY) {
       console.log('Ignorando clique rápido:', now - lastMessageTimestamp, 'ms desde o último envio');
+      setError('Aguarde um momento antes de enviar outra mensagem');
       return;
     }
     
     try {
+      // ✅ SEGURANÇA: Registrar requisição no rate limiter
+      if (!rateLimiter.recordRequest()) {
+        setError('Limite de requisições excedido. Tente novamente em alguns segundos.');
+        return;
+      }
+      
       setIsSendingMessage(true);
       // Atualizar timestamp e ID da última mensagem
       setLastMessageTimestamp(now);
       lastMessageIdRef.current = messageId;
       
-      // Adicionar a mensagem temporariamente ao estado local para feedback imediato
+      // ✅ Adicionar mensagem sanitizada temporariamente ao estado local para feedback imediato
       const tempMsg = {
         id: messageId,
-        content: messageContent,
+        content: sanitizedContent, // ✅ Usar conteúdo sanitizado
         sender_id: currentUser.id,
-        receiver_id: currentContact.phone || currentContact.remote_jid,
+        receiver_id: currentContact?.phone || currentContact?.remote_jid,
         created_at: new Date().toISOString(),
         is_read: false,
         from_me: true,
@@ -1131,23 +2369,38 @@ export default function Chat() {
       setMessages(prev => [...prev, tempMsg]);
       
       // Indica que deve rolar para o final após enviar
-      setShouldScrollToBottom(true);
+              // Removido: setShouldScrollToBottom não é mais usado
       
       const payload = {
         conversationId: currentContact.remote_jid,
-        content: messageContent,
+        content: sanitizedContent, // ✅ Usar conteúdo sanitizado
         recipientId: currentContact.phone,
         role: 'ME',
         messageId: messageId // Enviar ID único para backend
       };
       
-      console.log('Enviando nova mensagem:', payload);
+      secureLog.info('Enviando nova mensagem:', { conversationId: payload.conversationId, contentLength: payload.content.length });
+      
+      // ✅ SEGURANÇA: Garantir token CSRF válido antes de enviar
+      const csrfToken = await ensureCSRFToken();
+      if (!csrfToken) {
+        setError('Erro de segurança: Token CSRF não disponível');
+        return;
+      }
+      
+      const headers = {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken
+      };
+      
+      // ✅ SEGURANÇA: Log apenas em desenvolvimento
+      if (process.env.NODE_ENV === 'development') {
+        console.log('[CSRF] Token incluído na requisição:', csrfToken.substring(0, 10) + '...');
+      }
       
       const response = await fetch('/api/messages', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers,
         credentials: 'include',
         body: JSON.stringify(payload)
       });
@@ -1166,29 +2419,57 @@ export default function Chat() {
       const data = await response.json();
       console.log('Resposta completa do envio de mensagem:', data);
       
-      if (!data.success) {
-        // Remover a mensagem temporária em caso de erro
-        setMessages(prev => prev.filter(msg => msg.id !== messageId));
-        
-        throw new Error(data.message || 'Erro ao enviar mensagem');
-      }
-      
-      // Extrair a mensagem da resposta da API
-      const newMsg = data.message;
-      if (newMsg) {
-        // Remover a mensagem temporária e substituir pela mensagem real
-        setMessages(prev => {
-          const withoutTemp = prev.filter(msg => msg.id !== messageId);
+      // Verificar se é sucesso total ou parcial (mensagem pendente)
+      if (data.success) {
+        // Sucesso total - mensagem enviada
+        const newMsg = data.message;
+        if (newMsg) {
+          // Remover a mensagem temporária e substituir pela mensagem real
+          setMessages(prev => {
+            const withoutTemp = prev.filter(msg => msg.id !== messageId);
+            
+            // Adicionar a mensagem confirmada pela API
+            const processedMsg = {
+              ...newMsg,
+              from_me: true,
+              role: newMsg.role || 'ME'
+            };
+            
+            return [...withoutTemp, processedMsg];
+          });
+        }
+      } else {
+        // Verificar se é status 202 (mensagem salva mas pendente)
+        if (response.status === 202) {
+          // Mensagem salva mas não enviada (Evolution API offline)
+          const newMsg = data.message;
+          if (newMsg) {
+            // Remover a mensagem temporária e substituir pela mensagem pendente
+            setMessages(prev => {
+              const withoutTemp = prev.filter(msg => msg.id !== messageId);
+              
+              // Adicionar a mensagem pendente
+              const processedMsg = {
+                ...newMsg,
+                from_me: true,
+                role: newMsg.role || 'ME',
+                status: 'pending'
+              };
+              
+              return [...withoutTemp, processedMsg];
+            });
+          }
           
-          // Adicionar a mensagem confirmada pela API
-        const processedMsg = {
-          ...newMsg,
-          from_me: true,
-            role: newMsg.role || 'ME'
-          };
-          
-          return [...withoutTemp, processedMsg];
-        });
+          // Mostrar aviso sobre Evolution API offline
+          if (data.warning) {
+            setError(`⚠️ ${data.warning}. ${data.feedback}`);
+            setTimeout(() => setError(null), 5000); // Limpar após 5 segundos
+          }
+        } else {
+          // Erro real - remover mensagem temporária
+          setMessages(prev => prev.filter(msg => msg.id !== messageId));
+          throw new Error(data.message || 'Erro ao enviar mensagem');
+        }
       }
       
       console.log(`Mensagem enviada com sucesso. Agent state: ${currentContact?.agent_state || 'indefinido'}`);
@@ -1372,245 +2653,49 @@ export default function Chat() {
 
   // Função para selecionar contato
   const handleSelectContact = (contact) => {
+    // Selecionando contato
+    
+    // ✅ PROTEÇÃO: Bloquear apenas scroll infinito
+    setAllowInfiniteScroll(false);
+    setIsInitialLoad(true); // Marca como carregamento inicial
+    
+    // ✅ Limpar timeouts existentes para evitar conflitos
+    timeoutsRef.current.forEach(timeoutId => clearTimeout(timeoutId));
+    timeoutsRef.current = [];
+    
+    // Simples: definir contato e carregar mensagens
     setCurrentContact(contact);
     
-    // Não atualizar a lista de exibição ao selecionar um contato
-    // Isso evita alterações visuais inesperadas durante a interação
+    if (contact?.remote_jid) {
+      // Carregando mensagens do contato
+      fetchMessages(contact.remote_jid, 1, true);
+      
+      // ✅ PROTEÇÃO: Habilitar sistemas após ancoragem (delay mínimo para não interferir)
+      const enableSystemsTimeoutId = setTimeout(() => {
+        // Sistemas habilitados
+        setAllowInfiniteScroll(true);
+      }, 1000); // 1 segundo apenas para garantir estabilidade
+      timeoutsRef.current.push(enableSystemsTimeoutId);
+    } else {
+      console.log('[CONTACT] ❌ Contato sem remote_jid!');
+      setIsInitialLoad(false);
+    }
   };
 
   // Função para voltar para a lista de contatos (mobile)
   const handleBackToContacts = () => {
     setCurrentContact(null);
     
-    // Ao voltar para a lista, reordenar os contatos para mostrar as atualizações
-    const sortedContacts = [...contacts].sort((a, b) => {
-      if (!a.last_message_time) return 1;
-      if (!b.last_message_time) return -1;
-      return new Date(b.last_message_time) - new Date(a.last_message_time);
-    });
+    // Manter ordem atual (backend já ordena por update_at)
+    const sortedContacts = [...contacts];
     
     setDisplayContacts(sortedContacts);
     console.log('Reordenando contatos ao voltar para a lista');
   };
 
-  // Adicionar função para enviar mensagem de diagnóstico
-  const sendTestMessage = async (role) => {
-    if (!currentContact || !currentUser) return;
-    
-    try {
-      const messageText = `[TESTE] Mensagem enviada automaticamente com role='${role}' (${new Date().toLocaleTimeString()})`;
-      
-      const payload = {
-        conversationId: currentContact.remote_jid,
-        content: messageText,
-        recipientId: currentContact.phone,
-        role: role  // Especificar o role de teste
-      };
-      
-      console.log(`Enviando mensagem de teste com role=${role}:`, payload);
-      
-      const response = await fetch('/api/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-      
-      console.log('Status da resposta (teste):', response.status);
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Erro ${response.status} ao enviar mensagem de teste`);
-      }
-      
-      const data = await response.json();
-      console.log('Resposta completa da mensagem de teste:', data);
-      
-      // Atualizar a lista de mensagens com a nova mensagem
-      if (data.success && data.message) {
-        const processedMsg = {
-          ...data.message,
-          from_me: role === 'ME' || role === 'AI',
-          role: role
-        };
-        setMessages(prev => [...prev, processedMsg]);
-      }
-    } catch (error) {
-      console.error('Erro ao enviar mensagem de teste:', error);
-      setError(`Erro ao enviar mensagem de teste: ${error.message}`);
-    }
-  };
 
-  // Adicionar função para enviar mensagem com teste de role e sender_id específicos
-  const sendTestMessageWithDetails = async () => {
-    if (!currentContact || !currentUser) return;
-    
-    try {
-      // Criar três mensagens de teste, uma para cada role
-      const testMessages = [
-        {
-          role: 'ME',
-          content: `[TESTE ME] Mensagem do usuário (${new Date().toLocaleTimeString()})`,
-          sender_id: currentUser.id
-        },
-        {
-          role: 'AI',
-          content: `[TESTE AI] Mensagem do assistente (${new Date().toLocaleTimeString()})`,
-          sender_id: currentUser.id
-        },
-        {
-          role: 'USER',
-          content: `[TESTE USER] Mensagem do cliente (${new Date().toLocaleTimeString()})`,
-          sender_id: currentContact.remote_jid
-        }
-      ];
-      
-      // Processar cada mensagem de teste
-      for (const testMsg of testMessages) {
-        const payload = {
-          conversationId: currentContact.remote_jid,
-          content: testMsg.content,
-          recipientId: currentContact.phone,
-          role: testMsg.role,
-          sender_id: testMsg.sender_id // Adicionar sender_id explicitamente para teste
-        };
-        
-        console.log(`Enviando mensagem de teste: ${JSON.stringify(payload)}`);
-        
-        const response = await fetch('/api/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(payload)
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || `Erro ${response.status} ao enviar mensagem de teste`);
-        }
-        
-        const data = await response.json();
-        console.log(`Resposta da API para mensagem ${testMsg.role}:`, data);
-      }
-      
-      // Atualizar a interface para mostrar as novas mensagens
-      const updatedResponse = await fetch(`/api/messages/${currentContact.remote_jid}`, {
-        credentials: 'include'
-      });
-      
-      if (updatedResponse.ok) {
-        const updatedData = await updatedResponse.json();
-        if (updatedData.success) {
-          // Processar as mensagens atualizadas
-          const updatedMessages = updatedData.messages || [];
-          
-          // Usar o mesmo processamento das mensagens
-          const processed = updatedMessages.map(msg => {
-            if (msg.role && ['ME', 'AI', 'USER'].includes(msg.role)) {
-              return {
-                ...msg,
-                from_me: msg.role === 'ME' || msg.role === 'AI'
-              };
-            }
-            
-            // Lógica de fallback simplificada para testes
-            return {
-              ...msg,
-              from_me: msg.sender_id === currentUser.id,
-              role: msg.role || (msg.sender_id === currentUser.id ? 'ME' : 'USER')
-            };
-          });
-          
-          setMessages(processed);
-        }
-      }
-    } catch (error) {
-      console.error('Erro no teste de mensagens detalhado:', error);
-      setError(`Erro no teste: ${error.message}`);
-    }
-  };
 
-  // Adicionar função para teste específico da prioridade de role vs sender_id
-  const testRoleVsSenderId = async () => {
-    if (!currentContact || !currentUser) return;
-    
-    try {
-      // Criar mensagens de teste com combinações específicas para testar prioridade
-      const testMessages = [
-        {
-          // 1. Mensagem com role 'ME' mas sender_id do cliente (deve aparecer à direita devido ao role)
-          role: 'ME',
-          content: `[TESTE] Role=ME mas sender_id do cliente (${new Date().toLocaleTimeString()})`,
-          sender_id: currentContact.remote_jid
-        },
-        {
-          // 2. Mensagem com role 'USER' mas sender_id do usuário (deve aparecer à esquerda devido ao role)
-          role: 'USER',
-          content: `[TESTE] Role=USER mas sender_id do usuário (${new Date().toLocaleTimeString()})`,
-          sender_id: currentUser.id
-        },
-        {
-          // 3. Mensagem com role 'AI' mas sender_id do cliente (deve aparecer à direita devido ao role)
-          role: 'AI',
-          content: `[TESTE] Role=AI mas sender_id do cliente (${new Date().toLocaleTimeString()})`,
-          sender_id: currentContact.remote_jid
-        }
-      ];
-      
-      // Processar cada mensagem de teste
-      const localMessageCopy = [...messages];
-      
-      for (const testMsg of testMessages) {
-        const payload = {
-          conversationId: currentContact.remote_jid,
-          content: testMsg.content,
-          recipientId: currentContact.phone,
-          role: testMsg.role,
-          sender_id: testMsg.sender_id
-        };
-        
-        console.log(`Enviando teste role vs sender_id: ${JSON.stringify(payload)}`);
-        
-        const response = await fetch('/api/messages', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          credentials: 'include',
-          body: JSON.stringify(payload)
-        });
-        
-        if (!response.ok) {
-          const errorData = await response.json();
-          console.error(`Erro no teste ${testMsg.role}:`, errorData);
-          continue;
-        }
-        
-        const data = await response.json();
-        
-        if (data.success && data.message) {
-          // Adicionar a mensagem processada à cópia local para exibição imediata
-          const processedMsg = {
-            ...data.message,
-            from_me: testMsg.role === 'ME' || testMsg.role === 'AI',
-            role: testMsg.role
-          };
-          
-          localMessageCopy.push(processedMsg);
-          console.log(`Mensagem de teste ${testMsg.role} processada:`, processedMsg);
-        }
-      }
-      
-      // Atualizar as mensagens com a cópia local
-      setMessages(localMessageCopy);
-      
-    } catch (error) {
-      console.error('Erro no teste role vs sender_id:', error);
-      setError(`Erro no teste: ${error.message}`);
-    }
-  };
-
-  // Efeito para atualizar a hora da última mensagem no contato correspondente
+  // ✅ Efeito para atualizar última mensagem - CORRIGIDO para evitar loops  
   useEffect(() => {
     // Só executar se houver mensagens
     if (!messages.length || !currentContact) return;
@@ -1618,9 +2703,23 @@ export default function Chat() {
     // Obter a última mensagem
     const lastMessage = messages[messages.length - 1];
     
-    // Atualizar a hora da última mensagem e o texto para o contato atual
+    // ✅ Evitar updates desnecessários - verificar se realmente mudou
+    if (lastMessageRef.current?.id === lastMessage.id) return;
+    lastMessageRef.current = lastMessage;
+    
+    // ✅ Usar callback mais específico para evitar dependência circular
     setContacts(prevContacts => {
-      const updatedContacts = prevContacts.map(contact => {
+      const shouldUpdate = prevContacts.some(contact => {
+        const isCurrentContact = (contact.id || contact.remote_jid) === (currentContact.id || currentContact.remote_jid);
+        return isCurrentContact && (
+          contact.last_message !== lastMessage.content ||
+          contact.last_message_time !== lastMessage.created_at
+        );
+      });
+      
+      if (!shouldUpdate) return prevContacts; // ✅ Evitar re-render desnecessário
+      
+      return prevContacts.map(contact => {
         if ((contact.id || contact.remote_jid) === (currentContact.id || currentContact.remote_jid)) {
           return {
             ...contact,
@@ -1630,10 +2729,21 @@ export default function Chat() {
         }
         return contact;
       });
-      
-      return updatedContacts;
     });
-  }, [messages, currentContact]);
+  }, [currentContact?.id, currentContact?.remote_jid]); // ✅ Removido 'messages' das dependências
+  
+  // ✅ Efeito separado para detectar nova mensagem (sem modificar contacts)
+  useEffect(() => {
+    if (!messages.length || !currentContact) return;
+    
+    const lastMessage = messages[messages.length - 1];
+    
+    // Só atualizar a ref quando mensagem realmente mudar
+    if (lastMessageRef.current?.id !== lastMessage.id) {
+      lastMessageRef.current = lastMessage;
+      // Trigger da atualização será pelo useEffect acima
+    }
+  }, [messages.length]); // ✅ Usar apenas length para evitar loops
   
   // Efeito para manter o displayContacts atualizado quando contacts mudar
   // mas não durante a interação com um contato específico
@@ -1641,11 +2751,7 @@ export default function Chat() {
     // Não reordenar imediatamente se um contato estiver selecionado
     // Isso evita mudanças confusas na UI
     if (!currentContact) {
-      const sortedContacts = [...contacts].sort((a, b) => {
-        if (!a.last_message_time) return 1;
-        if (!b.last_message_time) return -1;
-        return new Date(b.last_message_time) - new Date(a.last_message_time);
-      });
+      const sortedContacts = [...contacts]; // Backend já ordena por update_at
       
       setDisplayContacts(sortedContacts);
       console.log('Atualizando ordem de exibição dos contatos (sem contato selecionado)');
@@ -1658,42 +2764,25 @@ export default function Chat() {
     
     async function fetchContactData() {
       try {
-        console.log(`Buscando dados detalhados para contato: ${currentContact.remote_jid}`, {
-          contact: currentContact,
-          hasLeadId: Boolean(currentContact.lead_id)
-        });
+
         
         // Não limpar dados anteriores durante o carregamento
         // Em vez disso, definimos apenas uma flag de carregamento
         // que vai ser usada para mostrar o spinner
         setIsLoading(true);
         
-        // Função para buscar dados diretamente se a API normal falhar
-        const fetchDirectData = async () => {
-          console.log('Tentando obter dados diretos do banco...');
+        // Buscar dados do contato de forma otimizada
+        const fetchContactData = async () => {
           try {
             const directResponse = await fetch(`/api/dev/direct-data?contactId=${currentContact.remote_jid}`, {
               credentials: 'include'
             });
             
             if (!directResponse.ok) {
-              throw new Error(`Erro ao acessar dados diretos: ${directResponse.status}`);
+              throw new Error(`Erro ao acessar dados: ${directResponse.status}`);
             }
             
             const directData = await directResponse.json();
-            console.log('Dados obtidos diretamente:', directData);
-            
-            // Verificar todos os dados relacionados à proposta
-            console.log('Dados brutos da proposta recebidos:');
-            console.log('- proposal_id:', directData.proposal_id);
-            console.log('- proposal_status:', directData.proposal_status);
-            console.log('- proposal_amount:', directData.proposal_amount);
-            console.log('- formalization_link:', directData.formalization_link);
-            console.log('- pix_key:', directData.pix_key);
-            // Verificar também campos alternativos
-            console.log('- valor_proposta:', directData.valor_proposta);
-            console.log('- link_formalizacao:', directData.link_formalizacao);
-            console.log('- chave_pix:', directData.chave_pix);
             
             if (directData.success) {
               // Converter explicitamente para número
@@ -1747,7 +2836,7 @@ export default function Chat() {
           if (!proposalId) return null;
           
           try {
-            console.log(`Buscando dados da proposta ${proposalId} no Supabase...`);
+            // Buscando dados da proposta
             const response = await fetch(`/api/proposals/${proposalId}`, {
               credentials: 'include'
             });
@@ -1757,7 +2846,7 @@ export default function Chat() {
             }
             
             const data = await response.json();
-            console.log('Dados da proposta obtidos do Supabase:', data);
+            // Dados da proposta obtidos
             
             if (data.success && data.proposal) {
               return {
@@ -1779,25 +2868,11 @@ export default function Chat() {
           credentials: 'include'
         });
         
-        console.log(`Resposta da API para dados do contato ${currentContact.remote_jid}:`, {
-          status: response.status,
-          ok: response.ok
-        });
+        // API response received
         
         if (response.ok) {
           const data = await response.json();
-          console.log('Dados completos da resposta da API:', data);
-          
-          // Verificar todos os dados da proposta
-          console.log('Dados da proposta na API normal:');
-          console.log('- proposta:', data.proposta);
-          console.log('- status_proposta:', data.status_proposta);
-          console.log('- valor_proposta:', data.valor_proposta);
-          console.log('- link_formalizacao:', data.link_formalizacao);
-          console.log('- chave_pix:', data.chave_pix);
-          
           if (data.success) {
-            console.log('Dados do contato obtidos com sucesso:', data);
             
             // Melhorar a conversão e validação dos dados numéricos
             let saldo = null;
@@ -1887,7 +2962,7 @@ export default function Chat() {
               try {
                 const proposalData = await fetchProposalData(data.proposta);
                 if (proposalData) {
-                  console.log('Dados adicionais da proposta obtidos do Supabase:', proposalData);
+                  // Dados adicionais obtidos
                   
                   // Combinar os dados da API com os dados do Supabase
                   novosDados = {
@@ -1900,7 +2975,7 @@ export default function Chat() {
                     descricaoStatus: proposalData.statusDetalhado || novosDados.descricaoStatus
                   };
                   
-                  console.log('Dados combinados (API + Supabase):', novosDados);
+                  // Dados combinados
                 }
               } catch (error) {
                 console.error('Erro ao buscar/combinar dados adicionais da proposta:', error);
@@ -1922,30 +2997,7 @@ export default function Chat() {
               }
             }
             
-            // Log dos dados antes da atualização
-            console.log('Atualizando estado com novos dados processados:', {
-              daAPI: {
-                saldo: data.saldo,
-                simulado: data.simulado,
-                erro_consulta: data.erro_consulta,
-                proposta: data.proposta,
-                erro_proposta: data.erro_proposta,
-                status_proposta: data.status_proposta,
-                descricao_status: data.descricao_status,
-                valor_proposta: data.valor_proposta,
-                link_formalizacao: data.link_formalizacao,
-                chave_pix: data.chave_pix
-              },
-              processados: {
-                saldo,
-                simulado,
-                valorProposta: novosDados.valorProposta,
-                linkFormalizacao: novosDados.linkFormalizacao,
-                chavePix: novosDados.chavePix,
-                cpf: novosDados.cpf
-              },
-              paraComponente: novosDados
-            });
+            // Estado sendo atualizado com dados processados
             
             setContactData(novosDados);
           } else {
@@ -1953,7 +3005,7 @@ export default function Chat() {
             
             // Se a API retornar erro, tentar obter dados diretos
             console.log('Tentando obter dados diretos devido a erro da API...');
-            const dadosDiretos = await fetchDirectData();
+            const dadosDiretos = await fetchContactData();
             
             if (dadosDiretos) {
               console.log('Usando dados diretos:', dadosDiretos);
@@ -1978,7 +3030,7 @@ export default function Chat() {
           
           // Tentar obter dados diretos em caso de erro HTTP
           console.log('Tentando obter dados diretos devido a erro HTTP...');
-          const dadosDiretos = await fetchDirectData();
+          const dadosDiretos = await fetchContactData();
           
           if (dadosDiretos) {
             console.log('Usando dados diretos após erro HTTP:', dadosDiretos);
@@ -2021,38 +3073,20 @@ export default function Chat() {
     fetchContactData();
   }, [currentContact, currentUser?.id]);
 
-  // Verificação do estado dos dados do contato (debug)
-  useEffect(() => {
-    console.log('Estado de contactData atualizado:', contactData);
-    console.log('Verificação de campo a campo:');
-    console.log('- saldo:', contactData.saldo, typeof contactData.saldo, Boolean(contactData.saldo));
-    console.log('- simulado:', contactData.simulado, typeof contactData.simulado, Boolean(contactData.simulado));
-    console.log('- erroConsulta:', contactData.erroConsulta, typeof contactData.erroConsulta, Boolean(contactData.erroConsulta));
-    console.log('- proposta:', contactData.proposta, typeof contactData.proposta, Boolean(contactData.proposta));
-    console.log('- statusProposta:', contactData.statusProposta, typeof contactData.statusProposta, Boolean(contactData.statusProposta));
-  }, [contactData]);
+
 
   // Renderizar painel de dados do contato
   const renderContactDataPanel = () => {
     if (!currentContact) return null;
     
-    console.log('Renderizando painel de dados do contato com:', contactData);
+  
     
     // Valores formatados com nossa função robusta
     const saldoFormatado = formataMoeda(contactData.saldo);
     const simuladoFormatado = formataMoeda(contactData.simulado);
     const valorPropostaFormatado = formataMoeda(contactData.valorProposta);
     
-    // Debug dos valores formatados
-    console.log('Valores após formatação de moeda:');
-    console.log(`- saldo original: ${contactData.saldo} (${typeof contactData.saldo})`);
-    console.log(`- saldo formatado: ${saldoFormatado}`);
-    console.log(`- simulado original: ${contactData.simulado} (${typeof contactData.simulado})`);
-    console.log(`- simulado formatado: ${simuladoFormatado}`);
-    console.log(`- valor proposta original: ${contactData.valorProposta} (${typeof contactData.valorProposta})`);
-    console.log(`- valor proposta formatado: ${valorPropostaFormatado}`);
-    console.log(`- link formalização: ${contactData.linkFormalizacao}`);
-    console.log(`- chave pix: ${contactData.chavePix}`);
+
     
     // Mapeamento de status para versões mais legíveis
     const getStatusLabel = (status) => {
@@ -2087,83 +3121,7 @@ export default function Chat() {
     // Verificar se estamos em carregamento inicial
     const isLoading = contactData.saldo === null && contactData.simulado === null && !contactData.erroConsulta;
     
-    // Função para forçar o carregamento direto dos dados do banco
-    const forceDirectDataLoad = async () => {
-      if (!currentContact?.remote_jid) return;
-      
-      try {
-        console.log('Carregando dados diretamente do banco...');
-        setContactData({
-          ...contactData,
-          erroConsulta: 'Carregando dados diretamente...'
-        });
-        
-        // Carregar dados diretamente usando fetch simples
-        const response = await fetch(`/api/dev/direct-data?contactId=${currentContact.remote_jid}`, {
-          credentials: 'include'
-        });
-        
-        if (!response.ok) {
-          setContactData({
-            ...contactData,
-            erroConsulta: `Erro ao acessar dados diretos: ${response.status}`
-          });
-          return;
-        }
-        
-        const directData = await response.json();
-        console.log('Dados obtidos diretamente:', directData);
-        
-        if (directData.success) {
-          // Converter explicitamente para número
-          let saldo = null;
-          let simulado = null;
-          let valorProposta = null;
-          
-          if (directData.balance !== null && directData.balance !== undefined) {
-            saldo = Number(directData.balance);
-          }
-          
-          if (directData.simulation !== null && directData.simulation !== undefined) {
-            simulado = Number(directData.simulation);
-          }
-          
-          // Processar valor da proposta - verificando todos os possíveis campos
-          const valorPropostaRaw = directData.proposal_amount || directData.valor_proposta;
-          if (valorPropostaRaw !== null && valorPropostaRaw !== undefined) {
-            valorProposta = Number(valorPropostaRaw);
-          }
-          
-          // Verificar vários campos possíveis para link e pix
-          const linkFormalizacao = directData.formalization_link || directData.link_formalizacao;
-          const chavePix = directData.pix_key || directData.chave_pix;
-          
-          setContactData({
-            saldo,
-            simulado,
-            erroConsulta: null,
-            proposta: directData.proposal_id,
-            erroProposta: null,
-            statusProposta: directData.proposal_status,
-            descricaoStatus: directData.proposal_status && `Status da proposta: ${directData.proposal_status}`,
-            valorProposta: valorProposta,
-            linkFormalizacao: linkFormalizacao || null,
-            chavePix: chavePix || null
-          });
-        } else {
-          setContactData({
-            ...contactData,
-            erroConsulta: directData.message || 'Erro desconhecido ao carregar dados diretos'
-          });
-        }
-      } catch (error) {
-        console.error('Erro ao carregar dados diretos:', error);
-        setContactData({
-          ...contactData,
-          erroConsulta: `Erro: ${error.message}`
-        });
-      }
-    };
+
     
     return (
       <div className="min-w-0 flex-1 h-full flex flex-col border-l border-cyan-800/50 flex-shrink-0 overflow-y-auto bg-white/5 backdrop-blur-sm">
@@ -2250,10 +3208,13 @@ export default function Chat() {
                       onClick={() => {
                         navigator.clipboard.writeText(contactData.proposta);
                         setCopiedId(true);
-                        setTimeout(() => setCopiedId(false), 1500);
+                        // ✅ Timeout com cleanup gerenciado
+                        const copiedIdTimeoutId = setTimeout(() => setCopiedId(false), 1500);
+                        timeoutsRef.current.push(copiedIdTimeoutId);
                       }}
                       className="ml-1 text-cyan-200 hover:text-cyan-100 p-1"
                       title="Copiar Id da proposta"
+                      aria-label="Copiar ID da proposta"
                     >
                       <FaRegCopy />
               </button>
@@ -2272,17 +3233,20 @@ export default function Chat() {
                           onClick={() => {
                             navigator.clipboard.writeText(contactData.chavePix);
                             setCopiedPix(true);
-                            setTimeout(() => setCopiedPix(false), 1500);
+                            // ✅ Timeout com cleanup gerenciado
+                            const copiedPixTimeoutId = setTimeout(() => setCopiedPix(false), 1500);
+                            timeoutsRef.current.push(copiedPixTimeoutId);
                           }}
                           className="ml-1 text-emerald-200 hover:text-emerald-100 p-1"
                           title="Copiar chave PIX"
+                          aria-label="Copiar chave PIX"
                         >
                           <FaRegCopy />
               </button>
                         {copiedPix && <span className="text-xs text-emerald-300 ml-1">Copiado!</span>}
                       </div>
                       <span className="text-xs text-emerald-300 break-all font-mono">
-                        {contactData.chavePix}
+                        {contactData.chavePix || 'Não informado'}
                       </span>
                     </div>
                   )}
@@ -2313,10 +3277,13 @@ export default function Chat() {
                       onClick={() => {
                         navigator.clipboard.writeText(contactData.linkFormalizacao);
                         setCopiedLink(true);
-                        setTimeout(() => setCopiedLink(false), 1500);
+                        // ✅ Timeout com cleanup gerenciado
+                        const copiedLinkTimeoutId = setTimeout(() => setCopiedLink(false), 1500);
+                        timeoutsRef.current.push(copiedLinkTimeoutId);
                       }}
                       className="ml-2 text-blue-200 hover:text-blue-100 p-1"
                       title="Copiar link de formalização"
+                      aria-label="Copiar link de formalização"
                     >
                       <FaRegCopy />
               </button>
@@ -2377,9 +3344,16 @@ export default function Chat() {
           
           <div className="ml-2 overflow-hidden">
             <h3 className="font-semibold text-cyan-100 truncate">{currentContact.name || currentContact.push_name || 'Contato'}</h3>
+            <div className="flex items-center gap-2">
             <p className="text-xs text-cyan-300 truncate">
               {currentContact.phone || (currentContact.remote_jid || '').split('@')[0] || ''}
             </p>
+              {instances.length > 1 && currentContact.instance_id && (
+                <span className="text-xs text-cyan-400 bg-cyan-900/30 px-1.5 py-0.5 rounded-full font-medium">
+                  {getContactInstanceName(currentContact)}
+                </span>
+              )}
+            </div>
           </div>
         </div>
         
@@ -2390,6 +3364,7 @@ export default function Chat() {
               <span>Atualizando...</span>
             </div>
           )}
+
           <button className="text-cyan-300 hover:text-cyan-100 p-2" aria-label="Ligar">
             <FaPhone className={screenWidth < 360 ? "text-sm" : "text-lg"} />
           </button>
@@ -2488,18 +3463,93 @@ export default function Chat() {
                         </button>
                       </div>
                     </div>
+                    
+                    {/* Seletor de Instâncias Customizado */}
+                    {(() => {
+                      const shouldShow = instances.length > 0 || isLoadingInstances;
+                  
+                      return shouldShow && (
+                      <div className="mb-3 relative" ref={dropdownRef}>
+                        <button
+                          type="button"
+                          onClick={() => !isLoadingInstances && setDropdownOpen(!dropdownOpen)}
+                          disabled={isLoadingInstances}
+                          className="w-full py-2 px-3 bg-white/10 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 border border-cyan-800/50 transition-colors duration-200 hover:bg-white/15 flex items-center justify-between cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          <span className="text-left">
+                            {getSelectedInstanceText()}
+                          </span>
+                          <FaChevronDown 
+                            className={`w-3 h-3 text-cyan-300 transition-transform duration-200 ${
+                              dropdownOpen ? 'rotate-180' : ''
+                            }`}
+                          />
+                        </button>
+
+                        {/* Dropdown Options */}
+                        {dropdownOpen && !isLoadingInstances && (
+                          <div className="absolute z-50 w-full mt-1 bg-gradient-to-br from-emerald-950/95 via-cyan-950/95 to-blue-950/95 backdrop-blur-sm border border-cyan-800/50 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                            {/* Opção "Todas as instâncias" */}
+                            <button
+                              type="button"
+                              onClick={() => handleInstanceSelect('all')}
+                              className={`w-full px-3 py-2 text-left hover:bg-white/10 transition-colors duration-200 flex items-center justify-between ${
+                                selectedInstanceId === 'all' ? 'bg-white/20 text-cyan-100' : 'text-cyan-200'
+                              } first:rounded-t-lg border-b border-cyan-800/30 last:border-b-0`}
+                            >
+                              <span>Todas as instâncias</span>
+                              {selectedInstanceId === 'all' && (
+                                <FaCheck className="w-3 h-3 text-cyan-400" />
+                              )}
+                            </button>
+
+                            {/* Instâncias individuais */}
+                            {instances.map((instance) => (
+                              <button
+                                key={instance.id}
+                                type="button"
+                                onClick={() => handleInstanceSelect(instance.id)}
+                                className={`w-full px-3 py-2 text-left hover:bg-white/10 transition-colors duration-200 flex items-center justify-between ${
+                                  selectedInstanceId === instance.id ? 'bg-white/20 text-cyan-100' : 'text-cyan-200'
+                                } border-b border-cyan-800/30 last:border-b-0 last:rounded-b-lg`}
+                              >
+                                <span>
+                                  {instance.agent_name || instance.instance_name || `Instância ${instance.id}`}
+                                </span>
+                                {selectedInstanceId === instance.id && (
+                                  <FaCheck className="w-3 h-3 text-cyan-400" />
+                                )}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                    })()}
+                    
                     <div className="relative">
                       <input
                         type="text"
                         placeholder="Pesquisar conversa"
                         className="w-full py-2 pl-10 pr-4 bg-white/10 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 border border-cyan-800/50 placeholder-cyan-300/70"
                         value={searchTerm}
-                        onChange={(e) => setSearchTerm(e.target.value)}
+                        onChange={(e) => {
+                          // ✅ SEGURANÇA: Validar entrada de busca
+                          const validation = validateUserInput(e.target.value, 'search');
+                          if (validation.valid) {
+                            setSearchTerm(validation.value);
+                          }
+                        }}
+                        maxLength={SECURITY_CONFIG.MAX_SEARCH_LENGTH}
                       />
                       <FaSearch className="absolute left-3 top-3 text-cyan-300" />
                     </div>
                   </div>
-                  <div className="overflow-y-auto flex-1">
+                  <div 
+                    ref={contactsContainerRef}
+                    className="overflow-y-auto flex-1"
+                    onScroll={handleContactsScroll}
+                  >
                     {contacts.length === 0 ? (
                       <div className="p-4 text-center text-cyan-300">
                         Nenhuma conversa encontrada
@@ -2528,7 +3578,21 @@ export default function Chat() {
                             </div>
                             <div className="ml-4 flex-1 min-w-0 overflow-hidden">
                               <div className="flex justify-between">
-                                <h3 className="font-semibold text-cyan-100">{contact.name || contact.push_name || 'Contato'}</h3>
+                                <div className="flex items-center gap-1">
+                                  {(() => {
+                                    const formattedName = formatContactName(contact);
+                                    return (
+                                      <>
+                                        <h3 className="font-semibold text-cyan-100">{formattedName.name}</h3>
+                                        {formattedName.instanceName && (
+                                          <span className="text-xs text-cyan-400 bg-cyan-900/30 px-1.5 py-0.5 rounded-full font-medium">
+                                            {formattedName.instanceName}
+                                          </span>
+                                        )}
+                                      </>
+                                    );
+                                  })()}
+                                </div>
                                 <span className="text-xs text-cyan-300 ml-1 shrink-0 whitespace-nowrap">
                                   {contact.last_message_time && formatDate(contact.last_message_time)}
                                 </span>
@@ -2540,7 +3604,7 @@ export default function Chat() {
                             
                             {/* Botão AI para ativar/desativar resposta automática do agente */}
                             <button 
-                              key={`ai-button-${contact.id || contact.remote_jid}-${forceUpdate}`}
+                              key={`contact-${contact.id || contact.remote_jid}`}
                               onClick={(e) => toggleAutoResponse(contact.id || contact.remote_jid, e)}
                               className={`ml-2 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-md transition-all ${
                                 isAgentAiActive(contact)
@@ -2548,6 +3612,8 @@ export default function Chat() {
                                   : 'bg-gray-600/50 text-gray-300'
                               }`}
                               title={isAgentAiActive(contact) ? "Desativar resposta automática" : "Ativar resposta automática"}
+                              aria-label={isAgentAiActive(contact) ? "Desativar resposta automática" : "Ativar resposta automática"}
+                              aria-pressed={isAgentAiActive(contact)}
                             >
                               AI
                             </button>
@@ -2559,6 +3625,33 @@ export default function Chat() {
                             )}
                           </div>
                         ))
+                    )}
+                    
+                    {/* ✅ Skeleton loading para contatos quando carregando mais */}
+                    {isLoadingMoreContacts && (
+                      <div className="p-3">
+                        {[...Array(3)].map((_, i) => (
+                          <div key={i} className="flex items-center p-2 mb-2 animate-pulse">
+                            <div className="w-12 h-12 bg-cyan-700/30 rounded-full mr-3"></div>
+                            <div className="flex-1">
+                              <div className="h-4 bg-cyan-700/30 rounded w-3/4 mb-2"></div>
+                              <div className="h-3 bg-cyan-700/20 rounded w-1/2"></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
+                    {/* Botão para carregar mais contatos (agora apenas fallback manual) */}
+                    {hasMoreContacts && !isLoading && !isLoadingMoreContacts && displayContacts.length > 0 && (
+                      <div className="p-3 text-center">
+                        <button
+                          onClick={loadMoreContacts}
+                          className="w-full py-2 px-4 bg-white/10 hover:bg-white/20 text-cyan-100 rounded-lg transition-colors duration-200"
+                        >
+                          Carregar mais contatos
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -2572,10 +3665,39 @@ export default function Chat() {
                     {renderChatHeader()}
                   
                   {/* Área de mensagens */}
+                  
                     <div 
+                      ref={messagesContainerRef}
                       className="flex-1 overflow-y-auto p-3 bg-gradient-to-br from-emerald-950/20 via-cyan-950/20 to-blue-950/20 relative"
-                      style={mobileStyles.messagesContainer}
+                      style={{ 
+                        height: '100%',
+                        maxHeight: 'calc(100vh - 12rem)',
+                        // ✅ Garantir altura mínima para justify-end funcionar
+                        minHeight: '300px',
+                        // ✅ Container sempre visível para ancoragem funcionar
+                        // ✅ Forçar flex para funcionar
+                        display: 'flex',
+                        flexDirection: 'column'
+                      }}
+                      onScroll={handleScroll}
                     >
+                    {/* Skeleton loading para mensagens antigas */}
+                    {isLoadingMoreMessages && (
+                      <div className="flex flex-col space-y-3 p-3">
+                        {[...Array(3)].map((_, i) => (
+                          <div key={i} className="animate-pulse">
+                            <div className="flex space-x-3">
+                              <div className="h-8 w-8 bg-cyan-700/30 rounded-full"></div>
+                              <div className="flex-1 space-y-2">
+                                <div className="h-4 bg-cyan-700/30 rounded w-3/4"></div>
+                                <div className="h-3 bg-cyan-700/20 rounded w-1/2"></div>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    
                     {isLoading ? (
                       <div className="flex justify-center items-center h-full">
                         <FaSpinner className="animate-spin text-3xl text-cyan-400" />
@@ -2593,8 +3715,26 @@ export default function Chat() {
                             <p className="text-sm mt-2">Comece uma conversa agora</p>
                           </div>
                         ) : (
+                          <>
+                            {/* ✅ Spacer para empurrar mensagens para o final */}
+                            <div className="flex-grow"></div>
                           <div className="flex flex-col w-full">
-                            {messages.map(msg => {
+                            {messages.map((msg, index) => {
+                              const previousMsg = index > 0 ? messages[index - 1] : null;
+                              const showDateSeparator = shouldShowDateSeparator(msg, previousMsg);
+                              
+                              return (
+                                <React.Fragment key={msg.id}>
+                                  {/* Separador de data */}
+                                  {showDateSeparator && (
+                                    <div className="flex justify-center my-4">
+                                      <div className="bg-cyan-900/30 backdrop-blur-sm text-cyan-100 px-3 py-1 rounded-full text-sm border border-cyan-800/50">
+                                        {formatDateSeparator(msg.created_at)}
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+                                  {(() => {
                               // RENDERIZAÇÃO: Forçar o uso EXCLUSIVO do campo 'role' 
                               // para determinar aparência e posição
                               
@@ -2626,7 +3766,7 @@ export default function Chat() {
                               }
                               
                               // Log para depurar problemas de renderização
-                              console.log(`Renderizando #${msg.id}: role=${msg.role}, position=${justifyContent}, content="${msg.content?.substring(0, 20)}..."`);
+              
                               
                               return (
                                 <div 
@@ -2641,12 +3781,16 @@ export default function Chat() {
                                   <div
                                       className={`max-w-[75%] shadow-lg ${bgColorClass} p-2 border ${borderClass} ${msg.temp ? 'opacity-70' : ''}`}
                                   >
-                                    <p>{msg.content}</p>
+                                    <p>{sanitizeContent(msg.content)}</p>
                                       <div className={`text-xs mt-1 text-right whitespace-nowrap ${textColorClass} flex items-center justify-end`}>
                                       {formatDate(msg.created_at)}
                                         {msg.temp ? (
                                           <span className="ml-1">
                                             <FaSpinner className="animate-spin text-xs ml-1" />
+                                          </span>
+                                        ) : msg.status === 'pending' ? (
+                                          <span className="ml-1">
+                                            <FaClock className="text-gray-400" />
                                           </span>
                                         ) : (msg.role === 'ME' || msg.role === 'AI') && (
                                         <span className="ml-1">
@@ -2657,11 +3801,33 @@ export default function Chat() {
                                   </div>
                                 </div>
                               );
+                                  })()}
+                                </React.Fragment>
+                              );
                             })}
-                            <div ref={messagesEndRef} />
                           </div>
+                          </>
                         )}
                       </>
+                    )}
+                    
+                    {/* Botão flutuante "ir para mensagens recentes" */}
+                    {!isAtBottom && (
+                      <button
+                        onClick={scrollToBottom}
+                        className="fixed bottom-24 right-6 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-full p-3 shadow-lg hover:shadow-xl transition-all duration-300 z-50 flex items-center gap-2"
+                        style={{ transform: 'translateY(-50px)' }}
+                        aria-label={`Ir para mensagens recentes${unreadCount > 0 ? ` (${unreadCount} não lidas)` : ''}`}
+                      >
+                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                        </svg>
+                        {unreadCount > 0 && (
+                          <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center" aria-label={`${unreadCount} mensagens não lidas`}>
+                            {unreadCount > 99 ? '99+' : unreadCount}
+                          </span>
+                        )}
+                      </button>
                     )}
                   </div>
                   
@@ -2693,7 +3859,14 @@ export default function Chat() {
                         placeholder="Digite uma mensagem"
                             className="w-full py-2 px-3 bg-white/10 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 border border-cyan-800/50 placeholder-cyan-300/70"
                         value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
+                        onChange={(e) => {
+                          // ✅ SEGURANÇA: Validar entrada de mensagem
+                          const validation = validateUserInput(e.target.value, 'message');
+                          if (validation.valid || e.target.value === '') {
+                            setNewMessage(e.target.value);
+                          }
+                        }}
+                        maxLength={SECURITY_CONFIG.MAX_MESSAGE_LENGTH}
                       />
                         </div>
                       
@@ -2701,6 +3874,8 @@ export default function Chat() {
                         <button
                           type="submit"
                             className={`${screenWidth < 360 ? 'px-2 py-2' : 'p-2'} bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-full hover:from-cyan-500 hover:to-blue-500 transition shadow-md flex-shrink-0 mx-1`}
+                          aria-label="Enviar mensagem"
+                          disabled={isSendingMessage}
                         >
                             <IoSend className={`${screenWidth < 400 ? 'text-base' : 'text-lg'}`} />
                         </button>
