@@ -125,8 +125,6 @@ const validateUserInput = (input, type = 'message') => {
   }
 };
 
-
-
 // ✅ SEGURANÇA: Obter token CSRF com validação
 const getCSRFToken = () => {
   const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
@@ -856,7 +854,10 @@ export default function Chat() {
     fetchAgentMode();
   }, []);
 
-  // Função para determinar se o botão AI deve estar ligado para cada contato
+  // ✅ REMOVIDO: Funções duplicadas de sincronização
+  // Backend agora coordena a sincronização automaticamente
+
+  // Função para verificar se o agente AI está ativo
   const isAgentAiActive = (contact) => {
     if (!contact) return false;
     return contact.agent_state === 'ai';
@@ -1033,6 +1034,9 @@ export default function Chat() {
     }
   };
 
+  // ✅ REMOVIDO: Função de sincronização duplicada
+  // Backend agora coordena a sincronização automaticamente
+
   // Função otimizada para buscar contatos com paginação
   const fetchContacts = async (instanceId = null, page = 1, reset = true) => {
     try {
@@ -1087,6 +1091,7 @@ export default function Chat() {
         const contactsList = data.contacts || [];
         // ✅ Sanitizar contatos para corrigir dados inconsistentes
         const sanitizedContacts = contactsList.map(sanitizeContact).filter(Boolean);
+        // ✅ Backend já coordena a sincronização automaticamente
         const hasMore = data.hasMore || sanitizedContacts.length === CONTACTS_PER_PAGE;
       
         if (sanitizedContacts.length > 0) {
@@ -1126,12 +1131,9 @@ export default function Chat() {
           setDisplayContacts(sortedContacts);
           
           // Buscar instâncias apenas da primeira página
-          console.log(`[CONTACTS] 📊 Instâncias disponíveis: ${instances.length}`);
+
           if (instances.length > 0) {
-            console.log(`[CONTACTS] ✅ Buscando instâncias para ${sortedContacts.length} contatos`);
             fetchContactInstances(sortedContacts);
-          } else {
-            console.log(`[CONTACTS] ⏸️ Aguardando instâncias serem carregadas antes de buscar mapeamento`);
           }
           
           // ✅ PROTEÇÃO CRÍTICA: Não sobrescrever contato durante carregamento inicial
@@ -1173,10 +1175,7 @@ export default function Chat() {
           
           // Buscar instâncias dos novos contatos
           if (instances.length > 0) {
-            console.log(`[CONTACTS] ✅ Buscando instâncias para novos contatos: ${sortedContacts.length}`);
             fetchContactInstances(sortedContacts);
-          } else {
-            console.log(`[CONTACTS] ⏸️ Aguardando instâncias serem carregadas para novos contatos`);
           }
         }
         
@@ -1307,7 +1306,6 @@ export default function Chat() {
     if (!isLoadingMoreMessages && hasMoreMessages && currentContact) {
       setIsLoadingMoreMessages(true);
       const nextPage = messagesPage + 1;
-      console.log(`[MESSAGES] 📄 Carregando mensagens antigas - página ${nextPage}`);
       fetchMessages(currentContact.remote_jid, nextPage, false);
     }
   };
@@ -1334,7 +1332,6 @@ export default function Chat() {
     
     const maxScroll = container.scrollHeight - container.clientHeight;
     container.scrollTop = maxScroll;
-    console.log('[SCROLL] 🎯 Scroll forçado (debounced):', container.scrollTop, '/', maxScroll);
   }, 100);
 
   const forceScrollToEnd = () => {
@@ -1344,7 +1341,6 @@ export default function Chat() {
     const scrollToEnd = () => {
       const maxScroll = container.scrollHeight - container.clientHeight;
       container.scrollTop = maxScroll;
-      console.log('[SCROLL] 🎯 Scroll forçado:', container.scrollTop, '/', maxScroll);
     };
     
     // ✅ Scroll imediato SEM delays
@@ -1465,16 +1461,7 @@ export default function Chat() {
         !isInitialLoad &&
         currentContact?.remote_jid) {
       
-      console.log('[SCROLL] 🔝 Carregando mensagens antigas (todas proteções OK)');
       loadMoreMessages();
-    } else if (scrollTop < 100) {
-      console.log('[SCROLL] ⏸️ Scroll infinito bloqueado:', {
-        hasMoreMessages,
-        isLoadingMoreMessages,
-        allowInfiniteScroll,
-        isInitialLoad,
-        hasContact: !!currentContact?.remote_jid
-      });
     }
   };
   
@@ -1526,8 +1513,6 @@ export default function Chat() {
   const fetchMessages = async (contactId, page = 1, reset = true) => {
     if (!contactId) return;
     
-    console.log(`[MESSAGES] 📩 Carregando mensagens para: ${contactId}`);
-    
     try {
       if (reset) {
         // ✅ Estados básicos para reset (sem duplicações)
@@ -1537,8 +1522,6 @@ export default function Chat() {
         setUnreadCount(0);
         setLastStatusUpdate('1970-01-01T00:00:00Z'); // Resetar última atualização
       }
-      
-      console.log(`[MESSAGES] 📩 Carregando página ${page} (${MESSAGES_PER_PAGE} mensagens) para ${contactId}`);
       
       const response = await fetch(`/api/chat/messages/${contactId}?page=${page}&limit=${MESSAGES_PER_PAGE}`, {
         credentials: 'include'
@@ -1565,7 +1548,6 @@ export default function Chat() {
           // ✅ Sanitizar mensagens para corrigir dados inconsistentes do banco
           const sanitizedMessages = chronologicalMessages.map(sanitizeMessage).filter(Boolean);
           setMessages(sanitizedMessages);
-          console.log(`[MESSAGES] ✅ ${chronologicalMessages.length} mensagens carregadas para ${contactId} (ordem cronológica)`);
           
           // ✅ Estados atualizados ANTES da ancoragem
           setIsAtBottom(true);
@@ -1603,12 +1585,9 @@ export default function Chat() {
             }
           }, 50);
           timeoutsRef.current.push(preserveScrollTimeoutId); // ✅ Gerenciar cleanup
-          
-          console.log(`[MESSAGES] ✅ ${newMessages.length} mensagens antigas inseridas no topo`);
         }
         
               } else {
-          console.log(`[MESSAGES] Nenhuma mensagem encontrada para ${contactId}`);
           if (reset) {
             setMessages([]);
             setHasMoreMessages(false);
@@ -1617,7 +1596,7 @@ export default function Chat() {
           }
         }
     } catch (error) {
-      console.error('[MESSAGES] Erro ao buscar mensagens:', error);
+      console.error('Erro ao buscar mensagens:', error);
       // ✅ Usar tratamento robusto de erro
       handleNetworkError(error, 'buscar mensagens');
       // ✅ Resetar estado em caso de erro
@@ -1676,9 +1655,6 @@ export default function Chat() {
     
     // NOTA: fetchMessages agora é chamado diretamente no handleSelectContact
     // Este useEffect agora foca apenas no polling de novas mensagens
-    console.log('[MESSAGES] 🔄 Configurando polling para:', currentContact?.remote_jid);
-    
-    console.log('[MESSAGES] 🔄 Iniciando polling para:', currentContact?.remote_jid);
     
     // ✅ POLLING ADAPTATIVO CORRIGIDO
     let intervalId;
@@ -1710,7 +1686,6 @@ export default function Chat() {
               // ✅ CORREÇÃO: Verificar se é uma mensagem nova
               const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
               if (data.message.id !== lastMessageId) {
-                console.log('[POLLING] 🔍 Nova mensagem detectada:', data.message.id);
                 // Nova mensagem detectada - adicionando incrementalmente
                 
                 // ✅ Sanitizar nova mensagem antes de adicionar
@@ -1735,7 +1710,6 @@ export default function Chat() {
                   if (!isInitialLoad && !isLoading && isAtBottom) {
                     // ✅ CORREÇÃO: Usar debounce para evitar muitas atualizações
                     debouncedScrollToEnd();
-                    console.log('[POLLING] ✅ Scroll automático agendado - usuário no final');
                   }
                 }
               }
@@ -1747,8 +1721,6 @@ export default function Chat() {
             // Buscar IDs de todas as mensagens para verificar se foram atualizadas
             const allMessageIds = messages.map(msg => msg.id);
             
-            console.log(`[POLLING] 🔍 Verificando ${allMessageIds.length} mensagens para sincronização`);
-            
             try {
               const statusResponse = await fetch(
                 `/api/messages/${currentContact.remote_jid}/status-updates?message_ids=${allMessageIds.join(',')}`,
@@ -1757,10 +1729,8 @@ export default function Chat() {
 
               if (statusResponse.ok && isMounted) {
                 const statusData = await statusResponse.json();
-                console.log(`[POLLING] 📊 Resposta da API de status:`, statusData);
                 
                 if (statusData.success && statusData.updates && statusData.updates.length > 0) {
-                  console.log(`[POLLING] 🔄 ${statusData.updates.length} atualizações de status encontradas`);
                   
                   // ✅ CORREÇÃO: Atualizar status das mensagens existentes com verificação otimizada
                   setMessages(prevMessages => {
@@ -1784,8 +1754,6 @@ export default function Chat() {
                             timestamp: update.timestamp
                           };
                           hasChanges = true;
-                          
-                          console.log(`[POLLING] ✅ Mensagem ${update.id} atualizada: ${currentMessage.status} → ${update.status}`);
                         }
                       }
                     });
@@ -1796,20 +1764,16 @@ export default function Chat() {
                   
                   // Atualizar timestamp da última verificação
                   setLastStatusUpdate(statusData.current_time);
-                } else {
-                  console.log(`[POLLING] ℹ️ Nenhuma atualização de status encontrada`);
                 }
-              } else {
-                console.warn(`[POLLING] ⚠️ Erro na resposta da API de status: ${statusResponse.status}`);
               }
             } catch (error) {
-              console.error(`[POLLING] ❌ Erro ao verificar status:`, error);
+              console.error('Erro ao verificar status:', error);
             }
           }
         }
-      } catch (error) {
-        console.error('[MESSAGES] Erro no polling:', error);
-      }
+              } catch (error) {
+          console.error('Erro no polling:', error);
+        }
     };
     
     // ✅ Sistema de polling reativo
@@ -1821,7 +1785,7 @@ export default function Chat() {
       
               // Log de polling apenas quando necessário (debug)
         if (newInterval > 30000) { // Só log se interval for longo (aba oculta)
-          console.log(`[POLLING] ⏸️ Reduzindo frequência - aba oculta`);
+          // Reduzindo frequência - aba oculta
         }
       
       intervalId = setTimeout(() => {
@@ -1847,7 +1811,6 @@ export default function Chat() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
       
     return () => {
-      console.log('[MESSAGES] ⏹️ Parando polling para:', currentContact?.remote_jid);
       isMounted = false;
       clearTimeout(intervalId); // ✅ Corrigido: clearTimeout em vez de clearInterval
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -1864,10 +1827,6 @@ export default function Chat() {
       const currentContactId = currentContact?.remote_jid;
       
       if (firstMessageContactId && currentContactId && firstMessageContactId !== currentContactId) {
-        console.log('[SCROLL] ⚠️ Contato mudou durante carregamento - resetando:', {
-          expected: currentContactId,
-          found: firstMessageContactId
-        });
         setIsInitialLoad(false);
         return;
       }
@@ -2195,12 +2154,9 @@ export default function Chat() {
     }
   };
 
-  // Função para alternar a resposta automática para um contato
+  // ✅ SIMPLIFICADO: Função para alternar a resposta automática para um contato
   const toggleAutoResponse = async (contactId, e) => {
     e.stopPropagation(); // Evita que o clique ative a seleção do contato
-    
-    // Log para depuração
-    console.log(`Alterando estado do agente para contato ID: ${contactId}`);
     
     // Encontrar o contato na lista
     const contactIndex = contacts.findIndex(c => {
@@ -2214,15 +2170,12 @@ export default function Chat() {
     }
     
     const contact = contacts[contactIndex];
-    console.log("Contato encontrado:", contact);
     
-    // Determinar o estado atual e o novo estado (considerar estado padrão se não existir)
+    // Determinar o estado atual e o novo estado
     const currentState = contact.agent_state === 'ai';
     const newAgentState = currentState ? 'human' : 'ai';
     
-    console.log(`Estado atual: ${contact.agent_state || 'undefined'}, Novo estado: ${newAgentState}`);
-    
-    // Atualiza localmente primeiro (para feedback imediato)
+    // ✅ SIMPLIFICADO: Atualizar apenas agent_state - backend coordena sincronização
     const newContacts = [...contacts];
     newContacts[contactIndex] = {
       ...contact,
@@ -2230,7 +2183,7 @@ export default function Chat() {
     };
     setContacts(newContacts);
     
-    // Atualizar também o estado de exibição para manter sincronizado
+    // Atualizar também o estado de exibição
     setDisplayContacts(prev => {
       const displayIndex = prev.findIndex(c => {
         const cId = c.id || c.remote_jid;
@@ -2257,17 +2210,11 @@ export default function Chat() {
       setCurrentContact(updatedCurrentContact);
     }
     
-    // Forçar re-renderização
-    
-    
     try {
       // Extrair o remote_jid correto para a chamada de API
       const remoteJid = contact.remote_jid || contactId;
       
-      // Chamar a API para persistir a alteração
-      console.log(`Enviando requisição para API: POST /api/contacts/${remoteJid}/state`);
-      console.log(`Payload: { agent_state: "${newAgentState}" }`);
-      
+      // ✅ SIMPLIFICADO: Enviar apenas agent_state - backend coordena sincronização
       const response = await fetch(`/api/contacts/${remoteJid}/state`, {
         method: 'POST',
         headers: {
@@ -2292,7 +2239,6 @@ export default function Chat() {
       }
       
       const data = await response.json();
-      console.log('Resposta da API:', data);
       
       if (!data.success) {
         throw new Error(data.error || 'Erro ao atualizar estado do agente');
@@ -2336,9 +2282,6 @@ export default function Chat() {
           agent_state: currentState ? 'ai' : 'human'
         });
       }
-      
-      // Forçar re-renderização novamente após reverter
-      
       
       // Notificar o usuário sobre o erro
       setError(`Erro ao atualizar estado do agente: ${error.message}`);

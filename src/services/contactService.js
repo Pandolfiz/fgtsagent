@@ -22,8 +22,8 @@ async function getContacts(remoteJids) {
   return await require('../repositories/contactRepository').getContactsByJids(remoteJids);
 }
 
-async function updateState({ remote_jid, agent_state }) {
-  return await contactRepository.updateState({ remote_jid, agent_state });
+async function updateState({ remote_jid, agent_state, agent_status }) {
+  return await contactRepository.updateState({ remote_jid, agent_state, agent_status });
 }
 
 module.exports = {
