@@ -5,6 +5,8 @@ const { requireAuth } = require('../middleware/auth');
 const logger = require('../utils/logger');
 const whatsappService = require('../services/whatsappService');
 const { optimizedMessagesQuery, optimizedSelect } = require('../utils/supabaseOptimized');
+const { validate, schemas } = require('../middleware/validationMiddleware');
+const { sanitizeInput, validateCSRF } = require('../middleware/securityMiddleware');
 
 // console.log('DEBUG: Arquivo src/routes/messages.js carregado');
 
@@ -13,13 +15,19 @@ const { optimizedMessagesQuery, optimizedSelect } = require('../utils/supabaseOp
  * @desc Obter mensagens de uma conversa específica (OTIMIZADO)
  * @access Private
  */
-router.get('/:conversationId', requireAuth, async (req, res) => {
+router.get('/:conversationId', 
+  requireAuth, 
+  sanitizeInput,
+  validate(schemas.getMessages, 'query'),
+  async (req, res) => {
   try {
     const { conversationId } = req.params;
     const userId = req.user.id;
-    const limit = parseInt(req.query.limit) || 100; // Limite padrão de 100 mensagens
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 20; // Limite padrão de 20 mensagens
+    const offset = (page - 1) * limit;
     
-    logger.info(`[OPTIMIZED] Buscando mensagens para conversa: ${conversationId}, usuário: ${userId}, limite: ${limit}`);
+    logger.info(`[MESSAGES] Página ${page} (${limit} mensagens) para conversa: ${conversationId}, usuário: ${userId}`);
     
     // Verificar se o usuário tem acesso a esta conversa (com cache)
     logger.info(`[MESSAGES-DEBUG] Iniciando verificação para conversa: ${conversationId}, usuário: ${userId}`);
@@ -61,13 +69,15 @@ router.get('/:conversationId', requireAuth, async (req, res) => {
     
     logger.info(`[MESSAGES-DEBUG] Acesso permitido - contato encontrado`);
     
-    // Buscar mensagens otimizadas com cache
-    const { data: messagesData, error: messagesError } = await optimizedMessagesQuery(
-      supabase,
-      conversationId,
-      limit,
-      3000 // 3s timeout
-    );
+    // Buscar mensagens com paginação
+    // Para página 1: buscar as mais recentes (desc)
+    // Para páginas seguintes: buscar mensagens mais antigas (desc com offset)
+    const { data: messagesData, error: messagesError } = await supabase
+      .from('messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('timestamp', { ascending: false })
+      .range(offset, offset + limit - 1);
     
     if (messagesError) {
       logger.error(`Erro ao buscar mensagens: ${messagesError.message}`, { error: messagesError });
@@ -78,22 +88,39 @@ router.get('/:conversationId', requireAuth, async (req, res) => {
       });
     }
     
-    logger.info(`[OPTIMIZED] Mensagens encontradas: ${messagesData?.length || 0}`);
+    logger.info(`[MESSAGES] ✅ Página ${page}: ${messagesData?.length || 0} mensagens encontradas`);
     
     // Formatar as mensagens
-    const formattedMessages = messagesData.map(msg => ({
-      id: msg.id,
-      content: msg.content,
-      sender_id: msg.sender_id,
-      receiver_id: msg.recipient_id,
-      created_at: msg.timestamp,
-      is_read: msg.status === 'read',
-      role: msg.role || 'USER'
-    }));
+    const formattedMessages = messagesData
+      .map(msg => ({
+        id: msg.id,
+        content: msg.content,
+        sender_id: msg.sender_id,
+        receiver_id: msg.recipient_id,
+        created_at: msg.timestamp,
+        timestamp: msg.timestamp, // Para compatibilidade
+        is_read: msg.status === 'read',
+        role: msg.role || 'USER'
+      }))
+      // Para página 1: inverter para ordem cronológica (antigas para recentes)
+      // Para páginas seguintes: manter ordem desc (mais recentes das antigas primeiro)
+      .sort((a, b) => page === 1 ? 
+        new Date(a.timestamp) - new Date(b.timestamp) : // Página 1: cronológica
+        new Date(b.timestamp) - new Date(a.timestamp)   // Outras páginas: reversa
+      );
+    
+    const hasMore = messagesData?.length === limit;
     
     return res.json({
       success: true,
       messages: formattedMessages,
+      pagination: {
+        page,
+        limit,
+        hasMore,
+        total: formattedMessages.length
+      },
+      hasMore, // Compatibilidade com frontend
       total: formattedMessages.length,
       limit: limit
     });
@@ -112,7 +139,12 @@ router.get('/:conversationId', requireAuth, async (req, res) => {
  * @desc Enviar uma nova mensagem
  * @access Private
  */
-router.post('/', requireAuth, async (req, res) => {
+router.post('/', 
+  requireAuth, 
+  sanitizeInput, 
+  validateCSRF, // Reabilitado com verificação de origem
+  validate(schemas.sendMessage, 'body'),
+  async (req, res) => {
   // console.log('[HANDLER LOG] Entrou no handler POST /api/messages', { body: req.body });
   try {
     const userId = req.user.id;
@@ -207,9 +239,18 @@ router.post('/', requireAuth, async (req, res) => {
         const typingDelay = Math.min(Math.max(content.length * 30, 1000), 3000);
         await new Promise(resolve => setTimeout(resolve, typingDelay));
 
-        logger.info(`Tentando enviar mensagem via WhatsApp oficial para ${formattedPhone}`);
-        logger.info(`Payload para WhatsApp: phone=${formattedPhone}, content=${content}, clientId=${clientId}`);
-        const whatsappResponse = await whatsappService.sendTextMessage(formattedPhone, content, clientId);
+        // Obter instanceId do contato para determinar qual API usar
+        let instanceId = null;
+        if (contactData.instance_id) {
+          instanceId = contactData.instance_id;
+          logger.info(`InstanceId obtido do contato: ${instanceId}`);
+        } else {
+          logger.warn('InstanceId não encontrado no contato, usando fallback');
+        }
+
+        logger.info(`Tentando enviar mensagem via WhatsApp para ${formattedPhone}`);
+        logger.info(`Payload para WhatsApp: phone=${formattedPhone}, content=${content}, clientId=${clientId}, instanceId=${instanceId}`);
+        const whatsappResponse = await whatsappService.sendTextMessage(formattedPhone, content, clientId, instanceId);
         logger.info(`Resposta da API WhatsApp: ${JSON.stringify(whatsappResponse)}`);
   
 
@@ -219,8 +260,7 @@ router.post('/', requireAuth, async (req, res) => {
             whatsapp_message_id: whatsappResponse.data.messages[0].id,
             response_data: whatsappResponse.data
           };
-         // Atualizar status para sent
-
+          // Atualizar status para sent
           await supabase
             .from('messages')
             .update({ status: 'sent', metadata: messageMetadata })
@@ -230,18 +270,53 @@ router.post('/', requireAuth, async (req, res) => {
           const errorMessage = whatsappResponse.error || 'Erro desconhecido';
           logger.error(`Erro ao enviar mensagem para WhatsApp: ${errorMessage}`);
           logger.error(`Detalhes do erro: ${whatsappResponse.error_details}`);
-          messageMetadata = { error: errorMessage, error_details: whatsappResponse.error_details };
-          await supabase
-            .from('messages')
-            .update({ status: 'failed', metadata: messageMetadata })
-            .eq('conversation_id', conversationId)
-            .eq('timestamp', msgTimestamp);
-          return res.status(500).json({
-            success: false,
-            message: 'Erro ao enviar mensagem para o WhatsApp',
-            error: errorMessage,
-            error_details: whatsappResponse.error_details
-          });
+          
+          // Verificar se é erro de conectividade (Evolution API offline)
+          if (whatsappResponse.should_retry && whatsappResponse.status === 'pending') {
+            logger.info('Evolution API offline. Mantendo mensagem como pending para reenvio posterior.');
+            messageMetadata = { 
+              error: errorMessage, 
+              error_details: whatsappResponse.error_details,
+              should_retry: true,
+              retry_count: 0
+            };
+            await supabase
+              .from('messages')
+              .update({ status: 'pending', metadata: messageMetadata })
+              .eq('conversation_id', conversationId)
+              .eq('timestamp', msgTimestamp);
+            
+            // Retornar sucesso parcial (mensagem salva, mas não enviada)
+            return res.status(202).json({
+              success: false,
+              message: {
+                id: data[0].id,
+                content: data[0].content,
+                sender_id: data[0].sender_id,
+                receiver_id: data[0].recipient_id,
+                created_at: data[0].timestamp,
+                is_read: false,
+                role: data[0].role || validRole,
+                status: 'pending'
+              },
+              feedback: 'Mensagem salva. Será enviada quando a Evolution API estiver online.',
+              warning: 'Evolution API temporariamente indisponível'
+            });
+          } else {
+            // Erro definitivo
+            messageMetadata = { error: errorMessage, error_details: whatsappResponse.error_details };
+            await supabase
+              .from('messages')
+              .update({ status: 'failed', metadata: messageMetadata })
+              .eq('conversation_id', conversationId)
+              .eq('timestamp', msgTimestamp);
+            return res.status(500).json({
+              success: false,
+              message: 'Erro ao enviar mensagem para o WhatsApp',
+              error: errorMessage,
+              error_details: whatsappResponse.error_details
+            });
+          }
         }
       } catch (err) {
         logger.error(`Exceção ao enviar mensagem para WhatsApp: ${err.message}`);
@@ -365,6 +440,88 @@ router.patch('/:messageId/status', requireAuth, async (req, res) => {
     });
   } catch (error) {
     logger.error(`Erro ao atualizar status da mensagem: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno ao processar solicitação',
+      error: error.message
+    });
+  }
+});
+
+/**
+ * @route GET /api/messages/:conversationId/status-updates
+ * @desc Buscar atualizações de status das mensagens de uma conversa
+ * @access Private
+ */
+router.get('/:conversationId/status-updates', requireAuth, async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const { message_ids } = req.query; // IDs das mensagens para verificar
+    const userId = req.user.id;
+
+    // Se message_ids for fornecido, buscar apenas essas mensagens
+    if (message_ids) {
+      const messageIdArray = message_ids.split(',');
+      
+      const { data: statusUpdates, error } = await supabase
+        .from('messages')
+        .select(`
+          id,
+          status,
+          metadata,
+          timestamp
+        `)
+        .eq('conversation_id', conversationId)
+        .eq('client_id', userId)
+        .in('id', messageIdArray);
+
+      if (error) {
+        logger.error(`Erro ao buscar atualizações de status: ${error.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao buscar atualizações de status',
+          error: error.message
+        });
+      }
+
+      return res.json({
+        success: true,
+        updates: statusUpdates || [],
+        current_time: new Date().toISOString()
+      });
+    }
+
+    // Se não fornecido message_ids, buscar todas as mensagens da conversa
+    const { data: statusUpdates, error } = await supabase
+      .from('messages')
+      .select(`
+        id,
+        status,
+        metadata,
+        timestamp
+      `)
+      .eq('conversation_id', conversationId)
+      .eq('client_id', userId)
+      .order('timestamp', { ascending: false })
+      .limit(50); // Limitar para performance
+
+    if (error) {
+      logger.error(`Erro ao buscar atualizações de status: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao buscar atualizações de status',
+        error: error.message
+      });
+    }
+
+    return res.json({
+      success: true,
+      updates: statusUpdates || [],
+      current_time: new Date().toISOString()
+    });
+
+  } catch (error) {
+    logger.error(`Erro ao buscar atualizações de status: ${error.message}`);
     return res.status(500).json({
       success: false,
       message: 'Erro interno ao processar solicitação',

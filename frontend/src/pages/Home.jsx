@@ -25,7 +25,7 @@ const style = <style>{`
 // Dados sincronizados com os produtos e preços do Stripe
 // Produtos no Stripe:
 // - prod_STalRE6RzVNTUu: FGTS Agent - Plano Básico (R$ 99,99/mês)
-// - prod_STalhjSBTyHza7: FGTS Agent - Plano Pro (R$ 199,99/mês)  
+// - prod_STalhjSBTyHza7: FGTS Agent - Plano Pro (R$ 199,99/mês)
 // - prod_STalNWvSe9GqRs: FGTS Agent - Plano Premium (R$ 499,99/mês)
 
 const features = [
@@ -98,7 +98,7 @@ const plans = [
       'Gerente de conta dedicado',
       'IA com estratégias de vendas avançadas'
     ],
-    icon: <FaChartLine size={32} />, 
+    icon: <FaChartLine size={32} />,
     popular: false,
     premium: true, // NOVO
     buttonText: 'Acesso Total'
@@ -183,7 +183,7 @@ export default function Home({ isLoggedIn }) {
                 transition={{ type: 'spring', stiffness: 300, damping: 30 }}
               >
                 {/* Logo no topo do menu */}
-                <motion.div 
+                <motion.div
                   className="flex items-center gap-3 mb-6 pb-6 border-b border-cyan-400/20"
                   initial={{ opacity: 0, y: -20 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -194,48 +194,48 @@ export default function Home({ isLoggedIn }) {
                 </motion.div>
 
                 {/* Links de navegação com ícones */}
-                <motion.a 
-                  href="#features" 
-                  className="flex items-center gap-3 text-cyan-100 hover:text-cyan-300 transition font-semibold py-3 px-4 rounded-lg hover:bg-cyan-900/30 group" 
-                  onClick={() => setMenuOpen(false)} 
-                  initial={{ opacity: 0, x: 40 }} 
-                  animate={{ opacity: 1, x: 0 }} 
+                <motion.a
+                  href="#features"
+                  className="flex items-center gap-3 text-cyan-100 hover:text-cyan-300 transition font-semibold py-3 px-4 rounded-lg hover:bg-cyan-900/30 group"
+                  onClick={() => setMenuOpen(false)}
+                  initial={{ opacity: 0, x: 40 }}
+                  animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.2 }}
                 >
                   <FaRobot className="text-cyan-400 group-hover:text-cyan-300 transition-colors" size={18} />
                   Funcionalidades
                 </motion.a>
-                
-                <motion.a 
-                  href="#planos" 
-                  className="flex items-center gap-3 text-cyan-100 hover:text-cyan-300 transition font-semibold py-3 px-4 rounded-lg hover:bg-cyan-900/30 group" 
-                  onClick={() => setMenuOpen(false)} 
-                  initial={{ opacity: 0, x: 40 }} 
-                  animate={{ opacity: 1, x: 0 }} 
+
+                <motion.a
+                  href="#planos"
+                  className="flex items-center gap-3 text-cyan-100 hover:text-cyan-300 transition font-semibold py-3 px-4 rounded-lg hover:bg-cyan-900/30 group"
+                  onClick={() => setMenuOpen(false)}
+                  initial={{ opacity: 0, x: 40 }}
+                  animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.3 }}
                 >
                   <FaChartBar className="text-cyan-400 group-hover:text-cyan-300 transition-colors" size={18} />
                   Planos
                 </motion.a>
-                
-                <motion.a 
-                  href="#clientes" 
-                  className="flex items-center gap-3 text-cyan-100 hover:text-cyan-300 transition font-semibold py-3 px-4 rounded-lg hover:bg-cyan-900/30 group" 
-                  onClick={() => setMenuOpen(false)} 
-                  initial={{ opacity: 0, x: 40 }} 
-                  animate={{ opacity: 1, x: 0 }} 
+
+                <motion.a
+                  href="#clientes"
+                  className="flex items-center gap-3 text-cyan-100 hover:text-cyan-300 transition font-semibold py-3 px-4 rounded-lg hover:bg-cyan-900/30 group"
+                  onClick={() => setMenuOpen(false)}
+                  initial={{ opacity: 0, x: 40 }}
+                  animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.4 }}
                 >
                   <FaUsers className="text-cyan-400 group-hover:text-cyan-300 transition-colors" size={18} />
                   Clientes
                 </motion.a>
-                
-                <motion.a 
-                  href="#parceiro" 
-                  className="flex items-center gap-3 text-cyan-100 hover:text-cyan-300 transition font-semibold py-3 px-4 rounded-lg hover:bg-cyan-900/30 group" 
-                  onClick={() => setMenuOpen(false)} 
-                  initial={{ opacity: 0, x: 40 }} 
-                  animate={{ opacity: 1, x: 0 }} 
+
+                <motion.a
+                  href="#parceiro"
+                  className="flex items-center gap-3 text-cyan-100 hover:text-cyan-300 transition font-semibold py-3 px-4 rounded-lg hover:bg-cyan-900/30 group"
+                  onClick={() => setMenuOpen(false)}
+                  initial={{ opacity: 0, x: 40 }}
+                  animate={{ opacity: 1, x: 0 }}
                   transition={{ delay: 0.5 }}
                 >
                   <FaHandHoldingUsd className="text-cyan-400 group-hover:text-cyan-300 transition-colors" size={18} />
@@ -244,30 +244,30 @@ export default function Home({ isLoggedIn }) {
 
                 {/* Botão de ação */}
                 {!isLoggedIn ? (
-                  <motion.div 
+                  <motion.div
                     className="mt-auto pt-6 border-t border-cyan-400/20"
-                    initial={{ opacity: 0, x: 40 }} 
-                    animate={{ opacity: 1, x: 0 }} 
+                    initial={{ opacity: 0, x: 40 }}
+                    animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.6 }}
                   >
-                    <Link 
-                      to="/login" 
-                      className="w-full px-6 py-3 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold shadow-lg hover:from-cyan-400 hover:to-blue-400 transition border-2 border-cyan-300/50 drop-shadow-neon block text-center" 
+                    <Link
+                      to="/login"
+                      className="w-full px-6 py-3 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold shadow-lg hover:from-cyan-400 hover:to-blue-400 transition border-2 border-cyan-300/50 drop-shadow-neon block text-center"
                       onClick={() => setMenuOpen(false)}
                     >
                       Entrar
                     </Link>
                   </motion.div>
                 ) : (
-                  <motion.div 
+                  <motion.div
                     className="mt-auto pt-6 border-t border-cyan-400/20"
-                    initial={{ opacity: 0, x: 40 }} 
-                    animate={{ opacity: 1, x: 0 }} 
+                    initial={{ opacity: 0, x: 40 }}
+                    animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: 0.6 }}
                   >
-                    <Link 
-                      to="/dashboard" 
-                      className="w-full px-6 py-3 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold shadow-lg hover:from-cyan-400 hover:to-blue-400 transition border-2 border-cyan-300/50 drop-shadow-neon block text-center" 
+                    <Link
+                      to="/dashboard"
+                      className="w-full px-6 py-3 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold shadow-lg hover:from-cyan-400 hover:to-blue-400 transition border-2 border-cyan-300/50 drop-shadow-neon block text-center"
                       onClick={() => setMenuOpen(false)}
                     >
                       Dashboard
@@ -373,7 +373,7 @@ export default function Home({ isLoggedIn }) {
         >
           Transforme seu negócio de FGTS com nossos planos flexíveis
         </motion.p>
-        
+
         <motion.div
           className="container mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 px-4"
           initial="hidden"
@@ -413,14 +413,14 @@ export default function Home({ isLoggedIn }) {
                   </span>
                 </div>
               )}
-              
+
               <div className="mb-6">
                 <div className={`mb-4 flex justify-center ${plan.popular ? 'text-emerald-300' : plan.premium ? 'text-blue-300' : 'text-cyan-300'}`}>
                   {plan.icon}
                 </div>
                 <h3 className="text-2xl font-bold text-white mb-2">{plan.name}</h3>
                 <p className="text-white/70 text-sm mb-4">{plan.description}</p>
-                
+
                 <div className="mb-6">
                   <span className={`text-4xl font-extrabold ${plan.popular ? 'text-emerald-300' : plan.premium ? 'text-blue-300' : 'text-cyan-300'}`}>
                     {plan.price}
@@ -428,7 +428,7 @@ export default function Home({ isLoggedIn }) {
                   <span className="text-white/60 text-lg">{plan.period}</span>
                 </div>
               </div>
-              
+
               <div className="flex-grow mb-8 text-left">
                 {plan.features.map((feature, idx) => (
                   <div key={idx} className="flex items-center mb-3">
@@ -437,7 +437,7 @@ export default function Home({ isLoggedIn }) {
                   </div>
                 ))}
               </div>
-              
+
               <div className="mt-auto">
                 <Link
                   to={`/signup?plan=${plan.stripePriceId}`}
@@ -457,7 +457,7 @@ export default function Home({ isLoggedIn }) {
             </motion.div>
           ))}
         </motion.div>
-        
+
         <motion.div
           className="text-center mt-12"
           initial={{ opacity: 0, y: 30 }}
@@ -555,11 +555,11 @@ export default function Home({ isLoggedIn }) {
               transition={{ duration: 0.7, delay: i * 0.1 }}
             >
               <div className="flex flex-col items-center">
-                <img 
-                  src={d.avatar} 
-                  alt={`Foto de ${d.name}`} 
+                <img
+                  src={d.avatar}
+                  alt={`Foto de ${d.name}`}
                   loading="lazy"
-                  className="w-16 h-16 rounded-full mb-4 border-4 border-cyan-400 shadow-lg object-cover" 
+                  className="w-16 h-16 rounded-full mb-4 border-4 border-cyan-400 shadow-lg object-cover"
                   style={{ objectPosition: 'center top' }}
                   onError={(e) => {
                     e.target.onerror = null;
@@ -581,10 +581,10 @@ export default function Home({ isLoggedIn }) {
       <section id="parceiro" className="relative z-10 py-12 text-white text-center flex flex-col items-center">
         <span className="mb-4 text-lg animate-fade-in">Uma solução em parceria com</span>
         <a href="https://www.v8digital.online/" target="_blank" rel="noopener noreferrer" className="inline-block animate-fade-in-delay">
-          <img 
-            src="/img/partners/v8digital-logo.svg" 
-            alt="Logo V8 Digital" 
-            className="h-16 md:h-20 drop-shadow-neon hover:scale-105 transition" 
+          <img
+            src="/img/partners/v8digital-logo.svg"
+            alt="Logo V8 Digital"
+            className="h-16 md:h-20 drop-shadow-neon hover:scale-105 transition"
             style={{ filter: 'drop-shadow(0 0 8px #00bcd4)' }}
             onError={(e) => {
               e.target.onerror = null;
@@ -599,21 +599,21 @@ export default function Home({ isLoggedIn }) {
         <div className="container mx-auto px-4">
           {/* Links legais */}
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-4">
-            <Link 
-              to="/terms-of-use" 
+            <Link
+              to="/terms-of-use"
               className="text-cyan-300 hover:text-cyan-100 transition-colors underline decoration-cyan-300/50 hover:decoration-cyan-100"
             >
               Termos de Uso
             </Link>
             <span className="hidden sm:inline text-cyan-400">•</span>
-            <Link 
-              to="/privacy-policy" 
+            <Link
+              to="/privacy-policy"
               className="text-cyan-300 hover:text-cyan-100 transition-colors underline decoration-cyan-300/50 hover:decoration-cyan-100"
             >
               Política de Privacidade
             </Link>
           </div>
-          
+
           {/* Copyright */}
           <span className="drop-shadow-neon">
             FgtsAgent &copy; {new Date().getFullYear()} &mdash; Tecnologia para o futuro do crédito
@@ -626,4 +626,4 @@ export default function Home({ isLoggedIn }) {
       <NeuralNetworkBackground />
     </div>
   );
-} 
+}

@@ -37,27 +37,27 @@ export default function Navbar({ fullWidth }) {
   // Função para truncar o nome responsivamente
   const getResponsiveName = (fullName) => {
     if (!fullName) return 'Usuário';
-    
+
     const words = fullName.trim().split(' ');
     if (words.length <= 1) return fullName;
-    
+
     // Em telas pequenas, mostrar apenas a primeira palavra
     if (screenSize < 768) {
       return words[0];
     }
-    
+
     // Em telas médias, mostrar até 2 palavras
     if (screenSize < 1024) {
       return words.slice(0, 2).join(' ');
     }
-    
+
     // Em telas grandes, mostrar o nome completo
     return fullName;
   };
 
   useEffect(() => {
     let isMounted = true;
-    
+
     // Listener para redimensionamento da janela com debounce
     let resizeTimeout;
     const handleResize = () => {
@@ -66,15 +66,15 @@ export default function Navbar({ fullWidth }) {
         setScreenSize(window.innerWidth);
       }, 100);
     };
-    
+
     window.addEventListener('resize', handleResize);
-    
+
     async function fetchUserProfile() {
       try {
         setIsLoading(true);
         // Tentar obter tokens de várias fontes
         let authToken = null;
-        
+
         // 1. Verificar localStorage (tokens do Supabase)
         const storedTokens = localStorage.getItem('supabase_tokens');
         if (storedTokens) {
@@ -88,7 +88,7 @@ export default function Navbar({ fullWidth }) {
             console.error('Erro ao ler tokens do localStorage:', e);
           }
         }
-        
+
         // 2. Verificar cookies
         const jsAuthToken = document.cookie
           .split('; ')
@@ -97,7 +97,7 @@ export default function Navbar({ fullWidth }) {
           authToken = jsAuthToken.split('=')[1];
           console.log('Token encontrado no cookie js-auth-token');
         }
-        
+
         // 3. Verificar token específico do Supabase em cookies
         const supabaseToken = document.cookie
           .split('; ')
@@ -106,7 +106,7 @@ export default function Navbar({ fullWidth }) {
           authToken = supabaseToken.split('=')[1];
           console.log('Token encontrado no cookie supabase-auth-token');
         }
-        
+
         // 4. Verificar token genérico em cookies
         const genericToken = document.cookie
           .split('; ')
@@ -115,7 +115,7 @@ export default function Navbar({ fullWidth }) {
           authToken = genericToken.split('=')[1];
           console.log('Token encontrado no cookie authToken');
         }
-        
+
         // Tentar fazer a requisição para obter o perfil usando cache
         const data = await cachedFetch('/api/auth/me', {
           method: 'GET',
@@ -126,37 +126,28 @@ export default function Navbar({ fullWidth }) {
           },
           credentials: 'include' // Incluir cookies na requisição
         });
-        
-        console.log('Dados recebidos da API /api/auth/me (com cache):', data);
-        
+
+
+
         // Se a resposta for bem-sucedida, processar os dados do usuário
         if (data && data.success) {
-          console.log('Dados recebidos da API /api/auth/me:', data);
-          
-          // Log detalhado para depuração - Mostrar todos os campos disponíveis
-          if (data.user) {
-            console.log('DETALHAMENTO DO OBJETO DE USUÁRIO:', JSON.stringify(data.user, null, 2));
-            console.log('Nome do usuário nos dados:', {
-              full_name: data.user.full_name,
-              displayName: data.user.displayName, 
-              name: data.user.name,
-              user_metadata: data.user.user_metadata
-            });
-          }
-          
+
+
+
+
           // Verificar e extrair o nome do usuário da resposta
           if (data.success && data.user) {
             // Priorizar campos específicos de nome em ordem de preferência
-            const userName = data.user.full_name || 
-                            data.user.displayName || 
+            const userName = data.user.full_name ||
+                            data.user.displayName ||
                             data.user.name ||
                             (data.user.user_metadata && data.user.user_metadata.full_name) ||
                             (data.user.firstName && data.user.lastName ? `${data.user.firstName} ${data.user.lastName}` : null) ||
                             (data.user.first_name && data.user.last_name ? `${data.user.first_name} ${data.user.last_name}` : null) ||
                             data.user.email?.split('@')[0] ||
                             'Usuário';
-            
-            console.log('Nome extraído:', userName);
+
+
             if (isMounted) {
               setDisplayName(userName);
               setAuth(true);
@@ -178,7 +169,7 @@ export default function Navbar({ fullWidth }) {
     }
 
     fetchUserProfile();
-    
+
     return () => {
       isMounted = false;
       window.removeEventListener('resize', handleResize);
@@ -197,13 +188,13 @@ export default function Navbar({ fullWidth }) {
   const handleLogout = async () => {
     try {
       setIsLoading(true);
-      
+
       // Fazer logout via Supabase
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('Erro ao fazer logout via Supabase:', error);
       }
-      
+
       // Limpar tokens e cookies independentemente da resposta do Supabase
       localStorage.removeItem('authToken');
       localStorage.removeItem('supabase.auth.token');
@@ -211,19 +202,19 @@ export default function Navbar({ fullWidth }) {
       document.cookie = 'js-auth-token=; path=/; max-age=0; SameSite=Lax';
       document.cookie = 'sb-refresh-token=; path=/; max-age=0; SameSite=Lax';
       document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax';
-      
+
       // Fazer logout via API do backend como fallback
       await fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include',
       }).catch(e => console.error('Erro ao fazer logout via API:', e));
-      
+
       // Redirecionar para a página de login
       navigate('/login?success=true&message=Logout realizado com sucesso');
     } catch (error) {
       console.error('Erro durante o logout:', error);
-      
-      // Mesmo com erro, forçar o redirecionamento para garantir que 
+
+      // Mesmo com erro, forçar o redirecionamento para garantir que
       // o usuário não fique preso em páginas protegidas
       navigate('/login');
     } finally {
@@ -273,7 +264,7 @@ export default function Navbar({ fullWidth }) {
         {/* Mobile Hamburger */}
         <button
           onClick={() => setMobileMenuOpen(open => !open)}
-          className="md:hidden flex items-center justify-center px-3 py-2 rounded-lg bg-white/5 border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner"
+          className="md:hidden flex items-center justify-center px-3 py-2 rounded-lg bg-white/10 border border-cyan-800/50 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 hover:bg-white/15"
         >
           {mobileMenuOpen ? <FaTimes className="w-5 h-5" /> : <FaBars className="w-5 h-5" />}
         </button>
@@ -281,7 +272,7 @@ export default function Navbar({ fullWidth }) {
         <div className="relative">
           <Menu>
             <div>
-              <Menu.Button className="inline-flex items-center justify-between space-x-2 px-3 py-2 rounded-lg bg-white/5 border border-cyan-500 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 shadow-inner hover:bg-white/10 hover:border-cyan-400">
+              <Menu.Button className="inline-flex items-center justify-between space-x-2 px-3 py-2 rounded-lg bg-white/10 border border-cyan-800/50 text-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-400/60 transition-colors duration-200 hover:bg-white/15">
                 <span className="mr-2">
                   {isLoading ? (
                     <span className="animate-pulse">Carregando...</span>
@@ -292,7 +283,7 @@ export default function Navbar({ fullWidth }) {
                 <ChevronUpDownIcon className="h-5 w-5" />
               </Menu.Button>
             </div>
-            <Menu.Items className="absolute right-0 z-50 mt-1 w-56 rounded-lg bg-gradient-to-br from-emerald-950/95 via-cyan-950/95 to-blue-950/95 backdrop-blur-sm border border-cyan-500 shadow-lg focus:outline-none">
+            <Menu.Items className="absolute right-0 z-50 mt-1 w-56 rounded-lg bg-gradient-to-br from-emerald-950/95 via-cyan-950/95 to-blue-950/95 backdrop-blur-sm border border-cyan-800/50 shadow-lg focus:outline-none">
               {[
                 { icon: <FaUser className="mr-2 h-5 w-5" />, label: 'Perfil', onClick: () => navigate('/profile') },
                 // { icon: <FaCog className="mr-2 h-5 w-5" />, label: 'Configurações', onClick: () => navigate('/settings') },

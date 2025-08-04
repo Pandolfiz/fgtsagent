@@ -192,4 +192,4 @@ const StripeCheckout = ({ selectedPlan, userData, onSuccess, onError }) => {
   );
 };
 
-export default StripeCheckout; 
+export default StripeCheckout;

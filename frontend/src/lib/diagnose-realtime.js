@@ -11,12 +11,12 @@ export async function diagnoseSupabaseConnection() {
   try {
     // Teste básico de consulta
     const { data, error } = await supabase.from('messages').select('id').limit(1);
-    
+
     if (error) {
       results.error = `Erro na conexão ao Supabase: ${error.message}`;
       return results;
     }
-    
+
     results.supabaseConnection = true;
     console.log('Conexão básica com Supabase OK:', data);
 
@@ -40,7 +40,7 @@ export async function diagnoseSupabaseConnection() {
 
     // Aguardar um pouco para o canal ser estabelecido
     await new Promise(resolve => setTimeout(resolve, 2000));
-    
+
     return results;
   } catch (e) {
     results.error = `Erro durante o diagnóstico: ${e.message}`;
@@ -49,4 +49,4 @@ export async function diagnoseSupabaseConnection() {
   }
 }
 
-export default diagnoseSupabaseConnection; 
+export default diagnoseSupabaseConnection;

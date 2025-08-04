@@ -12,6 +12,9 @@ router.get('/stream/:conversationId', requireAuth, chatController.streamMessages
 // Obter a última mensagem de uma conversa
 router.get('/messages/:conversationId/last', requireAuth, chatController.getLastMessage);
 
+// Obter mensagens de uma conversa com paginação
+router.get('/messages/:conversationId', requireAuth, chatController.getMessages);
+
 // Enviar nova mensagem via Evolution API
 router.post('/send', requireAuth, chatController.sendMessage);
 

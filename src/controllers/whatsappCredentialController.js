@@ -11,11 +11,26 @@ class WhatsappCredentialController {
   async list(req, res) {
     try {
       const clientId = req.clientId;
+      logger.info(`[WHATSAPP-CREDENTIALS] Buscando credenciais para clientId: ${clientId}`);
+      logger.info(`[WHATSAPP-CREDENTIALS] req.user: ${JSON.stringify(req.user?.id)}`);
+      logger.info(`[WHATSAPP-CREDENTIALS] req.clientId: ${clientId}`);
+      
       // Buscar todas as credenciais do cliente
       const { data: creds, error } = await supabaseAdmin
         .from('whatsapp_credentials')
         .select('*')
         .eq('client_id', clientId);
+      
+      logger.info(`[WHATSAPP-CREDENTIALS] Resultado da busca: ${creds?.length || 0} credenciais encontradas`);
+      if (creds && creds.length > 0) {
+        logger.info(`[WHATSAPP-CREDENTIALS] Credenciais encontradas:`, creds.map(c => ({
+          id: c.id,
+          name: c.agent_name || c.instance_name,
+          status: c.status,
+          connection_type: c.connection_type
+        })));
+      }
+      
       if (error) throw error;
       
       // Para cada credencial, buscar e atualizar status da instância

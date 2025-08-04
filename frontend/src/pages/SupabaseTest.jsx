@@ -17,10 +17,10 @@ export default function SupabaseTest() {
   }, []);
 
   const addResult = (test, result, details = null) => {
-    setTestResults(prev => [...prev, { 
-      id: Date.now(), 
-      test, 
-      result, 
+    setTestResults(prev => [...prev, {
+      id: Date.now(),
+      test,
+      result,
       timestamp: new Date().toLocaleTimeString(),
       details
     }]);
@@ -30,12 +30,12 @@ export default function SupabaseTest() {
     try {
       addResult('Teste de autenticação anônima', 'Iniciando...');
       const { data, error } = await supabase.auth.getSession();
-      
+
       if (error) {
         addResult('Teste de autenticação anônima', 'Falha', error);
         return false;
       }
-      
+
       addResult('Teste de autenticação anônima', 'Sucesso', {
         session: data.session ? 'Ativa' : 'Não ativa',
         user: data.session?.user?.id || 'Não autenticado'
@@ -55,12 +55,12 @@ export default function SupabaseTest() {
         .from('contacts')
         .select('count');
       const duration = Date.now() - startTime;
-      
+
       if (error) {
         addResult('Consulta tabela contacts', `Falha (${duration}ms)`, error);
         return false;
       }
-      
+
       addResult('Consulta tabela contacts', `Sucesso (${duration}ms)`, {
         count: data[0]?.count || 0
       });
@@ -76,16 +76,16 @@ export default function SupabaseTest() {
       // Primeiro obtém usuário
       addResult('Consulta contatos do usuário', 'Buscando usuário atual...');
       const { data: authData } = await supabase.auth.getUser();
-      
+
       if (!authData.user) {
         addResult('Consulta contatos do usuário', 'Falha - Usuário não autenticado');
         return false;
       }
-      
+
       addResult('Consulta contatos do usuário', 'Usuário encontrado', {
         userId: authData.user.id
       });
-      
+
       // Consulta contatos do usuário
       const startTime = Date.now();
       const { data, error } = await supabase
@@ -93,12 +93,12 @@ export default function SupabaseTest() {
         .select('*')
         .eq('client_id', authData.user.id);
       const duration = Date.now() - startTime;
-      
+
       if (error) {
         addResult('Consulta contatos do usuário', `Falha (${duration}ms)`, error);
         return false;
       }
-      
+
       addResult('Consulta contatos do usuário', `Sucesso (${duration}ms)`, {
         count: data.length,
         firstContact: data.length > 0 ? `${data[0].push_name} (${data[0].phone})` : 'Nenhum'
@@ -109,14 +109,14 @@ export default function SupabaseTest() {
       return false;
     }
   };
-  
+
   const testAPIUser = async () => {
     try {
       addResult('Teste API de usuário', 'Iniciando...');
       const startTime = Date.now();
       const response = await fetch('/api/auth/me');
       const duration = Date.now() - startTime;
-      
+
       if (!response.ok) {
         const errorText = await response.text();
         addResult('Teste API de usuário', `Falha (${duration}ms)`, {
@@ -125,7 +125,7 @@ export default function SupabaseTest() {
         });
         return false;
       }
-      
+
       const userData = await response.json();
       addResult('Teste API de usuário', `Sucesso (${duration}ms)`, {
         userId: userData.id,
@@ -137,13 +137,13 @@ export default function SupabaseTest() {
       return false;
     }
   };
-  
+
   const testDirectContacts = async (userId) => {
     if (!userId) {
       addResult('Teste direto de contatos', 'Não foi possível executar - ID de usuário necessário');
       return false;
     }
-    
+
     try {
       addResult('Teste direto de contatos', `Consultando para ID ${userId}...`);
       const startTime = Date.now();
@@ -152,12 +152,12 @@ export default function SupabaseTest() {
         .select('*')
         .eq('client_id', userId);
       const duration = Date.now() - startTime;
-      
+
       if (error) {
         addResult('Teste direto de contatos', `Falha (${duration}ms)`, error);
         return false;
       }
-      
+
       addResult('Teste direto de contatos', `Sucesso (${duration}ms)`, {
         count: data.length,
         contacts: data.map(c => `${c.push_name} (${c.phone})`).join(', ')
@@ -172,20 +172,20 @@ export default function SupabaseTest() {
   const runAllTests = async () => {
     setIsLoading(true);
     setTestResults([]);
-    
+
     try {
       // Teste 1: Autenticação
       await testAuth();
-      
+
       // Teste 2: Acesso à tabela contatos
       await testContacts();
-      
+
       // Teste 3: Autenticação de usuário pela API
       const userData = await testAPIUser();
-      
+
       // Teste 4: Consulta contatos do usuário atual
       await testClientContacts();
-      
+
       // Teste 5: Consulta direta usando ID do Backend
       if (userData && userData.id) {
         await testDirectContacts(userData.id);
@@ -201,7 +201,7 @@ export default function SupabaseTest() {
       <div className="bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 min-h-screen p-4">
         <div className="bg-white/10 backdrop-blur-sm rounded-lg shadow-lg overflow-hidden p-6 max-w-4xl mx-auto">
           <h1 className="text-3xl font-bold text-white mb-6">Diagnóstico de Conexão Supabase</h1>
-          
+
           <div className="mb-6 bg-black/30 p-4 rounded-lg">
             <h2 className="text-xl font-semibold text-white mb-2">Variáveis de Ambiente</h2>
             <div className="grid grid-cols-2 gap-2">
@@ -213,7 +213,7 @@ export default function SupabaseTest() {
               ))}
             </div>
           </div>
-          
+
           <div className="flex space-x-4 mb-6">
             <button
               onClick={runAllTests}
@@ -230,7 +230,7 @@ export default function SupabaseTest() {
                 </>
               ) : 'Executar todos os testes'}
             </button>
-            
+
             <button
               onClick={testAPIUser}
               disabled={isLoading}
@@ -238,7 +238,7 @@ export default function SupabaseTest() {
             >
               Testar API de usuário
             </button>
-            
+
             <button
               onClick={testContacts}
               disabled={isLoading}
@@ -247,7 +247,7 @@ export default function SupabaseTest() {
               Testar tabela de contatos
             </button>
           </div>
-          
+
           <div className="overflow-hidden rounded-lg border border-cyan-800">
             <table className="min-w-full divide-y divide-cyan-800">
               <thead className="bg-black/30">
@@ -281,8 +281,8 @@ export default function SupabaseTest() {
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full
-                          ${result.result.includes('Sucesso') ? 'bg-green-100 text-green-800' : 
-                            result.result.includes('Falha') ? 'bg-red-100 text-red-800' : 
+                          ${result.result.includes('Sucesso') ? 'bg-green-100 text-green-800' :
+                            result.result.includes('Falha') ? 'bg-red-100 text-red-800' :
                             'bg-yellow-100 text-yellow-800'}`}>
                           {result.result}
                         </span>
@@ -309,4 +309,4 @@ export default function SupabaseTest() {
       </div>
     </>
   );
-} 
+}

@@ -9,6 +9,10 @@ module.exports = (req, res, next) => {
     const appMeta = req.user?.app_metadata;
     const clientId = appMeta?.client_id || req.user?.id;
     
+    logger.info(`[CLIENT-CONTEXT] req.user.id: ${req.user?.id}`);
+    logger.info(`[CLIENT-CONTEXT] app_metadata: ${JSON.stringify(appMeta)}`);
+    logger.info(`[CLIENT-CONTEXT] clientId definido: ${clientId}`);
+    
     if (!clientId) {
       logger.warn('[clientContext] client_id ausente e fallback falhou');
     }

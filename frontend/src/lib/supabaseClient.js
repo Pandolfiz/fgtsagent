@@ -119,30 +119,30 @@ console.log('Cliente Supabase inicializado com sucesso');
 export const setupApiInterceptor = () => {
   // Remover interceptor anterior se existir
   const originalFetch = window.fetch;
-  
+
   // Controle de requisições ativas para limpeza
   const activeRequests = new Set();
-  
+
   window.fetch = async (resource, options = {}) => {
     // Não interceptar requisições para o Supabase (ele já gerencia tokens)
     if (resource.toString().includes(supabaseUrl)) {
       return originalFetch(resource, options);
     }
-    
+
     // Adicionar timeout padrão se não especificado
     const timeoutMs = options.timeout || 30000; // 30 segundos padrão
-    
+
     // Criar AbortController para timeout
     const controller = new AbortController();
     const timeoutId = setTimeout(() => {
       controller.abort();
     }, timeoutMs);
-    
+
     // Adicionar signal ao options se não existe
     if (!options.signal) {
       options.signal = controller.signal;
     }
-    
+
     // Adicionar token de autenticação aos headers
     try {
       const session = await supabase.auth.getSession();
@@ -150,56 +150,56 @@ export const setupApiInterceptor = () => {
         const token = session.data.session.access_token;
         options.headers = options.headers || {};
         options.headers['Authorization'] = `Bearer ${token}`;
-        console.log('Token adicionado à requisição:', resource);
+
       }
     } catch (e) {
       console.error('Erro ao obter sessão para interceptor:', e);
     }
-    
+
     // Criar requisição única para rastreamento
     const requestId = Date.now().toString(36) + Math.random().toString(36).substring(2);
     activeRequests.add(requestId);
-    
+
     try {
       const response = await originalFetch(resource, options);
-      
+
       // Limpar timeout se a requisição foi bem-sucedida
       clearTimeout(timeoutId);
       activeRequests.delete(requestId);
-      
+
       return response;
     } catch (error) {
       // Limpar timeout e rastreamento
       clearTimeout(timeoutId);
       activeRequests.delete(requestId);
-      
+
       // Verificar se foi abortado por timeout
       if (error.name === 'AbortError') {
         throw new Error(`Request timeout: ${resource} exceeded ${timeoutMs}ms`);
       }
-      
+
       throw error;
     }
   };
-  
+
   // Função para limpar todas as requisições ativas
   window.clearAllActiveRequests = () => {
     console.log(`Limpando ${activeRequests.size} requisições ativas`);
     activeRequests.clear();
   };
-  
+
   // Cleanup em visibility change
   document.addEventListener('visibilitychange', () => {
     if (document.hidden) {
       window.clearAllActiveRequests();
     }
   });
-  
+
   // Cleanup em beforeunload
   window.addEventListener('beforeunload', () => {
     window.clearAllActiveRequests();
   });
-  
+
   console.log('Interceptor de API configurado com sucesso (com timeout global)');
 };
 
@@ -207,18 +207,18 @@ export const setupApiInterceptor = () => {
 export const verifySupabaseConnection = async () => {
   try {
     console.log('Verificando conexão com o Supabase...');
-    
+
     // Adicionar timeout para evitar que a verificação fique presa
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error('Timeout ao verificar conexão')), 10000);
     });
-    
+
     // Criar uma função assíncrona para a verificação de conexão
     const checkConnection = async () => {
       try {
         // Tentar fazer uma simples operação com o Supabase
         const { error } = await supabase.from('healthcheck').select('count', { count: 'exact', head: true });
-        
+
         if (error && error.code !== 'PGRST116') { // PGRST116 é o código para "tabela não encontrada" e é esperado
           console.error('Erro ao verificar conexão com Supabase:', error.message);
           return {
@@ -227,7 +227,7 @@ export const verifySupabaseConnection = async () => {
             status: error.code || 'ERROR'
           };
         }
-        
+
         console.log('Conexão com o Supabase verificada com sucesso');
         return {
           connected: true,
@@ -248,7 +248,7 @@ export const verifySupabaseConnection = async () => {
         }
       }
     };
-    
+
     // Usar Promise.race para detectar timeout
     return await Promise.race([checkConnection(), timeoutPromise]);
   } catch (err) {

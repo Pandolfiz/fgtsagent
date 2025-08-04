@@ -102,4 +102,4 @@ export default function LandingNavbar({ isLoggedIn = false }) {
       </AnimatePresence>
     </nav>
   );
-} 
+}

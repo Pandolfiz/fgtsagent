@@ -32,4 +32,4 @@ export default function OfflineIndicator() {
       <span>Você está offline. Verifique sua conexão.</span>
     </div>
   );
-} 
+}

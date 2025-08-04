@@ -8,7 +8,7 @@ const getApiBaseUrl = () => {
     // Usar /api como base URL para que o proxy funcione corretamente
     return '/api';
   }
-  
+
   // Em produção - sempre usar /api como prefixo
   // O nginx vai fazer o proxy para o backend
   return '/api';
@@ -62,4 +62,4 @@ if (import.meta.env.DEV) {
   );
 }
 
-export default api; 
+export default api;

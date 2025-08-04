@@ -77,11 +77,11 @@ export function getProductByPriceId(priceId) {
 export function calculateDiscountedPrice(originalPrice, couponId) {
   const coupon = Object.values(STRIPE_COUPONS).find(c => c.id === couponId);
   if (!coupon) return originalPrice;
-  
+
   if (coupon.percentOff) {
     return originalPrice * (1 - coupon.percentOff / 100);
   }
-  
+
   return originalPrice;
 }
 
@@ -89,7 +89,7 @@ export function calculateDiscountedPrice(originalPrice, couponId) {
 export function formatDiscountedPrice(originalPrice, couponId) {
   const discountedPrice = calculateDiscountedPrice(originalPrice, couponId);
   const coupon = Object.values(STRIPE_COUPONS).find(c => c.id === couponId);
-  
+
   return {
     original: formatStripePriceToReal(originalPrice),
     discounted: formatStripePriceToReal(discountedPrice),
@@ -108,4 +108,4 @@ export default {
   getProductByPriceId,
   calculateDiscountedPrice,
   formatDiscountedPrice
-}; 
+};

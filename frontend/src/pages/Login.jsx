@@ -22,18 +22,18 @@ export default function Login() {
     // Verificar primeiro o parâmetro 'redirect' na URL
     const searchParams = new URLSearchParams(location.search);
     const urlRedirect = searchParams.get('redirect');
-    
+
     if (urlRedirect) {
       return urlRedirect;
     }
-    
+
     // Se não tiver na URL, verificar no localStorage
     const redirectTo = localStorage.getItem('redirectAfterLogin');
     if (redirectTo) {
       localStorage.removeItem('redirectAfterLogin');
       return redirectTo;
     }
-    
+
     // Caso não tenha redirecionamento especificado, ir para o dashboard
     return '/dashboard';
   };
@@ -45,7 +45,7 @@ export default function Login() {
     const errorParam = searchParams.get('error');
     const messageParam = searchParams.get('message');
     const successParam = searchParams.get('success');
-    
+
     // Verificar se foi redirecionado por sessão expirada
     if (errorParam === 'session_expired') {
       setError('Sua sessão expirou. Por favor, faça login novamente.');
@@ -54,12 +54,12 @@ export default function Login() {
     } else if (errorParam) {
       setError(decodeURIComponent(errorParam));
     }
-    
+
     // Mensagem informativa
     if (messageParam) {
       setInfo(decodeURIComponent(messageParam));
     }
-    
+
     // Mensagem de sucesso
     if (successParam === 'true' && messageParam) {
       setSuccess(decodeURIComponent(messageParam));
@@ -80,18 +80,18 @@ export default function Login() {
         email,
         password
       });
-      
+
       if (!supabaseError && supabaseData.session) {
         // Login com Supabase bem-sucedido
         console.log('Login com Supabase bem-sucedido!');
-        
+
         // Armazenar o token em localStorage para maior consistência
         localStorage.setItem('authToken', supabaseData.session.access_token);
-        
+
         // Definir o token em cookies para que o backend tenha acesso
                   document.cookie = `supabase-auth-token=${supabaseData.session.access_token}; path=/; max-age=86400; SameSite=Strict; Secure`;
           document.cookie = `js-auth-token=${supabaseData.session.access_token}; path=/; max-age=86400; SameSite=Strict; Secure`;
-        
+
         // Verificar se a sessão está funcionando fazendo uma requisição de teste
         try {
           const testResponse = await fetch('/api/auth/me', {
@@ -102,7 +102,7 @@ export default function Login() {
             },
             credentials: 'include'
           });
-          
+
           if (!testResponse.ok) {
             console.warn('Verificação de autenticação falhou após login com Supabase');
             // Continuar mesmo se falhar, tentaremos o método de fallback abaixo
@@ -121,19 +121,19 @@ export default function Login() {
           // Continuar mesmo se falhar, tentaremos o método de fallback abaixo
         }
       }
-      
+
       // Fallback: usar o endpoint de API do backend
       const response = await fetch('/api/auth/login', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json'
         },
         credentials: 'include',
         body: JSON.stringify({ email, password })
       });
-      
+
       const data = await response.json();
-      
+
       if (!response.ok) {
         const msg = data.message || 'Falha ao realizar login';
         if (msg.toLowerCase().includes('confirm')) {
@@ -147,14 +147,14 @@ export default function Login() {
         setLoading(false);
         return;
       }
-      
+
       // Se o login via API foi bem-sucedido, armazenar o token retornado
       if (data.data?.token) {
         localStorage.setItem('authToken', data.data.token);
                   document.cookie = `supabase-auth-token=${data.data.token}; path=/; max-age=86400; SameSite=Strict; Secure`;
           document.cookie = `js-auth-token=${data.data.token}; path=/; max-age=86400; SameSite=Strict; Secure`;
       }
-      
+
       setSuccess('Login bem-sucedido! Redirecionando...');
       setInfo('');
       const timeoutId = setTimeout(() => {
@@ -267,4 +267,4 @@ export default function Login() {
       </div>
     </>
   );
-} 
+}

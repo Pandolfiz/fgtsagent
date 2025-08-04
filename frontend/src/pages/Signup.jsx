@@ -19,7 +19,7 @@ export default function Signup() {
   const formatPhone = (value) => {
     // Remove tudo que não seja número
     const numbersOnly = value.replace(/\D/g, '');
-    
+
     // Aplica a máscara de telefone brasileiro
     if (numbersOnly.length <= 2) {
       return numbersOnly;
@@ -52,13 +52,13 @@ export default function Signup() {
       setError('A senha deve ter pelo menos 8 caracteres');
       return;
     }
-    
+
     // Validar formato do telefone (deve ter pelo menos 14 caracteres incluindo formatação)
     if (phone && phone.replace(/\D/g, '').length < 10) {
       setError('Número de telefone inválido. Use o formato (XX) XXXXX-XXXX');
       return;
     }
-    
+
     setLoading(true);
     try {
       // Chamar API do backend para registro incluindo o telefone
@@ -70,7 +70,7 @@ export default function Signup() {
       });
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.message || 'Falha ao registrar a conta');
-      
+
       // Verificar se o autologin foi realizado
       if (data.autoLogin && data.session) {
         // Login automático realizado no servidor, atualizar o estado de sessão do supabase
@@ -80,7 +80,7 @@ export default function Signup() {
             access_token: data.session.accessToken,
             refresh_token: data.session.refreshToken
           });
-          
+
           if (!setSessionError) {
             // Sessão definida com sucesso, redirecionar para o dashboard
             console.log('Login automático realizado com sucesso');
@@ -91,7 +91,7 @@ export default function Signup() {
           console.error('Erro ao definir sessão no frontend:', sessionErr);
         }
       }
-      
+
       // Se não houver autologin ou se falhar, redirecionar para login
       navigate(`/login?message=${encodeURIComponent(data.message)}&success=true`);
     } catch (err) {
@@ -201,4 +201,4 @@ export default function Signup() {
       </div>
     </>
   );
-} 
+}

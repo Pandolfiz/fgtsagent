@@ -50,53 +50,53 @@ const SignUpWithPlans = () => {
 
   const validateStep1 = () => {
     const { first_name, last_name, email, password, confirmPassword } = userData;
-    
+
     if (!first_name.trim()) {
       setError('Nome é obrigatório');
       return false;
     }
-    
+
     if (!last_name.trim()) {
       setError('Sobrenome é obrigatório');
       return false;
     }
-    
+
     if (!email.trim()) {
       setError('Email é obrigatório');
       return false;
     }
-    
+
     if (!/\S+@\S+\.\S+/.test(email)) {
       setError('Email inválido');
       return false;
     }
-    
+
     if (!password) {
       setError('Senha é obrigatória');
       return false;
     }
-    
+
     if (password.length < 6) {
       setError('Senha deve ter pelo menos 6 caracteres');
       return false;
     }
-    
+
     if (password !== confirmPassword) {
       setError('Senhas não coincidem');
       return false;
     }
-    
+
     // Validação de consentimentos obrigatórios
     if (!consent.terms) {
       setError('É necessário aceitar os Termos de Uso');
       return false;
     }
-    
+
     if (!consent.privacy) {
       setError('É necessário aceitar a Política de Privacidade');
       return false;
     }
-    
+
     return true;
   };
 
@@ -104,14 +104,14 @@ const SignUpWithPlans = () => {
     if (currentStep === 1) {
       if (!validateStep1()) return;
     }
-    
+
     if (currentStep === 2) {
       if (!selectedPlan) {
         setError('Selecione um plano para continuar');
         return;
       }
     }
-    
+
     setCurrentStep(prev => Math.min(prev + 1, 3));
     setError(null);
   };
@@ -149,10 +149,10 @@ const SignUpWithPlans = () => {
                   ? 'bg-cyan-400 border-cyan-400 text-gray-900'
                   : 'border-cyan-400/30 text-cyan-300'
               } ${
-                step.id < currentStep 
-                  ? 'cursor-pointer hover:bg-cyan-300 hover:border-cyan-300' 
-                  : step.id === currentStep 
-                    ? 'cursor-default' 
+                step.id < currentStep
+                  ? 'cursor-pointer hover:bg-cyan-300 hover:border-cyan-300'
+                  : step.id === currentStep
+                    ? 'cursor-default'
                     : 'cursor-not-allowed opacity-60'
               }`}
               onClick={() => handleStepClick(step.id)}
@@ -165,7 +165,7 @@ const SignUpWithPlans = () => {
               )}
             </div>
             <div className="mt-0.5 text-center hidden sm:block">
-              <p 
+              <p
                 className={`text-xs font-medium ${
                   currentStep >= step.id ? 'text-cyan-300' : 'text-cyan-200/60'
                 } ${
@@ -250,7 +250,7 @@ const SignUpWithPlans = () => {
 
           <div>
             <label className="block text-cyan-200 mb-0.5 text-sm">
-              Telefone 
+              Telefone
             </label>
             <input
               type="tel"
@@ -295,7 +295,7 @@ const SignUpWithPlans = () => {
           {/* Seção de Consentimentos */}
           <div className="mt-4 space-y-3">
             <h3 className="text-cyan-200 text-sm font-medium">Consentimentos Necessários</h3>
-            
+
             {/* Termos de Uso */}
             <div className="flex items-start gap-3">
               <input
@@ -402,7 +402,7 @@ const SignUpWithPlans = () => {
         <NeuralNetworkBackground />
       <div className="relative z-10 w-full max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-4">
         {renderStepIndicator()}
-        
+
         <div className="mb-4">
           {renderStepContent()}
         </div>
@@ -419,7 +419,7 @@ const SignUpWithPlans = () => {
                 Voltar
               </button>
             )}
-            
+
             <button
               onClick={handleNextStep}
               disabled={loading}
@@ -446,4 +446,4 @@ const SignUpWithPlans = () => {
   );
 };
 
-export default SignUpWithPlans; 
+export default SignUpWithPlans;
