@@ -39,7 +39,7 @@ class EvolutionCredentialController {
               if (instances && Array.isArray(instances)) {
                 const instance = instances.find(i => i.instance?.instanceName === cred.instance_name);
                 if (instance) {
-                  cred.status = instance.instance.status;
+                  cred.status = instance.instance.state; // ✅ Corrigido: usa 'state' em vez de 'status'
                   continue;
                 }
               }

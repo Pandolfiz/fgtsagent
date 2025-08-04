@@ -62,7 +62,7 @@ class EvolutionService {
       logger.info(`Buscando instâncias em: ${endpoint}`);
       
       const response = await axios.get(endpoint, {
-        headers: { apikey: config.evolutionApi.apiKey }
+        headers: { apikey: this.apiKey }
       });
 
       if (!response.data) {
@@ -89,7 +89,7 @@ class EvolutionService {
       const endpoint = `${this.baseUrl}/instance/connectionState/${encodeURIComponent(this.instanceName)}`;
       logger.info(`Buscando estado de conexão em: ${endpoint}`);
       const response = await axios.get(endpoint, {
-        headers: { apikey: config.evolutionApi.apiKey }
+        headers: { apikey: this.apiKey }
       });
       return response.data;
     } catch (err) {

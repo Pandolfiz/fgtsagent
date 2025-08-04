@@ -16,10 +16,10 @@ VITE_API_URL=http://localhost:3000
 # CONFIGURAÇÕES DO FACEBOOK SDK
 # ==============================================
 # App ID do Facebook (obtido no Facebook Developers)
-VITE_APP_META_APP_ID=seu_facebook_app_id_aqui
+VITE_APP_META_APP_ID=seu_META_APP_ID_aqui
 
 # Config ID para WhatsApp Business API (obtido no Facebook Developers)
-VITE_APP_META_CONFIG_ID=seu_facebook_config_id_aqui
+VITE_APP_META_CONFIG_ID=seu_META_APP_CONFIG_ID_aqui
 
 # ==============================================
 # CONFIGURAÇÕES DO SUPABASE (se necessário)

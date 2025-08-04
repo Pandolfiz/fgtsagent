@@ -60,8 +60,8 @@ Crie um arquivo `.env` no diretório `frontend/`:
 
 ```env
 # Facebook SDK Configuration
-VITE_APP_META_APP_ID=your_facebook_app_id_here
-VITE_APP_META_CONFIG_ID=your_facebook_config_id_here
+VITE_APP_META_APP_ID=your_META_APP_ID_here
+VITE_APP_META_CONFIG_ID=your_META_APP_CONFIG_ID_here
 
 # API Configuration
 VITE_API_URL=http://localhost:3000
@@ -125,8 +125,8 @@ VITE_API_URL=http://localhost:3000
 ```typescript
 // src/config/facebook.ts
 export const FACEBOOK_CONFIG = {
-  APP_ID: import.meta.env.VITE_APP_META_APP_ID || 'your_facebook_app_id_here',
-  CONFIG_ID: import.meta.env.VITE_APP_META_CONFIG_ID || 'your_facebook_config_id_here',
+  APP_ID: import.meta.env.VITE_APP_META_APP_ID || 'your_META_APP_ID_here',
+  CONFIG_ID: import.meta.env.VITE_APP_META_CONFIG_ID || 'your_META_APP_CONFIG_ID_here',
   API_VERSION: 'v23.0',
   // ... outras configurações
 };
