@@ -6,11 +6,32 @@ import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../utilities/apiFetch';
 import { cachedFetch } from '../utils/authCache'
 
+// ✅ SEGURANÇA: Logger condicional para produção
+const secureLog = {
+  info: (message, data) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.log(message, data);
+    }
+  },
+  error: (message, error) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.error(message, error);
+    }
+  },
+  warn: (message, data) => {
+    if (process.env.NODE_ENV === 'development') {
+      console.warn(message, data);
+    }
+  }
+};
+
 // ✅ SEGURANÇA: Funções de sanitização e validação robustas
 const SECURITY_CONFIG = {
   MAX_MESSAGE_LENGTH: 1000,
   MAX_SEARCH_LENGTH: 100,
   RATE_LIMIT_DELAY: 1000, // 1 segundo entre envios
+  MAX_REQUESTS_PER_MINUTE: 60, // Máximo de requisições por minuto
+  BACKOFF_MULTIPLIER: 2, // Multiplicador para backoff exponencial
   SESSION_CHECK_INTERVAL: 5 * 60 * 1000, // 5 minutos
   DANGEROUS_PATTERNS: /[<>\"'&]|javascript:|data:|vbscript:|on\w+\s*=|expression\s*\(|eval\s*\(/gi
 };
@@ -38,25 +59,42 @@ const sanitizeContent = (content) => {
 
 // ✅ SEGURANÇA: Validação rigorosa de entrada
 const validateUserInput = (input, type = 'message') => {
+  // ✅ VALIDAÇÃO: Verificar tipo de entrada
   if (typeof input !== 'string') {
     return { valid: false, error: 'Input deve ser uma string' };
   }
   
+  // ✅ VALIDAÇÃO: Verificar se não é null ou undefined
+  if (input === null || input === undefined) {
+    return { valid: false, error: 'Input não pode ser nulo' };
+  }
+  
   const trimmed = input.trim();
+  
+  // ✅ VALIDAÇÃO: Verificar se não é apenas espaços
+  if (!trimmed) {
+    return { valid: false, error: 'Input não pode estar vazio' };
+  }
+  
+  // ✅ VALIDAÇÃO: Verificar caracteres de controle
+  if (/[\u0000-\u001F\u007F-\u009F]/.test(trimmed)) {
+    return { valid: false, error: 'Input contém caracteres de controle inválidos' };
+  }
   
   switch (type) {
     case 'message':
-      if (!trimmed) {
-        return { valid: false, error: 'Mensagem não pode estar vazia' };
-      }
-      
       if (trimmed.length > SECURITY_CONFIG.MAX_MESSAGE_LENGTH) {
         return { valid: false, error: `Mensagem muito longa (máximo ${SECURITY_CONFIG.MAX_MESSAGE_LENGTH} caracteres)` };
       }
       
-      // Verificar padrões perigosos
+      // ✅ VALIDAÇÃO: Verificar padrões perigosos
       if (SECURITY_CONFIG.DANGEROUS_PATTERNS.test(trimmed)) {
         return { valid: false, error: 'Conteúdo não permitido' };
+      }
+      
+      // ✅ VALIDAÇÃO: Verificar URLs suspeitas
+      if (/https?:\/\/[^\s]+/.test(trimmed)) {
+        return { valid: false, error: 'URLs não são permitidas em mensagens' };
       }
       
       return { valid: true, value: sanitizeContent(trimmed) };
@@ -66,7 +104,21 @@ const validateUserInput = (input, type = 'message') => {
         return { valid: false, error: 'Busca muito longa' };
       }
       
+      // ✅ VALIDAÇÃO: Verificar padrões perigosos em busca
+      if (SECURITY_CONFIG.DANGEROUS_PATTERNS.test(trimmed)) {
+        return { valid: false, error: 'Termo de busca contém caracteres inválidos' };
+      }
+      
       return { valid: true, value: sanitizeContent(trimmed) };
+      
+    case 'phone':
+      // ✅ VALIDAÇÃO: Formato de telefone
+      const phoneRegex = /^[0-9]{10,15}$/;
+      if (!phoneRegex.test(trimmed)) {
+        return { valid: false, error: 'Formato de telefone inválido' };
+      }
+      
+      return { valid: true, value: trimmed };
       
     default:
       return { valid: true, value: sanitizeContent(trimmed) };
@@ -75,9 +127,88 @@ const validateUserInput = (input, type = 'message') => {
 
 
 
-// ✅ SEGURANÇA: Obter token CSRF
+// ✅ SEGURANÇA: Obter token CSRF com validação
 const getCSRFToken = () => {
-  return document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
+  
+  // ✅ VALIDAÇÃO: Verificar se o token tem formato válido
+  if (token && typeof token === 'string' && token.length >= 32) {
+    return token;
+  }
+  
+  return '';
+};
+
+// ✅ SEGURANÇA: Validação de estado
+const validateState = (state, type) => {
+  if (!state || typeof state !== 'object') {
+    return { valid: false, error: 'Estado inválido' };
+  }
+  
+  switch (type) {
+    case 'user':
+      if (!state.id || typeof state.id !== 'string') {
+        return { valid: false, error: 'ID de usuário inválido' };
+      }
+      return { valid: true };
+      
+    case 'contact':
+      if (!state.remote_jid || typeof state.remote_jid !== 'string') {
+        return { valid: false, error: 'ID de contato inválido' };
+      }
+      return { valid: true };
+      
+    case 'message':
+      if (!state.content || typeof state.content !== 'string') {
+        return { valid: false, error: 'Conteúdo de mensagem inválido' };
+      }
+      return { valid: true };
+      
+    default:
+      return { valid: true };
+  }
+};
+
+// ✅ SEGURANÇA: Sistema de rate limiting
+const rateLimiter = {
+  requests: [],
+  isBlocked: false,
+  blockUntil: 0,
+  
+  canMakeRequest() {
+    const now = Date.now();
+    
+    // Se está bloqueado, verificar se já pode fazer requisições novamente
+    if (this.isBlocked && now < this.blockUntil) {
+      return false;
+    }
+    
+    // Limpar requisições antigas (mais de 1 minuto)
+    this.requests = this.requests.filter(time => now - time < 60000);
+    
+    // Verificar se excedeu o limite
+    if (this.requests.length >= SECURITY_CONFIG.MAX_REQUESTS_PER_MINUTE) {
+      this.isBlocked = true;
+      this.blockUntil = now + 60000; // Bloquear por 1 minuto
+      return false;
+    }
+    
+    return true;
+  },
+  
+  recordRequest() {
+    if (this.canMakeRequest()) {
+      this.requests.push(Date.now());
+      return true;
+    }
+    return false;
+  },
+  
+  getRemainingRequests() {
+    const now = Date.now();
+    this.requests = this.requests.filter(time => now - time < 60000);
+    return Math.max(0, SECURITY_CONFIG.MAX_REQUESTS_PER_MINUTE - this.requests.length);
+  }
 };
 
 // ✅ SEGURANÇA: Garantir que token CSRF esteja carregado
@@ -236,16 +367,33 @@ export default function Chat() {
   const lastMessageIdRef = useRef(null) // Referência para o último ID de mensagem
   const timeoutsRef = useRef([])
   const intervalsRef = useRef([])
+  
+  // ✅ SEGURANÇA: Função de cleanup seguro
+  const cleanupResources = () => {
+    // Limpar todos os timeouts
+    timeoutsRef.current.forEach(timeoutId => {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+      }
+    });
+    timeoutsRef.current = [];
+    
+    // Limpar todos os intervals
+    intervalsRef.current.forEach(intervalId => {
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    });
+    intervalsRef.current = [];
+  };
+  
   const navigate = useNavigate()
   const [agentMode, setAgentMode] = useState('full');
   
   // Estados para gerenciar instâncias
   const [instances, setInstances] = useState([])
   
-  // Log para monitorar mudanças no estado instances
-  useEffect(() => {
-    console.log('[DEBUG] 📊 Estado instances mudou:', instances.length, 'instâncias');
-  }, [instances]);
+
   const [selectedInstanceId, setSelectedInstanceId] = useState('all') // 'all' para todas as instâncias
   const [isLoadingInstances, setIsLoadingInstances] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
@@ -404,24 +552,18 @@ export default function Chat() {
     setRetryQueue([]);
   };
 
-  // Cleanup de timeouts e intervals quando o componente for desmontado
+  // ✅ SEGURANÇA: Cleanup de timeouts e intervals quando o componente for desmontado
   useEffect(() => {
     return () => {
-      // Limpar todos os timeouts
-      timeoutsRef.current.forEach(timeoutId => clearTimeout(timeoutId));
-      timeoutsRef.current = [];
+      // Usar função de cleanup robusta
+      cleanupResources();
       
-      // Limpar todos os intervals
-      intervalsRef.current.forEach(intervalId => clearInterval(intervalId));
-      intervalsRef.current = [];
-      
-      // ✅ Cleanup do scroll debounce
+      // ✅ Cleanup adicional de refs específicos
       if (scrollTimeoutRef.current) {
         clearTimeout(scrollTimeoutRef.current);
         scrollTimeoutRef.current = null;
       }
       
-      // ✅ Cleanup do scroll de contatos
       if (contactsScrollTimeoutRef.current) {
         clearTimeout(contactsScrollTimeoutRef.current);
         contactsScrollTimeoutRef.current = null;
@@ -745,38 +887,33 @@ export default function Chat() {
 
   // Função para obter o nome da instância de um contato
   const getContactInstanceName = (contact) => {
-    console.log(`[INSTANCE-NAME] 🔍 Buscando nome da instância para: ${contact.name || contact.push_name}`);
-    console.log(`[INSTANCE-NAME] 📊 contact.instance_id:`, contact.instance_id);
-    console.log(`[INSTANCE-NAME] 📊 selectedInstanceId:`, selectedInstanceId);
-    console.log(`[INSTANCE-NAME] 📊 instances.length:`, instances.length);
-    console.log(`[INSTANCE-NAME] 📊 contactInstances:`, contactInstances);
-    console.log(`[INSTANCE-NAME] 📊 contact completo:`, contact);
+
     
     // Se já temos instance_id (quando filtrado por instância específica ou quando o contato tem instance_id)
     if (contact.instance_id) {
       const instance = instances.find(inst => inst.id === contact.instance_id);
       const result = instance?.agent_name || instance?.instance_name || null;
-      console.log(`[INSTANCE-NAME] ✅ Usando instance_id direto: ${result}`);
+
       return result;
     }
     
     // Se estamos vendo "todas as instâncias" e o contato não tem instance_id, usar o mapa de contatos
     if (selectedInstanceId === 'all') {
       const instanceId = contactInstances[contact.remote_jid];
-      console.log(`[INSTANCE-NAME] 📊 instanceId do mapa:`, instanceId);
+
       
       if (instanceId) {
         const instance = instances.find(inst => inst.id === instanceId);
         const instanceName = instance?.agent_name || instance?.instance_name || null;
         
-        console.log(`[INSTANCE-NAME] ✅ Nome da instância encontrado: ${instanceName}`);
+
         return instanceName;
       } else {
-        console.log(`[INSTANCE-NAME] ⚠️ Nenhuma instância mapeada para este contato`);
+
       }
     }
     
-    console.log(`[INSTANCE-NAME] ❌ Nenhum nome de instância encontrado`);
+
     return null;
   };
 
@@ -798,46 +935,44 @@ export default function Chat() {
   // Função para buscar instâncias dos contatos (SIMPLIFICADA - usar instance_id direto da tabela contacts)
   const fetchContactInstances = async (contacts) => {
     try {
-      console.log('[INSTANCES] 🔍 Iniciando busca de instâncias para', contacts.length, 'contatos');
+  
       const instanceMap = {};
       
       // Usar diretamente o instance_id da tabela contacts
       contacts.forEach((contact) => {
         if (contact.instance_id) {
           instanceMap[contact.remote_jid] = contact.instance_id;
-          console.log(`[INSTANCES] ✅ Contato ${contact.name || contact.push_name} -> Instância: ${contact.instance_id}`);
+  
         } else {
-          console.log(`[INSTANCES] ⚠️ Contato ${contact.name || contact.push_name} -> Sem instance_id na tabela contacts`);
+          
         }
       });
 
-      console.log('[INSTANCES] 📊 Mapa de instâncias:', instanceMap);
+      
       
       // Verificar se há instâncias diferentes
       const uniqueInstances = [...new Set(Object.values(instanceMap))];
       
       if (uniqueInstances.length > 1) {
-        console.log(`[INSTANCES] ✅ ${Object.keys(instanceMap).length} contatos em ${uniqueInstances.length} instâncias`);
+
         // Se ainda não estava em "all", mudar automaticamente
         if (selectedInstanceId !== 'all') {
           setSelectedInstanceId('all');
         }
       } else {
-        console.log(`[INSTANCES] ℹ️ Todos os contatos estão na mesma instância ou sem instância mapeada`);
+
       }
       
       setContactInstances(instanceMap);
       
     } catch (error) {
-      console.error('[INSTANCES] ❌ Erro ao buscar instâncias dos contatos:', error);
+
     }
   };
 
   // Função para buscar instâncias do usuário
   const fetchInstances = async () => {
-    console.log('[DEBUG] 🚀 fetchInstances iniciada');
-    console.log('[DEBUG] 🔍 Verificando se currentUser existe:', !!currentUser);
-    console.log('[DEBUG] 🔍 currentUser ID:', currentUser?.id);
+
     
     try {
       setIsLoadingInstances(true);
@@ -860,25 +995,10 @@ export default function Chat() {
       
       const data = await response.json();
       
-      console.log('[DEBUG] 📊 Resposta da API /api/whatsapp-credentials:', {
-        success: data.success,
-        totalInstances: data.data?.length || 0,
-        instances: data.data?.map(i => ({
-          id: i.id,
-          name: i.agent_name || i.instance_name,
-          status: i.status,
-          connection_type: i.connection_type
-        })) || []
-      });
+
       
       if (data.success && data.data) {
-        // Log temporário para debug - remover depois
-        console.log('[DEBUG] Todas as instâncias retornadas pela API:', data.data.map(i => ({
-          id: i.id,
-          name: i.agent_name || i.instance_name,
-          status: i.status,
-          connection_type: i.connection_type
-        })));
+
         
         // ✅ Filtrar instâncias ativas (incluindo mais status válidos)
         const activeInstances = data.data.filter(instance => {
@@ -886,21 +1006,15 @@ export default function Chat() {
           const validStatuses = ['connected', 'open', 'pending', 'ready'];
           const isActive = validStatuses.includes(instance.status);
           
-          console.log(`[DEBUG] Instância ${instance.connection_type} ${instance.id}: status=${instance.status}, ativa=${isActive}`);
+
           
           return isActive;
         });
         
-        console.log('[DEBUG] 📝 Definindo instâncias no estado:', activeInstances.length);
+
         setInstances(activeInstances);
         
-        // Log temporário para debug - remover depois
-        console.log('[DEBUG] Instâncias ativas após filtro:', activeInstances.map(i => ({
-          id: i.id,
-          name: i.agent_name || i.instance_name,
-          status: i.status,
-          connection_type: i.connection_type
-        })));
+
         
         if (activeInstances.length > 0) {
           console.log(`✅ ${activeInstances.length} instância(s) WhatsApp encontrada(s)`);
@@ -911,7 +1025,7 @@ export default function Chat() {
         setInstances([]);
       }
     } catch (error) {
-      console.error('[INSTANCES] Erro ao buscar instâncias:', error);
+
       setInstances([]);
       // Não mostrar erro para não interferir na UX se não houver instâncias
     } finally {
@@ -1004,11 +1118,7 @@ export default function Chat() {
           // Backend já ordena por update_at - manter ordem original
           const sortedContacts = contactsWithLastMessages;
           
-          console.log(`[ORDER] 📋 Contatos com última mensagem (ordem do backend):`, sortedContacts.slice(0, 3).map(c => ({
-            name: c.push_name || c.name,
-            update_at: c.update_at,
-            last_message: c.last_message?.substring(0, 30) + '...'
-          })));
+
         
         if (reset) {
           // Primeira carga - substituir lista
@@ -1098,9 +1208,7 @@ export default function Chat() {
 
   // Buscar instâncias quando o usuário estiver disponível
   useEffect(() => {
-    console.log('[DEBUG] 🔄 useEffect fetchInstances - currentUser:', !!currentUser);
     if (currentUser) {
-      console.log('[DEBUG] 🎯 Chamando fetchInstances...');
       fetchInstances();
     }
   }, [currentUser]);
@@ -1110,7 +1218,7 @@ export default function Chat() {
     if (currentUser) {
       // ✅ PROTEÇÃO: Não interferir durante carregamento inicial
       if (isInitialLoad) {
-        console.log('[INSTANCES] ⏸️ Adiando fetchContacts - carregamento inicial em andamento');
+    
         return;
       }
       
@@ -1133,7 +1241,7 @@ export default function Chat() {
   // Buscar instâncias dos contatos quando as instâncias forem carregadas
   useEffect(() => {
     if (instances.length > 0 && contacts.length > 0 && Object.keys(contactInstances).length === 0) {
-      console.log('[INSTANCES] 🔄 Instâncias carregadas, buscando mapeamento para contatos existentes');
+  
       fetchContactInstances(contacts);
     }
   }, [instances, contacts]);
@@ -2253,8 +2361,17 @@ export default function Chat() {
       return;
     }
     
-    if (!currentContact || !currentUser) {
-      setError('Dados de usuário ou contato indisponíveis');
+    // ✅ SEGURANÇA: Validar estado do usuário e contato
+    const userValidation = validateState(currentUser, 'user');
+    const contactValidation = validateState(currentContact, 'contact');
+    
+    if (!userValidation.valid) {
+      setError(`Erro de estado: ${userValidation.error}`);
+      return;
+    }
+    
+    if (!contactValidation.valid) {
+      setError(`Erro de estado: ${contactValidation.error}`);
       return;
     }
     
@@ -2266,7 +2383,13 @@ export default function Chat() {
       return;
     }
     
-    // ✅ SEGURANÇA: Rate limiting mais rigoroso
+    // ✅ SEGURANÇA: Rate limiting robusto
+    if (!rateLimiter.canMakeRequest()) {
+      const remaining = rateLimiter.getRemainingRequests();
+      setError(`Muitas requisições. Aguarde um momento. (${remaining} restantes)`);
+      return;
+    }
+    
     const now = Date.now();
     if (now - lastMessageTimestamp < SECURITY_CONFIG.RATE_LIMIT_DELAY) {
       console.log('Ignorando clique rápido:', now - lastMessageTimestamp, 'ms desde o último envio');
@@ -2275,6 +2398,12 @@ export default function Chat() {
     }
     
     try {
+      // ✅ SEGURANÇA: Registrar requisição no rate limiter
+      if (!rateLimiter.recordRequest()) {
+        setError('Limite de requisições excedido. Tente novamente em alguns segundos.');
+        return;
+      }
+      
       setIsSendingMessage(true);
       // Atualizar timestamp e ID da última mensagem
       setLastMessageTimestamp(now);
@@ -2307,19 +2436,23 @@ export default function Chat() {
         messageId: messageId // Enviar ID único para backend
       };
       
-      console.log('Enviando nova mensagem:', payload);
+      secureLog.info('Enviando nova mensagem:', { conversationId: payload.conversationId, contentLength: payload.content.length });
       
-      // ✅ SEGURANÇA: Garantir token CSRF antes de enviar
+      // ✅ SEGURANÇA: Garantir token CSRF válido antes de enviar
       const csrfToken = await ensureCSRFToken();
+      if (!csrfToken) {
+        setError('Erro de segurança: Token CSRF não disponível');
+        return;
+      }
+      
       const headers = {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrfToken
       };
       
-      if (csrfToken) {
-        headers['X-CSRF-Token'] = csrfToken;
+      // ✅ SEGURANÇA: Log apenas em desenvolvimento
+      if (process.env.NODE_ENV === 'development') {
         console.log('[CSRF] Token incluído na requisição:', csrfToken.substring(0, 10) + '...');
-      } else {
-        console.warn('[CSRF] Token não disponível para requisição');
       }
       
       const response = await fetch('/api/messages', {
@@ -2688,10 +2821,7 @@ export default function Chat() {
     
     async function fetchContactData() {
       try {
-        console.log(`Buscando dados detalhados para contato: ${currentContact.remote_jid}`, {
-          contact: currentContact,
-          hasLeadId: Boolean(currentContact.lead_id)
-        });
+
         
         // Não limpar dados anteriores durante o carregamento
         // Em vez disso, definimos apenas uma flag de carregamento
@@ -3394,7 +3524,7 @@ export default function Chat() {
                     {/* Seletor de Instâncias Customizado */}
                     {(() => {
                       const shouldShow = instances.length > 0 || isLoadingInstances;
-                      console.log(`[DEBUG] Seletor - Instâncias: ${instances.length}, Loading: ${isLoadingInstances}, ShouldShow: ${shouldShow}`);
+                  
                       return shouldShow && (
                       <div className="mb-3 relative" ref={dropdownRef}>
                         <button
@@ -3708,7 +3838,7 @@ export default function Chat() {
                                   <div
                                       className={`max-w-[75%] shadow-lg ${bgColorClass} p-2 border ${borderClass} ${msg.temp ? 'opacity-70' : ''}`}
                                   >
-                                    <p dangerouslySetInnerHTML={{ __html: msg.content }}></p>
+                                    <p>{sanitizeContent(msg.content)}</p>
                                       <div className={`text-xs mt-1 text-right whitespace-nowrap ${textColorClass} flex items-center justify-end`}>
                                       {formatDate(msg.created_at)}
                                         {msg.temp ? (
