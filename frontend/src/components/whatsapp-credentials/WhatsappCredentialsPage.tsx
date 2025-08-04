@@ -1,14 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api, EvolutionCredential } from '../../utilities/api';
-import { FaWhatsapp, FaEdit, FaTrash, FaSync, FaPlus, FaCircle, FaCheck, FaExclamation, FaQuestionCircle, FaHourglass, FaBullhorn, FaPhone, FaBroadcastTower, FaBan } from 'react-icons/fa';
+import { FaWhatsapp, FaEdit, FaTrash, FaSync, FaPlus, FaCircle, FaCheck, FaExclamation, FaQuestionCircle, FaHourglass, FaBullhorn, FaPhone, FaBroadcastTower, FaBan, FaLink, FaFacebook } from 'react-icons/fa';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
 import Navbar from '../Navbar';
 import { QRCodeSVG } from 'qrcode.react';
 import { ErrorModal } from '../ErrorModal';
 import { useErrorModal } from '../../hooks/useErrorModal';
+import { FACEBOOK_CONFIG, isFacebookConfigured, FACEBOOK_ERRORS } from '../../config/facebook';
 
-export function EvolutionCredentialsPage() {
+export function WhatsappCredentialsPage() {
   const [credentials, setCredentials] = useState<EvolutionCredential[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -19,6 +20,11 @@ export function EvolutionCredentialsPage() {
   // Estado para exibir modal de QR Code
   const [showQrModal, setShowQrModal] = useState(false);
   const [qrData, setQrData] = useState<{ base64?: string; code?: string; pairingCode?: string } | null>(null);
+  
+  // Estados para Facebook SDK e Embedded Signup
+  const [showMetaSignupModal, setShowMetaSignupModal] = useState(false);
+  const [metaSignupStatus, setMetaSignupStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
+  const [fbSDKLoaded, setFbSDKLoaded] = useState(false);
   
   // Form states
   const [formData, setFormData] = useState({
@@ -66,6 +72,11 @@ export function EvolutionCredentialsPage() {
   // Estado para confirmação de novo SMS
   const [pendingNewSMS, setPendingNewSMS] = useState(false);
 
+  // Estados para modal do iframe da Meta
+  const [showMetaIframeModal, setShowMetaIframeModal] = useState(false);
+  const [metaConnectionStatus, setMetaConnectionStatus] = useState<'idle' | 'connecting' | 'connected' | 'error'>('idle');
+  const [metaIframeUrl, setMetaIframeUrl] = useState('https://business.facebook.com/wa/manage/accounts');
+
   // Hook para gerenciar modais de erro
   const { modalState, showError, showWarning, showInfo, showSuccess, closeModal } = useErrorModal();
 
@@ -76,6 +87,247 @@ export function EvolutionCredentialsPage() {
       executeNewSMS();
     }
   }, [modalState.isOpen, pendingNewSMS]);
+
+  // Debug: Monitorar mudanças no status do Meta Signup
+  useEffect(() => {
+    console.log('🔄 Status do Meta Signup mudou para:', metaSignupStatus);
+  }, [metaSignupStatus]);
+
+  // Carregar Facebook SDK
+  useEffect(() => {
+    loadFacebookSDK();
+  }, []);
+
+  // Função para carregar Facebook SDK
+            const loadFacebookSDK = () => {
+            console.log('🔍 Iniciando carregamento do Facebook SDK...');
+            console.log('📍 URL atual:', window.location.href);
+            console.log('🔒 Protocolo:', window.location.protocol);
+            console.log('🌐 Hostname:', window.location.hostname);
+          
+            // Verificar se as configurações estão definidas
+            if (!isFacebookConfigured()) {
+              console.warn('⚠️ Facebook SDK não configurado ou domínio não autorizado.');
+              showError(FACEBOOK_ERRORS.CONFIGURATION_INCOMPLETE, 'Erro de Configuração');
+              return;
+            }
+          
+            // Verificar se o SDK já foi carregado
+            if (window.FB) {
+              setFbSDKLoaded(true);
+              console.log('✅ Facebook SDK já carregado');
+              return;
+            }
+          
+            console.log('🔄 Carregando Facebook SDK...');
+          
+            // Carregar SDK do Facebook
+            window.fbAsyncInit = function() {
+              try {
+                console.log('🔧 Inicializando Facebook SDK com App ID:', FACEBOOK_CONFIG.APP_ID);
+                
+                window.FB.init({
+                  appId: FACEBOOK_CONFIG.APP_ID,
+                  ...FACEBOOK_CONFIG.SDK_CONFIG,
+                  version: FACEBOOK_CONFIG.API_VERSION
+                });
+                
+                setFbSDKLoaded(true);
+                console.log('✅ Facebook SDK carregado com sucesso');
+                
+                // Verificar status de login após carregamento
+                window.FB.getLoginStatus(function(response) {
+                  console.log('📱 Status de login do Facebook:', response);
+                });
+                
+              } catch (error) {
+                console.error('❌ Erro ao inicializar Facebook SDK:', error);
+                setFbSDKLoaded(false);
+                showError('Erro ao carregar Facebook SDK: ' + error.message, 'Erro de SDK');
+              }
+            };
+          
+            // Carregar SDK assincronamente
+            (function(d, s, id) {
+              var js, fjs = d.getElementsByTagName(s)[0];
+              if (d.getElementById(id)) return;
+              js = d.createElement(s); js.id = id;
+              js.src = "https://connect.facebook.net/en_US/sdk.js";
+              js.async = true;
+              js.defer = true;
+              js.crossOrigin = "anonymous";
+              if (fjs.parentNode) {
+                fjs.parentNode.insertBefore(js, fjs);
+              }
+            }(document, 'script', 'facebook-jssdk'));
+          };
+
+  // Listener para mensagens do Facebook SDK
+  useEffect(() => {
+    const handleFacebookMessage = (event: MessageEvent) => {
+      if (!event.origin.endsWith('facebook.com')) return;
+      
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'WA_EMBEDDED_SIGNUP') {
+          console.log('📱 Mensagem do Facebook SDK:', data);
+          handleFacebookSignupMessage(data);
+        }
+      } catch (error) {
+        console.log('📱 Mensagem do Facebook SDK (raw):', event.data);
+      }
+    };
+
+    window.addEventListener('message', handleFacebookMessage);
+    return () => {
+      window.removeEventListener('message', handleFacebookMessage);
+    };
+  }, []);
+
+  // Função para lidar com mensagens do Facebook SDK
+  const handleFacebookSignupMessage = (data: any) => {
+    if (data.status === 'completed' || data.status === 'success') {
+      setMetaSignupStatus('connected');
+      showSuccess('Conta do WhatsApp Business conectada com sucesso!', 'Conexão Realizada');
+      
+      // Recarregar credenciais após conexão
+      setTimeout(() => {
+        loadCredentials();
+      }, 2000);
+    } else if (data.status === 'error' || data.status === 'failed') {
+      setMetaSignupStatus('error');
+      showError('Erro ao conectar conta do WhatsApp Business. Tente novamente.', 'Erro de Conexão');
+    }
+  };
+
+  // Função para abrir modal do Facebook Signup
+            const handleOpenMetaSignup = () => {
+            console.log('📱 Abrindo modal do Meta Signup...');
+            
+            // Verificar se as configurações estão definidas
+            if (!isFacebookConfigured()) {
+              console.error('❌ Facebook SDK não configurado');
+              showError(FACEBOOK_ERRORS.NOT_CONFIGURED, 'Erro de Configuração');
+              return;
+            }
+            
+            // Iniciar o processo diretamente
+            setMetaSignupStatus('idle');
+            setShowMetaSignupModal(true);
+            
+            // Iniciar o processo de login automaticamente após um pequeno delay
+            setTimeout(() => {
+              launchWhatsAppSignup();
+            }, 500);
+          };
+
+  // Função para iniciar o processo de signup do Facebook
+            const launchWhatsAppSignup = () => {
+            console.log('🚀 Iniciando processo de conexão com a Meta...');
+            
+            if (!isFacebookConfigured()) {
+              console.error('❌ Facebook SDK não configurado');
+              setMetaSignupStatus('error');
+              showError(FACEBOOK_ERRORS.NOT_CONFIGURED, 'Erro de Configuração');
+              return;
+            }
+          
+            if (!window.FB) {
+              console.error('❌ Facebook SDK não carregado');
+              setMetaSignupStatus('error');
+              showError(FACEBOOK_ERRORS.SDK_NOT_LOADED, 'Erro de SDK');
+              return;
+            }
+          
+            setMetaSignupStatus('connecting');
+          
+            // Callback para resposta do Facebook
+            const fbLoginCallback = (response: any) => {
+              console.log('📱 Resposta do Facebook:', response);
+              
+              if (response.authResponse) {
+                const code = response.authResponse.code;
+                console.log('✅ Código de autorização recebido:', code);
+                
+                // Enviar código para o backend
+                handleFacebookAuthCode(code);
+              } else if (response.status === 'not_authorized') {
+                console.log('❌ Usuário não autorizou o app');
+                setMetaSignupStatus('error');
+                showError('Você precisa autorizar o app para continuar. Tente novamente.', 'Autorização Necessária');
+              } else if (response.status === 'unknown') {
+                console.log('❌ Erro desconhecido no login');
+                setMetaSignupStatus('error');
+                showError('Erro desconhecido durante o login. Verifique sua conexão e tente novamente.', 'Erro de Conexão');
+              } else {
+                console.log('❌ Usuário cancelou login ou não autorizou completamente');
+                setMetaSignupStatus('error');
+                showError(FACEBOOK_ERRORS.LOGIN_CANCELLED, 'Autorização Cancelada');
+              }
+            };
+          
+            // Iniciar login do Facebook com Embedded Signup
+            try {
+              window.FB.login(fbLoginCallback, {
+                config_id: FACEBOOK_CONFIG.CONFIG_ID,
+                ...FACEBOOK_CONFIG.SIGNUP_CONFIG,
+                extras: {
+                  ...FACEBOOK_CONFIG.SIGNUP_CONFIG.extras,
+                  setup: {
+                    // Dados pré-preenchidos (opcional)
+                    business_name: currentUser?.full_name || currentUser?.displayName || 'Minha Empresa',
+                    email: currentUser?.email || '',
+                  },
+                }
+              });
+            } catch (error) {
+              console.error('❌ Erro ao iniciar login do Facebook:', error);
+              setMetaSignupStatus('error');
+              showError('Erro ao iniciar o processo de login. Tente novamente.', 'Erro de Login');
+            }
+          };
+
+  // Função para processar código de autorização do Facebook
+  const handleFacebookAuthCode = async (code: string) => {
+    try {
+      console.log('🔄 Processando código de autorização...');
+      
+      // Enviar código para o backend processar
+      const response = await api.whatsappCredentials.processFacebookAuth(code);
+      const result = await response.json();
+      
+      if (result.success) {
+        console.log('✅ Autenticação da Meta processada com sucesso:', result.data);
+        
+        setMetaSignupStatus('connected');
+        showSuccess(result.message || 'Conta do WhatsApp Business conectada com sucesso!', 'Conexão Realizada');
+        
+        // Recarregar credenciais
+        setTimeout(() => {
+          loadCredentials();
+        }, 2000);
+      } else {
+        console.error('❌ Erro na autenticação da Meta:', result.message);
+        setMetaSignupStatus('error');
+        showError(result.message || 'Erro ao processar autenticação da Meta', 'Erro de Conexão');
+      }
+      
+    } catch (err) {
+      console.error('❌ Erro ao processar código de autorização:', err);
+      setMetaSignupStatus('error');
+      showError('Erro ao processar autorização: ' + (err instanceof Error ? err.message : String(err)), 'Erro de Conexão');
+    }
+  };
+
+  // Função para fechar modal do Facebook Signup
+  const handleCloseMetaSignup = () => {
+    setShowMetaSignupModal(false);
+    setMetaSignupStatus('idle');
+  };
+
+
+
+
 
   // Adicionar novo número na Meta
   const handleAddMetaPhoneNumber = async (e: React.FormEvent) => {
@@ -296,11 +548,10 @@ export function EvolutionCredentialsPage() {
     
     if (type === 'whatsapp_business') {
       // Mostrar formulário atual para WhatsApp Business
-    setShowAddModal(true);
+      setShowAddModal(true);
     } else {
-      // Para anúncios, mostrar formulário específico
-      setAdsFormData({ agent_name: '', phone: '' });
-      setShowAdsModal(true);
+      // Para anúncios, abrir modal do Meta Signup (igual ao botão "Conectar Meta")
+      handleOpenMetaSignup();
     }
   };
 
@@ -652,6 +903,17 @@ export function EvolutionCredentialsPage() {
       handleRequestVerificationCode(phoneNumberId, metaPhoneData.accessToken);
       setPendingNewSMS(false);
     }
+  };
+
+  // Função para abrir Meta Business Suite em nova aba
+  const handleOpenMetaInNewTab = () => {
+    window.open(metaIframeUrl, '_blank');
+  };
+
+  // Função para fechar modal do iframe da Meta
+  const handleCloseMetaIframe = () => {
+    setShowMetaIframeModal(false);
+    setMetaConnectionStatus('idle');
   };
 
   // Carregar script do Google Calendar
@@ -1171,9 +1433,24 @@ export function EvolutionCredentialsPage() {
     setError(null);
 
     try {
-      // Recarregar credenciais para obter status atualizado da Evolution API
-      await loadCredentials();
-      console.log('✅ Status da Evolution API atualizado');
+      // Fazer verificação real do status via Evolution API
+      const response = await api.evolution.checkEvolutionStatus(credential.id);
+      
+      if (response.success && response.data) {
+        // Atualizar a credencial na lista com o novo status
+        setCredentials(prev => 
+          prev.map(cred => 
+            cred.id === credential.id 
+              ? { ...cred, status: response.data!.status }
+              : cred
+          )
+        );
+        
+        console.log('✅ Status da Evolution API verificado:', response.data);
+        showSuccess('Status verificado com sucesso!', 'Verificação Realizada');
+      } else {
+        setError(response.message || 'Erro ao verificar status da Evolution API');
+      }
     } catch (err) {
       console.error('❌ Erro ao verificar status da Evolution API:', err);
       setError('Erro ao verificar status: ' + (err instanceof Error ? err.message : String(err)));
@@ -1393,6 +1670,13 @@ export function EvolutionCredentialsPage() {
               <span>Verificar Todos</span>
             </button>
             <button
+              onClick={handleOpenMetaSignup}
+              className="px-3 sm:px-4 py-2 bg-purple-600/20 text-purple-300 rounded-lg hover:bg-purple-600/30 transition-colors flex items-center justify-center space-x-2 text-sm sm:text-base"
+            >
+              <FaFacebook className="mr-2" />
+              <span>Conectar Meta</span>
+            </button>
+            <button
               onClick={handleAddNew}
               className="px-3 sm:px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 text-white font-medium shadow-md hover:shadow-lg transition-all duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-cyan-500 flex items-center justify-center text-sm sm:text-base"
             >
@@ -1541,8 +1825,8 @@ export function EvolutionCredentialsPage() {
                   {/* Info grid mais compacto */}
                   <div className="grid grid-cols-2 gap-2 mb-3">
                     <div className="text-center p-2 rounded-lg bg-white/5">
-                      <p className="text-xs text-cyan-300 mb-1">Instância</p>
-                      <p className="font-medium text-white truncate text-xs">{credential.instance_name || '-'}</p>
+                      <p className="text-xs text-cyan-300 mb-1">Agente</p>
+                      <p className="font-medium text-white truncate text-xs">{credential.agent_name || '-'}</p>
                     </div>
                     <div className="text-center p-2 rounded-lg bg-white/5">
                       <p className="text-xs text-cyan-300 mb-1">Criado em</p>
@@ -1726,11 +2010,11 @@ export function EvolutionCredentialsPage() {
                             </h4>
                             <p className="text-gray-300 text-sm leading-relaxed">
                               Use a API oficial do WhatsApp para campanhas de marketing e anúncios em massa. 
-                              Requer configuração especial com nossa equipe.
+                              Conecte sua conta do WhatsApp Business através do Facebook.
                             </p>
                             <div className="mt-3 flex items-center text-purple-300 text-sm">
-                              <FaHourglass className="mr-2" />
-                              Requer agendamento de configuração
+                              <FaFacebook className="mr-2" />
+                              Conectar via Facebook
                             </div>
                           </div>
                         </div>
@@ -2573,6 +2857,243 @@ export function EvolutionCredentialsPage() {
                       >
                         {loading ? 'Enviando...' : 'Enviar SMS'}
                       </button>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition>
+
+        {/* Modal do iframe da Meta */}
+        <Transition appear show={showMetaIframeModal} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={handleCloseMetaIframe}>
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0"
+              enterTo="opacity-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100"
+              leaveTo="opacity-0"
+            >
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
+            </Transition.Child>
+
+            <div className="fixed inset-0 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0 scale-95"
+                  enterTo="opacity-100 scale-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100 scale-100"
+                  leaveTo="opacity-0 scale-95"
+                >
+                  <Dialog.Panel className="w-full max-w-6xl transform overflow-hidden rounded-lg bg-gradient-to-b from-purple-900 to-slate-900 p-6 text-left align-middle shadow-xl transition-all border border-purple-700/50">
+                    <Dialog.Title
+                      as="h3"
+                      className="text-xl font-semibold leading-6 text-purple-100 mb-4 flex items-center justify-between"
+                    >
+                      <div className="flex items-center">
+                        <FaLink className="mr-2 text-purple-400" />
+                        Conectar Conta do WhatsApp Business
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        <button
+                          onClick={handleOpenMetaInNewTab}
+                          className="px-3 py-1 text-sm bg-purple-600/20 text-purple-300 rounded hover:bg-purple-600/30 transition-colors flex items-center"
+                        >
+                          ↗
+                          Abrir em Nova Aba
+                        </button>
+                        <button
+                          onClick={handleCloseMetaIframe}
+                          className="text-purple-300 hover:text-purple-100 transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    </Dialog.Title>
+                    
+                    <div className="mb-4">
+                      <div className="bg-purple-800/20 border border-purple-700/30 rounded-lg p-4 mb-4">
+                        <h4 className="text-purple-200 font-medium mb-2">📋 Instruções:</h4>
+                        <ol className="text-purple-100 text-sm space-y-1 list-decimal list-inside">
+                          <li>Faça login na sua conta do Facebook Business</li>
+                          <li>Navegue até a seção "WhatsApp Business"</li>
+                          <li>Clique em "Adicionar número de telefone"</li>
+                          <li>Siga o processo de verificação da Meta</li>
+                          <li>Após a conexão, volte aqui e clique em "Verificar Todos"</li>
+                        </ol>
+                      </div>
+                      
+                      {metaConnectionStatus === 'connecting' && (
+                        <div className="bg-blue-800/20 border border-blue-700/30 rounded-lg p-3 mb-4">
+                          <div className="flex items-center">
+                            <div className="animate-spin rounded-full h-4 w-4 border-t-2 border-b-2 border-blue-400 mr-2"></div>
+                            <span className="text-blue-200 text-sm">Conectando com a Meta...</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {metaConnectionStatus === 'connected' && (
+                        <div className="bg-green-800/20 border border-green-700/30 rounded-lg p-3 mb-4">
+                          <div className="flex items-center">
+                            <FaCheck className="text-green-400 mr-2" />
+                            <span className="text-green-200 text-sm">Conta conectada com sucesso!</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {metaConnectionStatus === 'error' && (
+                        <div className="bg-red-800/20 border border-red-700/30 rounded-lg p-3 mb-4">
+                          <div className="flex items-center">
+                            <FaExclamation className="text-red-400 mr-2" />
+                            <span className="text-red-200 text-sm">Erro na conexão. Tente novamente.</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="relative">
+                      <iframe
+                        src={metaIframeUrl}
+                        className="w-full h-96 border-0 rounded-lg bg-white"
+                        title="Meta WhatsApp Business"
+                        sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-popups-to-escape-sandbox"
+                        allow="camera; microphone; geolocation"
+                      />
+                      
+                      {/* Overlay para caso o iframe não carregue */}
+                      <div className="absolute inset-0 bg-gray-800/50 flex items-center justify-center rounded-lg" style={{ display: 'none' }}>
+                        <div className="text-center">
+                          <FaExclamation className="text-4xl text-gray-400 mx-auto mb-2" />
+                          <p className="text-gray-300">Não foi possível carregar o iframe da Meta</p>
+                          <button
+                            onClick={handleOpenMetaInNewTab}
+                            className="mt-2 px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 transition-colors"
+                          >
+                            Abrir em Nova Aba
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    <div className="mt-4 flex justify-between items-center">
+                      <p className="text-purple-200 text-sm">
+                        💡 <strong>Dica:</strong> Se o iframe não carregar, use o botão "Abrir em Nova Aba"
+                      </p>
+                      <div className="flex space-x-2">
+                        <button
+                          onClick={handleCloseMetaIframe}
+                          className="px-4 py-2 rounded-md bg-slate-700 text-white hover:bg-slate-600 transition-colors"
+                        >
+                          Fechar
+                        </button>
+                        <button
+                          onClick={handleCheckAllStatus}
+                          className="px-4 py-2 rounded-md bg-purple-600 text-white hover:bg-purple-700 transition-colors"
+                        >
+                          Verificar Conexões
+                        </button>
+                      </div>
+                    </div>
+                  </Dialog.Panel>
+                </Transition.Child>
+              </div>
+            </div>
+          </Dialog>
+        </Transition>
+
+        {/* Modal do Meta Signup */}
+        <Transition appear show={showMetaSignupModal} as={Fragment}>
+          <Dialog as="div" className="relative z-50" onClose={handleCloseMetaSignup}>
+            <Transition.Child
+              as={Fragment}
+              enter="ease-out duration-300"
+              enterFrom="opacity-0"
+              enterTo="opacity-100"
+              leave="ease-in duration-200"
+              leaveFrom="opacity-100"
+              leaveTo="opacity-0"
+            >
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm" />
+            </Transition.Child>
+
+            <div className="fixed inset-0 overflow-y-auto">
+              <div className="flex min-h-full items-center justify-center p-4 text-center">
+                <Transition.Child
+                  as={Fragment}
+                  enter="ease-out duration-300"
+                  enterFrom="opacity-0 scale-95"
+                  enterTo="opacity-100 scale-100"
+                  leave="ease-in duration-200"
+                  leaveFrom="opacity-100 scale-100"
+                  leaveTo="opacity-0 scale-95"
+                >
+                  <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-lg bg-gradient-to-b from-purple-900 to-slate-900 p-6 text-left align-middle shadow-xl transition-all border border-purple-700/50">
+                    <Dialog.Title
+                      as="h3"
+                      className="text-lg font-semibold leading-6 text-purple-100 mb-4 flex items-center"
+                    >
+                      <FaFacebook className="mr-2 text-purple-400" />
+                      Conectar Conta do WhatsApp Business
+                    </Dialog.Title>
+                    
+                    <div className="mb-6">
+                      <p className="text-gray-300 text-sm mb-4">
+                        Conecte sua conta do WhatsApp Business através do Facebook para usar a API oficial da Meta.
+                      </p>
+                      
+                      {metaSignupStatus === 'connecting' && (
+                        <div className="bg-blue-800/20 border border-blue-700/30 rounded-lg p-4 mb-4">
+                          <div className="text-center">
+                            <div className="animate-spin rounded-full h-8 w-8 border-t-2 border-b-2 border-blue-400 mx-auto mb-3"></div>
+                            <p className="text-blue-200 text-sm mb-2">Conectando com o Facebook...</p>
+                            <p className="text-blue-100 text-xs">Aguarde enquanto o Facebook carrega o processo de autorização.</p>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {metaSignupStatus === 'connected' && (
+                        <div className="bg-green-800/20 border border-green-700/30 rounded-lg p-3 mb-4">
+                          <div className="flex items-center">
+                            <FaCheck className="text-green-400 mr-2" />
+                            <span className="text-green-200 text-sm">Conta conectada com sucesso!</span>
+                          </div>
+                        </div>
+                      )}
+                      
+                      {metaSignupStatus === 'error' && (
+                        <div className="bg-red-800/20 border border-red-700/30 rounded-lg p-3 mb-4">
+                          <div className="flex items-center">
+                            <FaExclamation className="text-red-400 mr-2" />
+                            <span className="text-red-200 text-sm">Erro na conexão. Tente novamente.</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex justify-end space-x-3">
+                      <button
+                        type="button"
+                        onClick={handleCloseMetaSignup}
+                        className="px-4 py-2 rounded-md bg-slate-700 text-white hover:bg-slate-600 transition-colors"
+                      >
+                        Fechar
+                      </button>
+                      {metaSignupStatus === 'error' && (
+                        <button
+                          type="button"
+                          onClick={launchWhatsAppSignup}
+                          className="px-4 py-2 rounded-md bg-purple-600 text-white hover:bg-purple-700 transition-colors flex items-center"
+                        >
+                          <FaFacebook className="mr-2" />
+                          Tentar Novamente
+                        </button>
+                      )}
                     </div>
                   </Dialog.Panel>
                 </Transition.Child>

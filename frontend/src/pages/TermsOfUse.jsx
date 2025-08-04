@@ -23,7 +23,7 @@ export default function TermsOfUse() {
                   <section>
                     <h2 className="text-xl font-semibold text-emerald-300 mb-3">1. Aceitação dos Termos</h2>
                     <p>
-                      Ao acessar e utilizar a plataforma FGTS Agent, você concorda em cumprir e estar vinculado a estes 
+                      Ao acessar e utilizar a plataforma FGTS Agent, você concorda em cumprir e estar vinculado a estes
                       Termos de Uso. Se você não concordar com qualquer parte destes termos, não deve utilizar nossos serviços.
                     </p>
                   </section>
@@ -31,7 +31,7 @@ export default function TermsOfUse() {
                   <section>
                     <h2 className="text-xl font-semibold text-emerald-300 mb-3">2. Descrição do Serviço</h2>
                     <p>
-                      O FGTS Agent é uma plataforma que oferece serviços de consultoria e auxílio para questões relacionadas 
+                      O FGTS Agent é uma plataforma que oferece serviços de consultoria e auxílio para questões relacionadas
                       ao Fundo de Garantia do Tempo de Serviço (FGTS), incluindo:
                     </p>
                     <ul className="list-disc list-inside ml-4 mt-2 space-y-1">
@@ -72,8 +72,8 @@ export default function TermsOfUse() {
                   <section>
                     <h2 className="text-xl font-semibold text-emerald-300 mb-3">5. Privacidade e Proteção de Dados</h2>
                     <p>
-                      Levamos a sério a proteção de seus dados pessoais. Nossa Política de Privacidade descreve como 
-                      coletamos, utilizamos e protegemos suas informações. Ao usar nossos serviços, você concorda com 
+                      Levamos a sério a proteção de seus dados pessoais. Nossa Política de Privacidade descreve como
+                      coletamos, utilizamos e protegemos suas informações. Ao usar nossos serviços, você concorda com
                       as práticas descritas em nossa Política de Privacidade.
                     </p>
                   </section>
@@ -94,8 +94,8 @@ export default function TermsOfUse() {
                   <section>
                     <h2 className="text-xl font-semibold text-emerald-300 mb-3">7. Modificações dos Termos</h2>
                     <p>
-                      Reservamo-nos o direito de modificar estes Termos de Uso a qualquer momento. As modificações 
-                      entrarão em vigor imediatamente após sua publicação na plataforma. É sua responsabilidade 
+                      Reservamo-nos o direito de modificar estes Termos de Uso a qualquer momento. As modificações
+                      entrarão em vigor imediatamente após sua publicação na plataforma. É sua responsabilidade
                       revisar periodicamente os termos atualizados.
                     </p>
                   </section>
@@ -103,7 +103,7 @@ export default function TermsOfUse() {
                   <section>
                     <h2 className="text-xl font-semibold text-emerald-300 mb-3">8. Suspensão e Encerramento</h2>
                     <p>
-                      Podemos suspender ou encerrar sua conta a qualquer momento, sem aviso prévio, se detectarmos 
+                      Podemos suspender ou encerrar sua conta a qualquer momento, sem aviso prévio, se detectarmos
                       violação destes termos ou uso inadequado da plataforma.
                     </p>
                   </section>
@@ -111,7 +111,7 @@ export default function TermsOfUse() {
                   <section>
                     <h2 className="text-xl font-semibold text-emerald-300 mb-3">9. Lei Aplicável</h2>
                     <p>
-                      Estes Termos de Uso são regidos pelas leis da República Federativa do Brasil. Qualquer 
+                      Estes Termos de Uso são regidos pelas leis da República Federativa do Brasil. Qualquer
                       disputa será resolvida no foro da comarca onde está localizada nossa sede.
                     </p>
                   </section>
@@ -141,4 +141,4 @@ export default function TermsOfUse() {
       </div>
     </>
   );
-} 
+}

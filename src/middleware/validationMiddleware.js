@@ -71,15 +71,40 @@ const commonSchemas = {
   cpf: Joi.string()
     .pattern(/^\d{3}\.\d{3}\.\d{3}-\d{2}$|^\d{11}$/)
     .custom((value, helpers) => {
-      const cpf = value.replace(/[^\d]/g, '');
-      if (!isValidCPF(cpf)) {
+      if (!isValidCPF(value)) {
         return helpers.error('any.invalid');
       }
-      return cpf;
+      return value;
     })
     .messages({
+      'string.pattern.base': 'CPF deve estar no formato válido',
       'any.invalid': 'CPF inválido'
     }),
+
+  // Validação de mensagem (com proteção XSS)
+  message: Joi.string()
+    .min(1)
+    .max(1000)
+    .custom((value, helpers) => {
+      // Sanitizar XSS em vez de bloquear caracteres
+      const sanitized = xss(value, xssOptions);
+      return sanitized;
+    })
+    .messages({
+      'string.min': 'Mensagem não pode estar vazia',
+      'string.max': 'Mensagem muito longa (máximo 1000 caracteres)'
+    }),
+
+  // Validação de busca
+  search: Joi.string()
+    .max(100)
+    .pattern(/^[^<>\"'&]*$/)
+    .messages({
+      'string.max': 'Busca muito longa (máximo 100 caracteres)',
+      'string.pattern.base': 'Busca contém caracteres não permitidos'
+    }),
+
+
 
   // Validação de texto livre (com limite de caracteres)
   text: (maxLength = 1000) => Joi.string()
@@ -148,7 +173,7 @@ function validate(schema, property = 'body') {
   return (req, res, next) => {
     const { error, value } = schema.validate(req[property], {
       abortEarly: false,
-      stripUnknown: true,
+      stripUnknown: false,
       allowUnknown: false
     });
 
@@ -188,7 +213,48 @@ const schemas = {
   // Autenticação
   login: Joi.object({
     email: commonSchemas.email,
-    password: Joi.string().min(1).max(128).required(), // Menos restritivo para login
+    password: commonSchemas.password
+  }),
+
+  // Mensagens
+  sendMessage: Joi.object({
+    conversationId: Joi.string().min(1).required().messages({
+      'any.required': 'ID da conversa é obrigatório',
+      'string.empty': 'ID da conversa não pode estar vazio',
+      'string.min': 'ID da conversa não pode estar vazio'
+    }),
+    content: Joi.string().min(1).max(1000).required().messages({
+      'any.required': 'Conteúdo da mensagem é obrigatório',
+      'string.empty': 'Conteúdo da mensagem não pode estar vazio',
+      'string.min': 'Conteúdo da mensagem não pode estar vazio',
+      'string.max': 'Mensagem muito longa (máximo 1000 caracteres)'
+    }),
+    recipientId: Joi.string().optional(),
+    role: Joi.string().valid('ME', 'AI', 'USER').default('ME'),
+    messageId: Joi.string().optional()
+  }),
+
+  // Busca de mensagens
+  getMessages: Joi.object({
+    page: Joi.number().integer().min(1).default(1),
+    limit: Joi.number().integer().min(1).max(100).default(20)
+  }),
+
+  // Contatos
+  createContact: Joi.object({
+    name: Joi.string().min(1).max(100).required(),
+    phone: commonSchemas.phone
+  }),
+
+  // Busca
+  search: Joi.object({
+    q: commonSchemas.search
+  }),
+
+  // Login
+  login: Joi.object({
+    email: commonSchemas.email,
+    password: commonSchemas.password,
     rememberMe: Joi.boolean().default(false)
   }),
 
@@ -214,7 +280,7 @@ const schemas = {
   }),
 
   // Chat e mensagens
-  sendMessage: Joi.object({
+  sendChatMessage: Joi.object({
     content: commonSchemas.text(4000).required(),
     recipientId: commonSchemas.id,
     type: Joi.string().valid('text', 'image', 'file', 'audio').default('text'),

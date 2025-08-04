@@ -121,6 +121,20 @@ function Portal({ children }) {
   return ReactDOM.createPortal(children, portalRoot)
 }
 
+// Adicione a função de mapeamento no topo do componente (após imports)
+function mapMaritalStatus(status) {
+  if (!status) return '';
+  const normalized = status.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  switch (normalized) {
+    case 'solteiro': return 'single';
+    case 'casado': return 'married';
+    case 'divorciado': return 'divorced';
+    case 'viuvo':
+    case 'viúvo': return 'widowed';
+    default: return '';
+  }
+}
+
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [period, setPeriod] = useState('daily')
@@ -140,7 +154,7 @@ export default function Dashboard() {
   const [viewModalOpen, setViewModalOpen] = useState(false)
   const [selectedProposal, setSelectedProposal] = useState(null)
   const [proposalDetails, setProposalDetails] = useState(null)
-  
+
   // Estado separado para proposta selecionada no histórico
   const [selectedProposalInHistory, setSelectedProposalInHistory] = useState(null)
   const [isLoadingDetails, setIsLoadingDetails] = useState(false)
@@ -179,12 +193,20 @@ export default function Dashboard() {
   const [proposalFormData, setProposalFormData] = useState({})
   const [isCreatingProposal, setIsCreatingProposal] = useState(false)
   const [createProposalError, setCreateProposalError] = useState('')
-  
+
   // Estados para modal de editar proposta
   const [editProposalModalOpen, setEditProposalModalOpen] = useState(false)
   const [editingProposal, setEditingProposal] = useState(null)
   const [isEditingProposal, setIsEditingProposal] = useState(false)
   const [editProposalError, setEditProposalError] = useState('')
+
+  // ✅ FUNÇÃO GLOBAL: formatDateToYYYYMMDD para uso em todo o componente
+  const formatDateToYYYYMMDD = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
 
   // Função para calcular a posição do calendário
   const updateCalendarPosition = () => {
@@ -194,18 +216,18 @@ export default function Dashboard() {
       const dateRangeButton = document.getElementById('date-range-input') || document.getElementById('date-range-input-mobile');
       const windowWidth = window.innerWidth;
       const windowHeight = window.innerHeight;
-      
+
       const referenceElement = dateButton || dateRangeButton;
-      
+
       // Se os elementos necessários existirem
       if (referenceElement) {
         const refRect = referenceElement.getBoundingClientRect();
-        
+
         // Se for mobile, centralize o calendário
         if (windowWidth < 768) {
           // Em dispositivos móveis, tornar o calendário mais compacto
           const mobileWidth = Math.min(300, windowWidth - 32); // 16px de padding em cada lado
-          
+
           calendarPositionRef.current = {
             right: 'auto',
             left: '50%',
@@ -214,15 +236,15 @@ export default function Dashboard() {
             maxHeight: `${windowHeight - 100}px`,
             overflow: 'auto'
           };
-        } 
+        }
         // Se for tablet
         else if (windowWidth < 1024) {
           const tabletWidth = Math.min(450, windowWidth - 48);
-          
+
           // Calcular se há espaço suficiente à direita
           const rightSpace = windowWidth - refRect.right;
           const leftSpace = refRect.left;
-          
+
           // Verificar qual lado tem mais espaço
           if (rightSpace > leftSpace && rightSpace > tabletWidth) {
             // Alinhar à direita do elemento
@@ -237,7 +259,7 @@ export default function Dashboard() {
           } else {
             // Alinhar à esquerda, mas garantir que não ultrapasse a borda
             const leftPosition = Math.max(16, refRect.left);
-            
+
             calendarPositionRef.current = {
               left: `${leftPosition}px`,
               right: 'auto',
@@ -252,18 +274,18 @@ export default function Dashboard() {
         else {
           // Largura responsiva que não ultrapasse a viewport
           const desktopWidth = Math.min(640, windowWidth - 64);
-          
+
           // Calcular posição horizontal para não ultrapassar as bordas
           let leftPosition = refRect.left;
-          
+
           // Verificar se o calendário ultrapassaria a borda direita
           if (leftPosition + desktopWidth > windowWidth - 16) {
             leftPosition = windowWidth - desktopWidth - 16;
           }
-          
+
           // Garantir que não ultrapasse a borda esquerda
           leftPosition = Math.max(16, leftPosition);
-          
+
           calendarPositionRef.current = {
             right: 'auto',
             left: `${leftPosition}px`,
@@ -273,11 +295,11 @@ export default function Dashboard() {
             overflow: 'auto'
           };
         }
-        
+
         // Verificar se há espaço suficiente abaixo para o calendário
         // Estimar altura do calendário (aproximadamente)
         const calendarHeight = isMobile ? 450 : 350;
-        
+
         // Se não houver espaço suficiente abaixo, posicionar acima
         const bottomSpace = windowHeight - refRect.bottom;
         if (bottomSpace < calendarHeight && refRect.top > calendarHeight) {
@@ -307,7 +329,7 @@ export default function Dashboard() {
       setIsMobile(window.innerWidth < 768);
       updateCalendarPosition();
     }
-    
+
     window.addEventListener('resize', handleResize);
     updateCalendarPosition(); // Calcular posição inicial
     return () => window.removeEventListener('resize', handleResize);
@@ -317,10 +339,10 @@ export default function Dashboard() {
     const checkAuth = async () => {
       try {
         setIsLoading(true);
-        
+
         // Obter o token de autenticação de forma consistente
         let authToken = localStorage.getItem('authToken');
-        
+
         // Se não encontrar no localStorage, tentar obter de outras fontes
         if (!authToken) {
           // 1. Verificar tokens do Supabase no localStorage
@@ -338,7 +360,7 @@ export default function Dashboard() {
               console.error('Erro ao ler tokens do localStorage:', e);
             }
           }
-          
+
           // 2. Verificar cookies
           if (!authToken) {
             const getCookie = (name) => {
@@ -346,9 +368,9 @@ export default function Dashboard() {
               const parts = value.split(`; ${name}=`);
               if (parts.length === 2) return parts.pop().split(';').shift();
             };
-            
+
             authToken = getCookie('supabase-auth-token') || getCookie('js-auth-token');
-            
+
             if (authToken) {
               console.log('Token encontrado nos cookies');
               // Armazenar de forma consistente
@@ -356,7 +378,7 @@ export default function Dashboard() {
             }
           }
         }
-        
+
         // Se ainda não temos token, tentar obter via Supabase SDK
         if (!authToken) {
           try {
@@ -374,16 +396,16 @@ export default function Dashboard() {
             console.error('Erro ao obter sessão do Supabase:', supabaseError);
           }
         }
-        
+
         // Preparar headers para a requisição
         const headers = {
           'Content-Type': 'application/json',
         };
-        
+
         if (authToken) {
           headers['Authorization'] = `Bearer ${authToken}`;
         }
-        
+
         // Fazer a requisição de verificação usando cache
         const data = await cachedFetch('/api/auth/me', {
           method: 'GET',
@@ -394,33 +416,33 @@ export default function Dashboard() {
         if (!data || !data.success) {
           console.error('Erro de autenticação:', data);
           console.log('Detalhes da resposta:', data);
-          
+
           // Se o erro for de autenticação, limpar tokens e redirecionar para login
           if (data && data.status === 401) {
             // Limpar tokens armazenados
             localStorage.removeItem('authToken');
             document.cookie = `supabase-auth-token=; path=/; max-age=0`;
             document.cookie = `js-auth-token=; path=/; max-age=0`;
-            
+
             // Tentar fazer logout via Supabase para garantir
             try {
               await supabase.auth.signOut();
             } catch (e) {
               console.error('Erro ao fazer logout via Supabase:', e);
             }
-            
+
             localStorage.setItem('redirectAfterLogin', '/dashboard');
             navigate('/login?error=auth_required&message=Você precisa estar autenticado para acessar o dashboard.');
             return;
           }
-          
+
           // Se falhar por outro motivo, tentar recarregar a página uma vez
           if (!window.sessionStorage.getItem('auth_retry')) {
             window.sessionStorage.setItem('auth_retry', 'true');
             window.location.reload();
             return;
           }
-          
+
           window.sessionStorage.removeItem('auth_retry');
           navigate('/login?error=auth_error&message=Erro ao verificar autenticação. Por favor, faça login novamente.');
           return;
@@ -440,10 +462,10 @@ export default function Dashboard() {
 
   useEffect(() => {
     if (period === 'custom' && (!dateRange[0].startDate || !dateRange[0].endDate)) return
-    
+
     // Flag para controlar se o componente está montado
     let isMounted = true;
-    
+
     // Usar um temporizador para evitar múltiplas chamadas em sequência
     const timeoutId = setTimeout(() => {
       const isRange = (period === 'custom' || period === 'monthly');
@@ -452,13 +474,7 @@ export default function Dashboard() {
       // Formatar datas explicitamente para garantir que não haja problemas de timezone
       let url = `/api/dashboard/stats?period=${apiPeriod}`;
       if (isRange) {
-        const formatDateToYYYYMMDD = (date) => {
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
-          return `${year}-${month}-${day}`;
-        };
-
+        // ✅ USAR: Função global formatDateToYYYYMMDD
         const start = formatDateToYYYYMMDD(dateRange[0].startDate);
         const end = formatDateToYYYYMMDD(dateRange[0].endDate);
 
@@ -497,32 +513,32 @@ export default function Dashboard() {
             headers['Authorization'] = `Bearer ${authToken}`;
           }
           const res = await fetch(url, { credentials: 'include', headers });
-          
+
           // Verificar se o token expirou (status 401)
           if (res.status === 401) {
             console.error('Erro de autenticação: Token expirado ou inválido');
-            
+
             // Limpar tokens locais
             localStorage.removeItem('supabase_tokens');
-            
+
             // Salvar a URL atual para redirecionamento pós-login
             localStorage.setItem('redirectAfterLogin', '/dashboard');
-            
+
             // Redirecionar para a página de login com mensagem
             navigate('/login?error=session_expired&message=Sua sessão expirou. Por favor, faça login novamente.');
             return;
           }
-          
+
           if (!res.ok) {
             throw new Error(`Erro ao buscar dados: ${res.status} ${res.statusText}`);
           }
-          
+
           const data = await res.json();
           if (isMounted) {
             console.log(`[DASHBOARD] Dados recebidos:`, data.data);
             setStats(data.data);
             console.log(`[DASHBOARD] Dados atualizados para período: ${period}`);
-            
+
             // Log específico para depuração das métricas de leads
             console.log(`[DASHBOARD-LEADS-DEBUG] Leads Novos: ${data.data.newLeadsCount}, Leads Antigos Ativos: ${data.data.returningLeadsCount}, Total de Leads: ${data.data.totalLeads}`);
           }
@@ -534,10 +550,10 @@ export default function Dashboard() {
           }
         }
       };
-      
+
       fetchData();
     }, 300);
-    
+
     // Cleanup function
     return () => {
       isMounted = false;
@@ -565,12 +581,12 @@ export default function Dashboard() {
           }
         }
       }
-      
+
       const headers = { 'Content-Type': 'application/json' };
       if (authToken) {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
-      
+
       // Construir URL com parâmetros atuais
       let url = '/api/dashboard/stats';
       if (period === 'custom' && dateRange && dateRange.length > 0) {
@@ -580,9 +596,9 @@ export default function Dashboard() {
       } else if (period !== 'all') {
         url += `?period=${period}`;
       }
-      
+
       const res = await fetch(url, { credentials: 'include', headers });
-      
+
       // Verificar se o token expirou (status 401)
       if (res.status === 401) {
         console.error('Erro de autenticação: Token expirado ou inválido');
@@ -591,15 +607,15 @@ export default function Dashboard() {
         navigate('/login?error=session_expired&message=Sua sessão expirou. Por favor, faça login novamente.');
         return;
       }
-      
+
       if (!res.ok) {
         throw new Error(`Erro ao buscar dados: ${res.status} ${res.statusText}`);
       }
-      
+
       const data = await res.json();
       console.log(`[DASHBOARD] Dados recarregados:`, data.data);
       setStats(data.data);
-      
+
     } catch (error) {
       console.error('Erro ao recarregar dados do dashboard:', error);
       if (error.message?.includes('401') || error.message?.includes('autoriza')) {
@@ -626,13 +642,13 @@ export default function Dashboard() {
         setIsCalendarOpen(false)
       }
     }
-    
+
     function handleScroll() {
       if (isCalendarOpen) {
         updateCalendarPosition();
       }
     }
-    
+
     if (isCalendarOpen) {
       document.addEventListener('mousedown', handleClickOutside)
       window.addEventListener('scroll', handleScroll)
@@ -644,7 +660,7 @@ export default function Dashboard() {
       window.removeEventListener('scroll', handleScroll)
       window.removeEventListener('resize', handleScroll)
     }
-    
+
     return () => {
       document.removeEventListener('mousedown', handleClickOutside)
       window.removeEventListener('scroll', handleScroll)
@@ -698,7 +714,7 @@ export default function Dashboard() {
     }
     const defaultClasses = 'bg-gray-100 text-gray-800 border-gray-200'
     const classes = statusMap[status?.toLowerCase()] || defaultClasses
-    
+
     return (
       <span className={`px-2.5 py-0.5 text-xs font-medium rounded-full border ${classes} inline-block`}>
         {status ? status.replace('_', ' ').charAt(0).toUpperCase() + status.replace('_', ' ').slice(1) : 'Indefinido'}
@@ -716,12 +732,12 @@ export default function Dashboard() {
 
   const formatDate = (dateString) => {
     if (!dateString) return '-'
-    
+
     // Se a data já está formatada como string brasileira, retornar como está
     if (typeof dateString === 'string' && dateString.includes('/')) {
       return dateString
     }
-    
+
     try {
       const date = new Date(dateString)
       if (isNaN(date.getTime())) {
@@ -735,50 +751,50 @@ export default function Dashboard() {
 
   const formatDateCompact = (dateString) => {
     if (!dateString) return '-'
-    
+
     // Se a data já está formatada como string brasileira, retornar como está
     if (typeof dateString === 'string' && dateString.includes('/')) {
       return dateString
     }
-    
+
     try {
       const date = new Date(dateString)
       if (isNaN(date.getTime())) {
         return dateString // Retornar o valor original se não conseguir parsear
       }
-      
+
       const now = new Date()
       const diffTime = Math.abs(now - date)
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-      
+
       // Se for hoje, mostrar apenas a hora
       if (diffDays === 1) {
-        return date.toLocaleTimeString('pt-BR', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
+        return date.toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit'
         })
       }
-      
+
       // Se for ontem, mostrar "Ontem" + hora
       if (diffDays === 2) {
-        return `Ontem ${date.toLocaleTimeString('pt-BR', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
+        return `Ontem ${date.toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit'
         })}`
       }
-      
+
       // Se for nos últimos 7 dias, mostrar dia da semana + hora
       if (diffDays <= 7) {
-        return `${date.toLocaleDateString('pt-BR', { 
-          weekday: 'short' 
-        })} ${date.toLocaleTimeString('pt-BR', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
+        return `${date.toLocaleDateString('pt-BR', {
+          weekday: 'short'
+        })} ${date.toLocaleTimeString('pt-BR', {
+          hour: '2-digit',
+          minute: '2-digit'
         })}`
       }
-      
+
       // Para datas mais antigas, mostrar data completa
-      return date.toLocaleDateString('pt-BR', { 
+      return date.toLocaleDateString('pt-BR', {
         day: '2-digit',
         month: '2-digit',
         year: '2-digit'
@@ -791,7 +807,7 @@ export default function Dashboard() {
   // Função para extrair apenas a data de uma string formatada brasileira
   const extractDateFromFormatted = (dateString) => {
     if (!dateString) return '-'
-    
+
     // Se já é uma data formatada brasileira, extrair apenas a data
     if (typeof dateString === 'string' && dateString.includes('/')) {
       // Padrão: "30/07/2025, 14:30:25" -> "30/07/25"
@@ -800,16 +816,16 @@ export default function Dashboard() {
         const [, day, month, year] = dateMatch
         return `${day}/${month}/${year.slice(-2)}`
       }
-      
+
       // Se não conseguir extrair, retornar como está
       return dateString
     }
-    
+
     // Se for uma data ISO, formatar
     try {
       const date = new Date(dateString)
       if (!isNaN(date.getTime())) {
-        return date.toLocaleDateString('pt-BR', { 
+        return date.toLocaleDateString('pt-BR', {
           day: '2-digit',
           month: '2-digit',
           year: '2-digit'
@@ -818,7 +834,7 @@ export default function Dashboard() {
     } catch (error) {
       // Ignorar erro
     }
-    
+
     return dateString
   }
 
@@ -830,7 +846,7 @@ export default function Dashboard() {
     return parcelas.map((parcela, index) => {
       let valor = '-'
       let ano = '-'
-      
+
       if (typeof parcela === 'object' && parcela.amount) {
         valor = formatCurrency(parcela.amount)
         if (parcela.dueDate) {
@@ -849,7 +865,7 @@ export default function Dashboard() {
           ano = yearMatch[1]
       }
       }
-      
+
       return { ano, valor, original: parcela }
     })
   }
@@ -921,7 +937,7 @@ export default function Dashboard() {
       nationality: lead.nationality || '',
       is_pep: lead.is_pep || false,
       birth: lead.birth || '',
-      marital_status: lead.marital_status || '',
+      marital_status: mapMaritalStatus(lead.marital_status),
       person_type: lead.person_type || '',
       mother_name: lead.mother_name || '',
       cep: lead.cep || '',
@@ -949,14 +965,14 @@ export default function Dashboard() {
       setEditModalOpen(true)
       return
     }
-    
+
     try {
       // Buscar dados completos do lead
       const response = await fetch(`/api/leads/${lead.id}`, {
         credentials: 'include'
       })
       const data = await response.json()
-      
+
       if (data.success) {
         const fullLead = data.data
         setEditingLead({
@@ -973,7 +989,7 @@ export default function Dashboard() {
           nationality: fullLead.nationality || '',
           is_pep: fullLead.is_pep || false,
           birth: fullLead.birth || '',
-          marital_status: fullLead.marital_status || '',
+          marital_status: mapMaritalStatus(fullLead.marital_status),
           person_type: fullLead.person_type || '',
           mother_name: fullLead.mother_name || '',
           // Endereço
@@ -1018,9 +1034,9 @@ export default function Dashboard() {
           rg: lead.rg || '',
           nationality: lead.nationality || '',
           is_pep: lead.is_pep || false,
-          birth: lead.birth || '',
-          marital_status: lead.marital_status || '',
-          person_type: lead.person_type || '',
+                  birth: lead.birth || '',
+        marital_status: mapMaritalStatus(lead.marital_status),
+        person_type: lead.person_type || '',
           mother_name: lead.mother_name || '',
           cep: lead.cep || '',
           estado: lead.estado || '',
@@ -1061,7 +1077,7 @@ export default function Dashboard() {
         nationality: lead.nationality || '',
         is_pep: lead.is_pep || false,
         birth: lead.birth || '',
-        marital_status: lead.marital_status || '',
+        marital_status: mapMaritalStatus(lead.marital_status),
         person_type: lead.person_type || '',
         mother_name: lead.mother_name || '',
         cep: lead.cep || '',
@@ -1148,7 +1164,7 @@ export default function Dashboard() {
         // Atualizar a lista de leads
         setStats(prev => ({
           ...prev,
-          leadsList: prev.leadsList.map(lead => 
+          leadsList: prev.leadsList.map(lead =>
             lead.id === editingLead.id ? { ...lead, ...editingLead } : lead
           )
         }))
@@ -1168,13 +1184,13 @@ export default function Dashboard() {
     try {
       const url = `/api/leads/${lead.id}/proposals`
       console.log('[DASHBOARD] Fazendo requisição para:', url)
-      
+
       const res = await fetch(url, { credentials: 'include' })
       console.log('[DASHBOARD] Status da resposta:', res.status)
-      
+
       const json = await res.json()
       console.log('[DASHBOARD] Resposta da API:', json)
-      
+
       if (json.success) {
         setProposalsHistory(json.data || [])
         setSelectedLead(lead)
@@ -1201,57 +1217,57 @@ export default function Dashboard() {
         credentials: 'include'
       })
       const leadData = await leadResponse.json()
-      
+
       if (!leadData.success) {
         throw new Error('Erro ao buscar dados do lead: ' + leadData.message)
       }
-      
+
       // Buscar dados da credencial do banco selecionado
       console.log('Buscando dados do banco com ID:', bankId)
       const bankUrl = `/api/partner-credentials/${bankId}`
       console.log('URL do banco:', bankUrl)
-      
+
       const bankResponse = await fetch(bankUrl, {
         credentials: 'include'
       })
-      
+
       console.log('Status da resposta do banco:', bankResponse.status)
       console.log('Headers da resposta:', bankResponse.headers)
-      
+
       if (!bankResponse.ok) {
         const errorText = await bankResponse.text()
         console.error('Erro na resposta do banco:', errorText)
         throw new Error(`Erro HTTP ${bankResponse.status}: ${errorText}`)
       }
-      
+
       const bankData = await bankResponse.json()
       console.log('Dados do banco recebidos:', bankData)
-      
+
       if (!bankData.success) {
         throw new Error('Erro ao buscar dados do banco: ' + bankData.message)
       }
-      
+
       // Preparar payload do webhook
       console.log('Dados do lead:', leadData.data)
       console.log('Dados do banco:', bankData.data)
       console.log('User ID da credencial do banco:', bankData.data.user_id)
-      
+
       // Verificar se os dados necessários estão presentes
       if (!leadData.data || !bankData.data) {
         throw new Error('Dados do lead ou banco não encontrados')
       }
-      
+
       // Verificar se o banco tem oauth_config
       if (!bankData.data.oauth_config) {
         console.warn('Banco não tem oauth_config, usando valores padrão')
         bankData.data.oauth_config = {}
       }
-      
+
       // Verificar se o user_id está presente na credencial do banco
       if (!bankData.data.user_id) {
         throw new Error('user_id não encontrado na credencial do banco')
       }
-      
+
       const webhookPayload = [
         {
           cpf: leadData.data.cpf || '',
@@ -1267,14 +1283,14 @@ export default function Dashboard() {
           phone: leadData.data.phone || ''
         }
       ]
-      
+
       console.log('Enviando webhook com payload:', webhookPayload)
-      
+
       // Enviar webhook para o n8n
       const webhookUrl = 'https://n8n-n8n.8cgx4t.easypanel.host/webhook/consulta_app'
       console.log('Enviando webhook para:', webhookUrl)
       console.log('Payload do webhook:', webhookPayload)
-      
+
       const webhookResponse = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
@@ -1282,14 +1298,14 @@ export default function Dashboard() {
         },
         body: JSON.stringify(webhookPayload)
       })
-      
+
       console.log('Status da resposta do webhook:', webhookResponse.status)
       console.log('Headers da resposta do webhook:', webhookResponse.headers)
-      
+
       // Verificar apenas se a requisição foi enviada com sucesso (status 2xx)
       if (webhookResponse.status >= 200 && webhookResponse.status < 300) {
         console.log('Webhook enviado com sucesso para o n8n')
-        
+
         // Tentar ler a resposta para debug, mas não falhar se não conseguir
         try {
           const responseText = await webhookResponse.text()
@@ -1302,10 +1318,10 @@ export default function Dashboard() {
         console.error('Erro na resposta do webhook:', errorText)
         throw new Error(`Erro HTTP ${webhookResponse.status}: ${errorText}`)
       }
-      
+
       // Recarregar dados do dashboard após consulta bem-sucedida
       await reloadDashboardData()
-      
+
     } catch (err) {
       setRepeatError('Erro ao repetir consulta: ' + err.message)
     } finally {
@@ -1317,24 +1333,24 @@ export default function Dashboard() {
     try {
       setLoadingBanks(true)
       console.log('[DASHBOARD] Iniciando busca de bancos...')
-      
+
       const response = await fetch('/api/partner-credentials', {
         credentials: 'include'
       })
-      
+
       if (!response.ok) {
         throw new Error(`Erro HTTP ${response.status}: ${response.statusText}`)
       }
-      
+
       const data = await response.json()
       console.log('[DASHBOARD] Resposta da API de bancos:', data)
-      
+
       if (data.success && data.data) {
         // Filtrar apenas credenciais ativas
         const activeCredentials = data.data.filter(cred => cred.status === 'active')
         console.log('[DASHBOARD] Bancos ativos encontrados:', activeCredentials.length)
         setAvailableBanks(activeCredentials)
-        
+
         // Selecionar o primeiro banco por padrão se houver
         if (activeCredentials.length > 0) {
           setSelectedBank(activeCredentials[0].id)
@@ -1359,7 +1375,7 @@ export default function Dashboard() {
     setSelectedProvider('cartos') // Reset para padrão
     setSelectedBank('') // Reset banco selecionado
     setShowProviderModal(true)
-    
+
     // Buscar bancos disponíveis imediatamente
     fetchAvailableBanks() // Removido await para não bloquear a abertura do modal
   }
@@ -1370,7 +1386,7 @@ export default function Dashboard() {
         setRepeatError('Por favor, selecione um banco')
         return
       }
-      
+
       await repeatQuery(selectedLeadForQuery.id, selectedProvider, selectedBank)
       setShowProviderModal(false)
       setSelectedLeadForQuery(null)
@@ -1383,17 +1399,17 @@ export default function Dashboard() {
     setCreateProposalError('')
     setSelectedProvider('cartos') // Reset para padrão
     setSelectedBank('') // Reset banco selecionado
-    
+
     try {
       // Buscar dados completos do lead
       const response = await fetch(`/api/leads/${lead.id}`, {
         credentials: 'include'
       })
       const data = await response.json()
-      
+
       if (data.success) {
         const leadData = data.data
-        
+
         // Preparar dados do formulário
         const formData = {
           // Dados do lead
@@ -1403,16 +1419,16 @@ export default function Dashboard() {
           motherName: leadData.mother_name || leadData.motherName || '',
           email: leadData.email || '',
           birthDate: leadData.birth || leadData.birthDate || '',
-          maritalStatus: leadData.marital_status || leadData.maritalStatus || '',
+          maritalStatus: mapMaritalStatus(leadData.marital_status || leadData.maritalStatus),
           phone: leadData.phone || '',
           postalCode: leadData.cep || leadData.postalCode || '',
-          addressNumber: leadData.address_number || leadData.addressNumber || '',
-          chavePix: leadData.chave_pix || leadData.chavePix || ''
+          addressNumber: leadData.numero || leadData.address_number || leadData.addressNumber || '',
+          chavePix: leadData.pix_key || leadData.chave_pix || leadData.chavePix || ''
         }
-        
+
         setProposalFormData(formData)
         setCreateProposalModalOpen(true)
-        
+
         // Buscar bancos disponíveis imediatamente
         fetchAvailableBanks()
       } else {
@@ -1443,13 +1459,13 @@ export default function Dashboard() {
     try {
       setIsEditingProposal(true)
       setEditProposalError('')
-      
+
       const { data: { session } } = await supabase.auth.getSession()
-      
+
       if (!session?.access_token) {
         throw new Error('Token de acesso não encontrado')
       }
-      
+
       const response = await fetch(`/api/proposals/${editingProposal.proposal_id || editingProposal.id}`, {
         method: 'PUT',
         headers: {
@@ -1460,14 +1476,14 @@ export default function Dashboard() {
           chavePix: editingProposal.chavePix
         })
       })
-      
+
       if (!response.ok) {
         const errorText = await response.text()
         throw new Error(`Erro HTTP ${response.status}: ${errorText}`)
       }
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         console.log('[DASHBOARD] Proposta editada com sucesso')
         setEditProposalModalOpen(false)
@@ -1487,28 +1503,28 @@ export default function Dashboard() {
 
   const createProposal = async () => {
     if (!selectedLeadForProposal) return
-    
+
     if (!selectedBank) {
       setCreateProposalError('Por favor, selecione um banco')
       return
     }
-    
+
     setIsCreatingProposal(true)
     setCreateProposalError('')
-    
+
     try {
       // Buscar dados do partner_credentials selecionado
       const credentialsResponse = await fetch(`/api/partner-credentials/${selectedBank}`, {
         credentials: 'include'
       })
       const credentialsData = await credentialsResponse.json()
-      
+
       if (!credentialsData.success) {
         throw new Error('Erro ao buscar dados do banco selecionado')
       }
-      
+
       const bankData = credentialsData.data
-      
+
       const payload = [{
         name: proposalFormData.name,
         cpf: proposalFormData.cpf,
@@ -1529,9 +1545,9 @@ export default function Dashboard() {
         client_id: bankData.client_id || '',
         user_id: bankData.user_id || ''
       }]
-      
+
       console.log('[DASHBOARD] Enviando proposta para webhook:', payload)
-      
+
       const webhookResponse = await fetch('https://n8n-n8n.8cgx4t.easypanel.host/webhook/criaPropostaApp', {
         method: 'POST',
         headers: {
@@ -1539,15 +1555,15 @@ export default function Dashboard() {
         },
         body: JSON.stringify(payload)
       })
-      
+
       console.log('[DASHBOARD] Resposta do webhook:', webhookResponse.status)
-      
+
       if (webhookResponse.status >= 200 && webhookResponse.status < 300) {
         console.log('[DASHBOARD] Proposta criada com sucesso')
         setCreateProposalModalOpen(false)
         setSelectedLeadForProposal(null)
         setProposalFormData({})
-        
+
         // Recarregar dados do dashboard
         await reloadDashboardData()
       } else {
@@ -1630,7 +1646,7 @@ export default function Dashboard() {
 
   // Configurações comuns para os gráficos
   const chartOptions = {
-    responsive: true, 
+    responsive: true,
     maintainAspectRatio: false,
     animations: {
       tension: {
@@ -1712,10 +1728,10 @@ export default function Dashboard() {
                   }}
                   id="date-display"
                 >
-                  {dateRange[0].startDate && dateRange[0].endDate ? 
-                    (dateRange[0].startDate.getTime() === dateRange[0].endDate.getTime() ? 
-                      formatSingleDate(dateRange[0].startDate) : 
-                      `${format(dateRange[0].startDate, 'dd/MM')} a ${format(dateRange[0].endDate, 'dd/MM/yyyy')}`) 
+                  {dateRange[0].startDate && dateRange[0].endDate ?
+                    (dateRange[0].startDate.getTime() === dateRange[0].endDate.getTime() ?
+                      formatSingleDate(dateRange[0].startDate) :
+                      `${format(dateRange[0].startDate, 'dd/MM')} a ${format(dateRange[0].endDate, 'dd/MM/yyyy')}`)
                     : formatSingleDate(dateRange[0].startDate)}
                 </button>
                 <button
@@ -1734,10 +1750,10 @@ export default function Dashboard() {
                   <CalendarIcon className="w-5 h-5" />
                 </button>
               </div>
-              
+
 {/* Botões de período removidos conforme solicitado */}
             </div>
-            
+
             {/* Mobile: filtros empilhados */}
             <div className="flex flex-col lg:hidden w-full">
               {/* Primeira linha: botão de período personalizado e botão de calendário */}
@@ -1752,10 +1768,10 @@ export default function Dashboard() {
                       setPeriod('custom');
                     }}
                   >
-                    {dateRange[0].startDate && dateRange[0].endDate ? 
-                      (dateRange[0].startDate.getTime() === dateRange[0].endDate.getTime() ? 
-                        formatSingleDate(dateRange[0].startDate) : 
-                        `${format(dateRange[0].startDate, 'dd/MM')} a ${format(dateRange[0].endDate, 'dd/MM/yyyy')}`) 
+                    {dateRange[0].startDate && dateRange[0].endDate ?
+                      (dateRange[0].startDate.getTime() === dateRange[0].endDate.getTime() ?
+                        formatSingleDate(dateRange[0].startDate) :
+                        `${format(dateRange[0].startDate, 'dd/MM')} a ${format(dateRange[0].endDate, 'dd/MM/yyyy')}`)
                       : formatSingleDate(dateRange[0].startDate)}
                   </button>
                   <button
@@ -1775,10 +1791,10 @@ export default function Dashboard() {
                   </button>
                 </div>
               </div>
-              
+
 {/* Segunda linha: botões de período removidos conforme solicitado */}
             </div>
-            
+
             {/* Calendário compartilhado por ambos os modos (web e mobile) */}
             {isCalendarOpen && (
               <Portal>
@@ -1792,8 +1808,8 @@ export default function Dashboard() {
                 }}>
                   <div className="flex justify-between items-center px-4 py-3 border-b border-cyan-800/50">
                     <h3 className="text-cyan-100 font-medium">Selecionar Período</h3>
-                    <button 
-                      onClick={() => setIsCalendarOpen(false)} 
+                    <button
+                      onClick={() => setIsCalendarOpen(false)}
                       className="text-cyan-300 hover:text-white"
                       aria-label="Fechar calendário"
                     >
@@ -1802,7 +1818,7 @@ export default function Dashboard() {
                       </svg>
                     </button>
                   </div>
-                  
+
                   <div className="calendar-content">
                     <DateRange
                       editableDateInputs
@@ -1824,9 +1840,9 @@ export default function Dashboard() {
                       fixedHeight={true}
                     />
                   </div>
-                  
+
                   <div className="flex flex-wrap justify-between items-center px-4 pb-4 gap-2 border-t border-cyan-800/30 pt-3">
-                    <Button 
+                    <Button
                       onClick={() => {
                         const today = new Date();
                         setDateRange([{
@@ -1836,12 +1852,12 @@ export default function Dashboard() {
                         }]);
                         setPeriod('custom');
                         setIsCalendarOpen(false);
-                      }} 
+                      }}
                       className="text-sm px-3 py-1 bg-cyan-700/40 border border-cyan-600 text-cyan-100 hover:bg-cyan-600/60"
                     >
                       Hoje
                     </Button>
-                    
+
                     <Button onClick={() => {
                       const now = new Date();
                       const yesterday = new Date(now);
@@ -1849,16 +1865,16 @@ export default function Dashboard() {
                       yesterday.setHours(0, 0, 0, 0);
                       const yesterdayEnd = new Date(yesterday);
                       yesterdayEnd.setHours(23, 59, 59, 999);
-                      const newDateRange = [{ 
-                        startDate: yesterday, 
+                      const newDateRange = [{
+                        startDate: yesterday,
                         endDate: yesterday,
-                        key: 'selection' 
+                        key: 'selection'
                       }];
                       setPeriod('custom');
                       setDateRange(newDateRange);
                       setIsCalendarOpen(false);
                     }} className="text-sm px-3 py-1 whitespace-nowrap">Ontem</Button>
-                    
+
                     <Button onClick={() => {
                       const today = new Date();
                       const start = new Date(today);
@@ -1869,47 +1885,47 @@ export default function Dashboard() {
                       setDateRange([{ startDate: start, endDate: end, key: 'selection' }]);
                       setIsCalendarOpen(false);
                     }} className="text-sm px-3 py-1 whitespace-nowrap">Semanal</Button>
-                    
+
                     <Button onClick={() => {
                       const end = new Date();
                       const start = subDays(end, 6);
-                      const newDateRange = [{ 
-                        startDate: start, 
-                        endDate: end, 
-                        key: 'selection' 
+                      const newDateRange = [{
+                        startDate: start,
+                        endDate: end,
+                        key: 'selection'
                       }];
                       setPeriod('custom');
                       setDateRange(newDateRange);
                       setIsCalendarOpen(false);
                     }} className="text-sm px-3 py-1 whitespace-nowrap">7 dias</Button>
-                    
+
                     <Button onClick={() => {
                       const end = new Date();
                       const start = subDays(end, 29);
-                      const newDateRange = [{ 
-                        startDate: start, 
-                        endDate: end, 
-                        key: 'selection' 
+                      const newDateRange = [{
+                        startDate: start,
+                        endDate: end,
+                        key: 'selection'
                       }];
                       setPeriod('custom');
                       setDateRange(newDateRange);
                       setIsCalendarOpen(false);
                     }} className="text-sm px-3 py-1 whitespace-nowrap">30 dias</Button>
-                    
+
                     <Button onClick={() => {
                       const today = new Date();
                       const start = startOfMonth(today);
                       const end = endOfMonth(today);
-                      const newDateRange = [{ 
-                        startDate: start, 
-                        endDate: end, 
-                        key: 'selection' 
+                      const newDateRange = [{
+                        startDate: start,
+                        endDate: end,
+                        key: 'selection'
                       }];
                       setPeriod('custom');
                       setDateRange(newDateRange);
                       setIsCalendarOpen(false);
                     }} className="text-sm px-3 py-1 whitespace-nowrap">Mensal</Button>
-                    
+
 {/* Botão Aplicar removido conforme solicitado */}
                   </div>
                 </div>
@@ -2074,8 +2090,8 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {filteredProposals.map((prop, index) => (
-                  <tr 
-                    key={prop.id} 
+                  <tr
+                    key={prop.id}
                     className={`border-b border-gray-700/30 hover:bg-white/5 transition-colors ${index === stats.recentProposals.length - 1 ? 'border-b-0' : ''}`}
                   >
                     <td className="px-4 py-3 text-white">{prop.lead_name}</td>
@@ -2125,12 +2141,12 @@ export default function Dashboard() {
             <h2 className="text-lg font-semibold mb-4 text-white">Consultas de Saldo</h2>
             <div className="h-64 w-full">
               <Line
-                data={{ 
-                  labels: stats.leadsChartData.labels, 
-                  datasets: [{ 
-                    label: 'Consultas', 
-                    data: stats.leadsChartData.values, 
-                    backgroundColor: 'rgba(16, 185, 129, 0.25)', 
+                data={{
+                  labels: stats.leadsChartData.labels,
+                  datasets: [{
+                    label: 'Consultas',
+                    data: stats.leadsChartData.values,
+                    backgroundColor: 'rgba(16, 185, 129, 0.25)',
                     borderColor: 'rgba(16, 185, 129, 1)',
                     borderWidth: 2,
                     pointBackgroundColor: 'rgba(16, 185, 129, 1)',
@@ -2139,7 +2155,7 @@ export default function Dashboard() {
                     pointHoverRadius: 6,
                     tension: 0.4,
                     fill: true
-                  }] 
+                  }]
                 }}
                 options={chartOptions}
               />
@@ -2149,12 +2165,12 @@ export default function Dashboard() {
             <h2 className="text-lg font-semibold mb-4 text-white">Simulações de Saque</h2>
             <div className="h-64 w-full">
               <Line
-                data={{ 
-                  labels: stats.simulationsChartData.labels, 
-                  datasets: [{ 
-                    label: 'Simulações', 
-                    data: stats.simulationsChartData.values, 
-                    backgroundColor: 'rgba(5, 150, 105, 0.25)', 
+                data={{
+                  labels: stats.simulationsChartData.labels,
+                  datasets: [{
+                    label: 'Simulações',
+                    data: stats.simulationsChartData.values,
+                    backgroundColor: 'rgba(5, 150, 105, 0.25)',
                     borderColor: 'rgba(5, 150, 105, 1)',
                     borderWidth: 2,
                     pointBackgroundColor: 'rgba(5, 150, 105, 1)',
@@ -2163,7 +2179,7 @@ export default function Dashboard() {
                     pointHoverRadius: 6,
                     tension: 0.4,
                     fill: true
-                  }] 
+                  }]
                 }}
                 options={chartOptions}
               />
@@ -2189,8 +2205,8 @@ export default function Dashboard() {
               </thead>
               <tbody>
                 {stats.leadsList.map((lead, i) => (
-                  <tr 
-                    key={i} 
+                  <tr
+                    key={i}
                     className={`border-b border-gray-700/30 hover:bg-white/5 transition-colors ${i === stats.leadsList.length - 1 ? 'border-b-0' : ''}`}
                   >
                     <td className="px-4 py-3 text-white">{lead.name}</td>
@@ -2201,8 +2217,8 @@ export default function Dashboard() {
                     <td className={`px-4 py-3 ${lead.erro ? 'text-red-400' : 'text-white'}`}>{lead.erro || '-'}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
-                        <button 
-                          className="p-1 rounded bg-purple-700/70 hover:bg-purple-500 transition-colors" 
+                        <button
+                          className="p-1 rounded bg-purple-700/70 hover:bg-purple-500 transition-colors"
                           title="Ver detalhes do lead"
                           onClick={async () => {
                             if (!lead.id) {
@@ -2212,7 +2228,7 @@ export default function Dashboard() {
                             setViewLeadModalOpen(true)
                               return
                             }
-                            
+
                             try {
                               // Buscar dados completos do lead
                               const response = await fetch(`/api/leads/${lead.id}`, {
@@ -2238,27 +2254,27 @@ export default function Dashboard() {
                         >
                           <FaEye className="w-4 h-4 text-white" />
                         </button>
-                        
-                        <button 
-                          className="p-1 rounded bg-cyan-700/70 hover:bg-cyan-500 transition-colors" 
+
+                        <button
+                          className="p-1 rounded bg-cyan-700/70 hover:bg-cyan-500 transition-colors"
                           title="Editar dados pessoais"
                           onClick={() => openEditModal(lead)}
                         >
                           <FaEdit className="w-4 h-4 text-white" />
                         </button>
-                        
+
                         {lead.hasProposals && (
-                          <button 
-                            className="p-1 rounded bg-blue-700/70 hover:bg-blue-500 transition-colors" 
+                          <button
+                            className="p-1 rounded bg-blue-700/70 hover:bg-blue-500 transition-colors"
                             title="Ver histórico de propostas"
                             onClick={() => openProposalsHistory(lead)}
                           >
                             <FaFileAlt className="w-4 h-4 text-white" />
                           </button>
                         )}
-                        
-                        <button 
-                          className="p-1 rounded bg-green-700/70 hover:bg-green-500 transition-colors" 
+
+                        <button
+                          className="p-1 rounded bg-green-700/70 hover:bg-green-500 transition-colors"
                           title="Repetir consulta"
                           onClick={() => openProviderModal(lead)}
                           disabled={repeatingQuery === lead.id}
@@ -2269,7 +2285,7 @@ export default function Dashboard() {
                             <FaRedo className="w-4 h-4 text-white" />
                           )}
                         </button>
-                        
+
                                 <button
           className={`p-1 rounded transition-colors ${
             !lead.erro && lead.simulado && lead.simulado.includes('R$')
@@ -2354,7 +2370,7 @@ export default function Dashboard() {
                     <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-4">
                       Detalhes da Proposta
                     </Dialog.Title>
-                    
+
                     {isLoadingDetails ? (
                       <div className="flex items-center justify-center py-8">
                         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-cyan-500"></div>
@@ -2390,13 +2406,13 @@ export default function Dashboard() {
                             <p className="text-white break-all">{proposalDetails.pix_key || proposalDetails.chave_pix || '-'}</p>
                           </div>
                         </div>
-                        
+
                         {proposalDetails.formalization_link && (
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Link de Formalização</label>
-                            <a 
-                              href={proposalDetails.formalization_link} 
-                              target="_blank" 
+                            <a
+                              href={proposalDetails.formalization_link}
+                              target="_blank"
                               rel="noopener noreferrer"
                               className="text-cyan-400 hover:text-cyan-300 underline break-all"
                             >
@@ -2404,7 +2420,7 @@ export default function Dashboard() {
                             </a>
                           </div>
                         )}
-                        
+
                         {proposalDetails.status_detail && (
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Detalhes do Status</label>
@@ -2417,12 +2433,12 @@ export default function Dashboard() {
                         Nenhum detalhe disponível
                       </div>
                     )}
-                    
+
                     <div className="mt-6 flex justify-end">
-                      <button 
+                      <button
                         ref={cancelButtonRef}
-                        type="button" 
-                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none"
                         onClick={() => setViewModalOpen(false)}
                       >
                         Fechar
@@ -2448,351 +2464,250 @@ export default function Dashboard() {
                     <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
                       Editar Dados Pessoais
                     </Dialog.Title>
-                    
+
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                       {/* Coluna Esquerda */}
-                      <div className="space-y-4">
-                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Informações Básicas</h4>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Nome</label>
-                          <input
-                            type="text"
-                            value={editingLead.name || ''}
-                            onChange={(e) => setEditingLead({...editingLead, name: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
+                      <div className="space-y-6">
+                        {/* Informações Básicas */}
+                        <div className="border-b border-gray-600 pb-4">
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Informações Básicas</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Nome</label>
+                              <input
+                                type="text"
+                                value={editingLead.name || ''}
+                                onChange={(e) => setEditingLead({...editingLead, name: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">CPF</label>
+                              <input
+                                type="text"
+                                value={editingLead.cpf || ''}
+                                onChange={(e) => setEditingLead({...editingLead, cpf: e.target.value})}
+                                placeholder="000.000.000-00"
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">RG</label>
+                              <input
+                                type="text"
+                                value={editingLead.rg || ''}
+                                onChange={(e) => setEditingLead({...editingLead, rg: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Nascimento</label>
+                              <input
+                                type="date"
+                                value={editingLead.birth || ''}
+                                onChange={(e) => setEditingLead({...editingLead, birth: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Nome da Mãe</label>
+                              <input
+                                type="text"
+                                value={editingLead.mother_name || ''}
+                                onChange={(e) => setEditingLead({...editingLead, mother_name: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Nacionalidade</label>
+                              <input
+                                type="text"
+                                value={editingLead.nationality || ''}
+                                onChange={(e) => setEditingLead({...editingLead, nationality: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Estado Civil</label>
+                              <select
+                                value={editingLead.marital_status || ''}
+                                onChange={(e) => setEditingLead({...editingLead, marital_status: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              >
+                                <option value="">Selecione...</option>
+                                <option value="single">Solteiro</option>
+                                <option value="married">Casado</option>
+                                <option value="divorced">Divorciado</option>
+                                <option value="widowed">Viúvo</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo de Pessoa</label>
+                              <select
+                                value={editingLead.person_type || ''}
+                                onChange={(e) => setEditingLead({...editingLead, person_type: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              >
+                                <option value="">Selecione...</option>
+                                <option value="fisica">Pessoa Física</option>
+                                <option value="juridica">Pessoa Jurídica</option>
+                              </select>
+                            </div>
+                            <div className="flex items-center">
+                              <input
+                                type="checkbox"
+                                checked={editingLead.is_pep || false}
+                                onChange={(e) => setEditingLead({...editingLead, is_pep: e.target.checked})}
+                                className="mr-2"
+                              />
+                              <label className="text-sm font-medium text-cyan-300">Pessoa Exposta Politicamente (PEP)</label>
+                            </div>
+                          </div>
                         </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">CPF</label>
-                          <input
-                            type="text"
-                            value={editingLead.cpf || ''}
-                            onChange={(e) => setEditingLead({...editingLead, cpf: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
+
+                        {/* Contato */}
+                        <div className="border-b border-gray-600 pb-4">
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Contato</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Email</label>
+                              <input
+                                type="email"
+                                value={editingLead.email || ''}
+                                onChange={(e) => setEditingLead({...editingLead, email: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Telefone</label>
+                              <input
+                                type="text"
+                                value={editingLead.phone || ''}
+                                onChange={(e) => setEditingLead({...editingLead, phone: e.target.value})}
+                                placeholder="(00) 00000-0000"
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                          </div>
                         </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Email</label>
-                          <input
-                            type="email"
-                            value={editingLead.email || ''}
-                            onChange={(e) => setEditingLead({...editingLead, email: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Telefone</label>
-                          <input
-                            type="text"
-                            value={editingLead.phone || ''}
-                            onChange={(e) => setEditingLead({...editingLead, phone: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">RG</label>
-                          <input
-                            type="text"
-                            value={editingLead.rg || ''}
-                            onChange={(e) => setEditingLead({...editingLead, rg: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Nacionalidade</label>
-                          <input
-                            type="text"
-                            value={editingLead.nationality || ''}
-                            onChange={(e) => setEditingLead({...editingLead, nationality: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Nascimento</label>
-                          <input
-                            type="date"
-                            value={editingLead.birth || ''}
-                            onChange={(e) => setEditingLead({...editingLead, birth: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Estado Civil</label>
-                          <input
-                            type="text"
-                            value={editingLead.marital_status || ''}
-                            onChange={(e) => setEditingLead({...editingLead, marital_status: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo de Pessoa</label>
-                          <input
-                            type="text"
-                            value={editingLead.person_type || ''}
-                            onChange={(e) => setEditingLead({...editingLead, person_type: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Nome da Mãe</label>
-                          <input
-                            type="text"
-                            value={editingLead.mother_name || ''}
-                            onChange={(e) => setEditingLead({...editingLead, mother_name: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
+
+                        {/* Endereço */}
+                        <div className="border-b border-gray-600 pb-4">
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Endereço</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">CEP</label>
+                              <input
+                                type="text"
+                                value={editingLead.cep || ''}
+                                onChange={(e) => setEditingLead({...editingLead, cep: e.target.value})}
+                                placeholder="00000-000"
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Estado</label>
+                              <p className="text-white">{editingLead.estado || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Cidade</label>
+                              <p className="text-white">{editingLead.cidade || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Bairro</label>
+                              <p className="text-white">{editingLead.bairro || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Rua</label>
+                              <p className="text-white">{editingLead.rua || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Número</label>
+                              <input
+                                type="text"
+                                value={editingLead.numero || ''}
+                                onChange={(e) => setEditingLead({...editingLead, numero: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                          </div>
                         </div>
                       </div>
-                      
+
                       {/* Coluna Direita */}
-                      <div className="space-y-4">
-                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Endereço</h4>
-                        
+                      <div className="space-y-6">
+                        {/* Informações Financeiras */}
+                        <div className="border-b border-gray-600 pb-4">
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Informações Financeiras</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Saldo</label>
+                              <p className="text-white">{formatCurrency(editingLead.balance)}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Simulação</label>
+                              <p className="text-white">{formatCurrency(editingLead.simulation)}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Consulta</label>
+                              <p className="text-red-400 text-sm">{editingLead.balance_error || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Proposta</label>
+                              <p className="text-red-400 text-sm">{editingLead.proposal_error || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
+                              <input
+                                type="text"
+                                value={editingLead.pix_key || ''}
+                                onChange={(e) => setEditingLead({...editingLead, pix_key: e.target.value})}
+                                placeholder="Chave PIX"
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo da Chave PIX</label>
+                              <p className="text-white">{editingLead.pix || '-'}</p>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Configurações */}
                         <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">CEP</label>
-                          <input
-                            type="text"
-                            value={editingLead.cep || ''}
-                            onChange={(e) => setEditingLead({...editingLead, cep: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Estado</label>
-                          <input
-                            type="text"
-                            value={editingLead.estado || ''}
-                            onChange={(e) => setEditingLead({...editingLead, estado: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Cidade</label>
-                          <input
-                            type="text"
-                            value={editingLead.cidade || ''}
-                            onChange={(e) => setEditingLead({...editingLead, cidade: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Bairro</label>
-                          <input
-                            type="text"
-                            value={editingLead.bairro || ''}
-                            onChange={(e) => setEditingLead({...editingLead, bairro: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Rua</label>
-                          <input
-                            type="text"
-                            value={editingLead.rua || ''}
-                            onChange={(e) => setEditingLead({...editingLead, rua: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Número</label>
-                          <input
-                            type="text"
-                            value={editingLead.numero || ''}
-                            onChange={(e) => setEditingLead({...editingLead, numero: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <h4 className="text-sm font-semibold text-cyan-300 mb-4 mt-6">Informações Financeiras</h4>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Saldo</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={editingLead.balance || ''}
-                            onChange={(e) => setEditingLead({...editingLead, balance: e.target.value})}
-                            placeholder="0,00"
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Simulação</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={editingLead.simulation || ''}
-                            onChange={(e) => setEditingLead({...editingLead, simulation: e.target.value})}
-                            placeholder="0,00"
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Valor da Proposta</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={editingLead.proposal_value || ''}
-                            onChange={(e) => setEditingLead({...editingLead, proposal_value: e.target.value})}
-                            placeholder="0,00"
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Status da Proposta</label>
-                          <select
-                            value={editingLead.proposal_status || ''}
-                            onChange={(e) => setEditingLead({...editingLead, proposal_status: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          >
-                            <option value="">Selecione...</option>
-                            <option value="pending">Pendente</option>
-                            <option value="approved">Aprovada</option>
-                            <option value="rejected">Rejeitada</option>
-                            <option value="paid">Paga</option>
-                            <option value="cancelled">Cancelada</option>
-                          </select>
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">ID da Proposta</label>
-                          <input
-                            type="text"
-                            value={editingLead.proposal_id || ''}
-                            onChange={(e) => setEditingLead({...editingLead, proposal_id: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Consulta</label>
-                          <input
-                            type="text"
-                            value={editingLead.balance_error || ''}
-                            onChange={(e) => setEditingLead({...editingLead, balance_error: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Proposta</label>
-                          <input
-                            type="text"
-                            value={editingLead.proposal_error || ''}
-                            onChange={(e) => setEditingLead({...editingLead, proposal_error: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Erro</label>
-                          <input
-                            type="text"
-                            value={editingLead.error_reason || ''}
-                            onChange={(e) => setEditingLead({...editingLead, error_reason: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo da Chave PIX</label>
-                          <input
-                            type="text"
-                            value={editingLead.pix || ''}
-                            onChange={(e) => setEditingLead({...editingLead, pix: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
-                          <input
-                            type="text"
-                            value={editingLead.pix_key || ''}
-                            onChange={(e) => setEditingLead({...editingLead, pix_key: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-                        
-                        <h4 className="text-sm font-semibold text-cyan-300 mb-4 mt-6">Configurações</h4>
-                        
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Provedor</label>
-                          <select
-                            value={editingLead.provider || 'cartos'}
-                            onChange={(e) => setEditingLead({...editingLead, provider: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          >
-                            <option value="cartos">Cartos</option>
-                            <option value="qi">QI</option>
-                          </select>
-                        </div>
-                        
-                        <div className="flex items-center">
-                          <input
-                            type="checkbox"
-                            id="is_pep"
-                            checked={editingLead.is_pep || false}
-                            onChange={(e) => setEditingLead({...editingLead, is_pep: e.target.checked})}
-                            className="w-4 h-4 text-cyan-600 bg-gray-800 border-gray-600 rounded focus:ring-cyan-500 focus:ring-2"
-                          />
-                          <label htmlFor="is_pep" className="ml-2 text-sm font-medium text-cyan-300">
-                            Pessoa Exposta Politicamente (PEP)
-                          </label>
-                        </div>
-                        
-                        <div className="flex items-center">
-                          <input
-                            type="checkbox"
-                            id="ressaque_tag"
-                            checked={editingLead.ressaque_tag || false}
-                            onChange={(e) => setEditingLead({...editingLead, ressaque_tag: e.target.checked})}
-                            className="w-4 h-4 text-cyan-600 bg-gray-800 border-gray-600 rounded focus:ring-cyan-500 focus:ring-2"
-                          />
-                          <label htmlFor="ressaque_tag" className="ml-2 text-sm font-medium text-cyan-300">
-                            Tag de Ressaque
-                          </label>
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Configurações</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Provedor</label>
+                              <select
+                                value={editingLead.provider || 'cartos'}
+                                onChange={(e) => setEditingLead({...editingLead, provider: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              >
+                                <option value="cartos">Cartos</option>
+                                <option value="qi">QI</option>
+                              </select>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
-                    
+
                     {saveError && (
                       <div className="mt-4 text-red-400 text-sm">{saveError}</div>
                     )}
-                    
+
                     <div className="mt-6 flex justify-end gap-3">
-                      <button 
-                        type="button" 
-                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none"
                         onClick={() => setEditModalOpen(false)}
                       >
                         Cancelar
                       </button>
-                      <button 
-                        type="button" 
-                        className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60" 
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60"
                         onClick={saveLeadData}
                         disabled={isSavingLead}
                       >
@@ -2826,7 +2741,7 @@ export default function Dashboard() {
                     <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
                       Detalhes do Lead - {selectedLead?.name}
                     </Dialog.Title>
-                    
+
                     {selectedLead && (
                       <div className="space-y-6">
                         {/* Informações Básicas */}
@@ -3037,7 +2952,7 @@ export default function Dashboard() {
                               <p className="text-white">{selectedLead.updated_at ? new Date(selectedLead.updated_at).toLocaleString('pt-BR') : '-'}</p>
                             </div>
                           </div>
-                          
+
                           {/* Dados Adicionais */}
                           {selectedLead.data && Object.keys(selectedLead.data).length > 0 && (
                             <div className="mt-4">
@@ -3050,11 +2965,11 @@ export default function Dashboard() {
                         </div>
                       </div>
                     )}
-                    
+
                     <div className="mt-6 flex justify-end">
-                      <button 
-                        type="button" 
-                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none"
                         onClick={() => setViewLeadModalOpen(false)}
                       >
                         Fechar
@@ -3080,7 +2995,7 @@ export default function Dashboard() {
                     <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
                       Histórico de Propostas - {selectedLead?.name}
                     </Dialog.Title>
-                    
+
                     {isLoadingProposals ? (
                       <div className="flex justify-center items-center py-8">
                         <FaSpinner className="w-8 h-8 text-cyan-500 animate-spin" />
@@ -3097,11 +3012,11 @@ export default function Dashboard() {
                           <h4 className="text-sm font-semibold text-cyan-300 mb-3">Lista de Propostas</h4>
                           <div className="space-y-2 max-h-64 overflow-y-auto">
                             {proposalsHistory.map((proposal, index) => (
-                              <div 
+                              <div
                                 key={proposal.id || index}
                                 className={`p-3 rounded-lg border cursor-pointer transition-colors ${
                                   selectedProposalInHistory && (selectedProposalInHistory.id === proposal.id || selectedProposalInHistory.proposal_id === proposal.proposal_id)
-                                    ? 'border-cyan-500 bg-cyan-900/20' 
+                                    ? 'border-cyan-500 bg-cyan-900/20'
                                     : 'border-gray-600 bg-gray-700 hover:bg-gray-600'
                                 }`}
                                 onClick={() => {
@@ -3172,44 +3087,44 @@ export default function Dashboard() {
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">ID da Proposta</label>
                                 <p className="text-white text-sm break-all">{selectedProposalInHistory.proposal_id || selectedProposalInHistory.id}</p>
                               </div>
-                              
+
                               {/* Valor */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Valor</label>
                                 <p className="text-white">{formatCurrency(selectedProposalInHistory.value || selectedProposalInHistory.amount)}</p>
                               </div>
-                              
+
                               {/* Status */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Status</label>
                                 <p className="text-white">{selectedProposalInHistory.status || '-'}</p>
                               </div>
-                              
+
                               {/* Data de Criação */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Criação</label>
                                 <p className="text-white">{formatDate(selectedProposalInHistory.created_at)}</p>
                               </div>
-                              
+
                               {/* Data de Atualização */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Atualização</label>
                                 <p className="text-white">{formatDate(selectedProposalInHistory.updated_at)}</p>
                               </div>
-                              
+
                               {/* Número do Contrato */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Número do Contrato</label>
                                 <p className="text-white">{selectedProposalInHistory['Número contrato'] || '-'}</p>
                               </div>
-                              
+
                               {/* Link de Formalização */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Link de Formalização</label>
                                 {selectedProposalInHistory['Link de formalização'] ? (
-                                  <a 
-                                    href={selectedProposalInHistory['Link de formalização']} 
-                                    target="_blank" 
+                                  <a
+                                    href={selectedProposalInHistory['Link de formalização']}
+                                    target="_blank"
                                     rel="noopener noreferrer"
                                     className="text-cyan-400 hover:text-cyan-300 underline break-all text-sm"
                                   >
@@ -3219,31 +3134,31 @@ export default function Dashboard() {
                                   <p className="text-white">-</p>
                                 )}
                               </div>
-                              
+
                               {/* Status Reason */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Status</label>
                                 <p className="text-white">{selectedProposalInHistory.status_reason || '-'}</p>
                               </div>
-                              
+
                               {/* Status Description */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Descrição do Status</label>
                                 <p className="text-white">{selectedProposalInHistory.status_description || '-'}</p>
                               </div>
-                              
+
                               {/* Error Reason */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Erro</label>
                                 <p className="text-white">{selectedProposalInHistory.error_reason || '-'}</p>
                               </div>
-                              
+
                               {/* Chave PIX */}
                               <div>
                                 <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
                                 <p className="text-white">{selectedProposalInHistory.chavePix || '-'}</p>
                               </div>
-                              
+
                               {/* Metadados - Ocupa toda a largura */}
                               {selectedProposalInHistory.metadata && Object.keys(selectedProposalInHistory.metadata).length > 0 && (
                                 <div className="md:col-span-2">
@@ -3258,12 +3173,12 @@ export default function Dashboard() {
                         )}
                       </div>
                     )}
-                    
+
                     <div className="mt-6 flex justify-between items-center">
                       {/* Botão de Criar Proposta */}
-                      <button 
-                        type="button" 
-                        className="inline-flex items-center justify-center rounded-md border border-cyan-500 bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 focus:outline-none transition-colors" 
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center rounded-md border border-cyan-500 bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 focus:outline-none transition-colors"
                         onClick={() => {
                           setProposalsHistoryModalOpen(false);
                           if (selectedLead) {
@@ -3274,11 +3189,11 @@ export default function Dashboard() {
                         <FaPlus className="w-4 h-4 mr-2" />
                         Criar Nova Proposta
                       </button>
-                      
+
                       {/* Botão de Fechar */}
-                      <button 
-                        type="button" 
-                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none"
                         onClick={() => setProposalsHistoryModalOpen(false)}
                       >
                         Fechar
@@ -3304,13 +3219,13 @@ export default function Dashboard() {
                     <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
                       Editar Proposta - {editingProposal?.proposal_id || editingProposal?.id}
                     </Dialog.Title>
-                    
+
                     {editProposalError && (
                       <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg">
                         <p className="text-red-400 text-sm">{editProposalError}</p>
                       </div>
                     )}
-                    
+
                     {editingProposal && (
                       <div className="space-y-6">
                         {/* Dados da Proposta (Somente Leitura) */}
@@ -3322,44 +3237,44 @@ export default function Dashboard() {
                               <label className="block text-sm font-medium text-cyan-300 mb-1">ID da Proposta</label>
                               <p className="text-white text-sm">{editingProposal.proposal_id || editingProposal.id}</p>
                             </div>
-                            
+
                             {/* Valor */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Valor</label>
                               <p className="text-white">{formatCurrency(editingProposal.value || editingProposal.amount)}</p>
                             </div>
-                            
+
                             {/* Status */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Status</label>
                               <p className="text-white">{editingProposal.status || '-'}</p>
                             </div>
-                            
+
                             {/* Data de Criação */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Criação</label>
                               <p className="text-white">{formatDate(editingProposal.created_at)}</p>
                             </div>
-                            
+
                             {/* Data de Atualização */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Atualização</label>
                               <p className="text-white">{formatDate(editingProposal.updated_at)}</p>
                             </div>
-                            
+
                             {/* Número do Contrato */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Número do Contrato</label>
                               <p className="text-white">{editingProposal['Número contrato'] || '-'}</p>
                             </div>
-                            
+
                             {/* Link de Formalização */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Link de Formalização</label>
                               {editingProposal['Link de formalização'] ? (
-                                <a 
-                                  href={editingProposal['Link de formalização']} 
-                                  target="_blank" 
+                                <a
+                                  href={editingProposal['Link de formalização']}
+                                  target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-cyan-400 hover:text-cyan-300 underline break-all text-sm"
                                 >
@@ -3369,19 +3284,19 @@ export default function Dashboard() {
                                 <p className="text-white">-</p>
                               )}
                             </div>
-                            
+
                             {/* Motivo do Status */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Status</label>
                               <p className="text-white">{editingProposal.status_reason || '-'}</p>
                             </div>
-                            
+
                             {/* Descrição do Status */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Descrição do Status</label>
                               <p className="text-white">{editingProposal.status_description || '-'}</p>
                             </div>
-                            
+
                             {/* Motivo do Erro */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Erro</label>
@@ -3409,19 +3324,19 @@ export default function Dashboard() {
                         </div>
                       </div>
                     )}
-                    
+
                     <div className="mt-6 flex justify-end gap-3">
-                      <button 
-                        type="button" 
-                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none"
                         onClick={() => setEditProposalModalOpen(false)}
                         disabled={isEditingProposal}
                       >
                         Cancelar
                       </button>
-                      <button 
-                        type="button" 
-                        className="inline-flex justify-center rounded-md border border-transparent bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed" 
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-transparent bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
                         onClick={saveProposalEdit}
                         disabled={isEditingProposal}
                       >
@@ -3455,12 +3370,12 @@ export default function Dashboard() {
                     <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-4">
                       Selecionar Provedor
                     </Dialog.Title>
-                    
+
                                       <div className="mb-6">
                     <p className="text-gray-200 mb-4">
                       Selecione qual provedor e banco deseja usar para consultar o saldo do lead <strong className="text-cyan-300">{selectedLeadForQuery?.name}</strong>:
                     </p>
-                    
+
                     <div className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-cyan-300 mb-2">Provedor</label>
@@ -3473,7 +3388,7 @@ export default function Dashboard() {
                           <option value="qi">QI</option>
                         </select>
                       </div>
-                      
+
                       <div>
                         <label className="block text-sm font-medium text-cyan-300 mb-2">Banco</label>
                         {loadingBanks ? (
@@ -3502,18 +3417,18 @@ export default function Dashboard() {
                       </div>
                     </div>
                   </div>
-                    
+
                     <div className="flex justify-end gap-3">
-                      <button 
-                        type="button" 
-                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none"
                         onClick={() => setShowProviderModal(false)}
                       >
                         Cancelar
                       </button>
-                      <button 
-                        type="button" 
-                        className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60" 
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60"
                         onClick={confirmRepeatQuery}
                         disabled={repeatingQuery === selectedLeadForQuery?.id}
                       >
@@ -3547,13 +3462,13 @@ export default function Dashboard() {
                     <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
                       Criar Proposta - {selectedLeadForProposal?.name}
                     </Dialog.Title>
-                    
+
                     {createProposalError && (
                       <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm">
                         {createProposalError}
                       </div>
                     )}
-                    
+
                     <div className="space-y-6">
                       {/* Dados do Lead */}
                       <div className="border-b border-gray-600 pb-4">
@@ -3681,7 +3596,7 @@ export default function Dashboard() {
                               <option value="qi">QI</option>
                             </select>
                           </div>
-                          
+
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-2">Banco</label>
                             {loadingBanks ? (
@@ -3711,19 +3626,19 @@ export default function Dashboard() {
                         </div>
                       </div>
                     </div>
-                    
+
                     <div className="mt-6 flex justify-end gap-3">
-                      <button 
-                        type="button" 
-                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none"
                         onClick={() => setCreateProposalModalOpen(false)}
                         disabled={isCreatingProposal}
                       >
                         Cancelar
                       </button>
-                      <button 
-                        type="button" 
-                        className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60" 
+                      <button
+                        type="button"
+                        className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60"
                         onClick={createProposal}
                         disabled={isCreatingProposal}
                       >
@@ -3750,7 +3665,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2">
               <FaExclamationTriangle />
               <span className="text-sm">{repeatError}</span>
-              <button 
+              <button
                 onClick={() => setRepeatError('')}
                 className="ml-auto text-white/70 hover:text-white"
               >

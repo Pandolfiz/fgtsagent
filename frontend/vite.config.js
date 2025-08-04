@@ -1,11 +1,12 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'path'
+import fs from 'fs'
 
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [react()],
-  
+
   // Otimizações de build
   build: {
     // Otimizar bundle splitting
@@ -24,7 +25,7 @@ export default defineConfig({
         }
       }
     },
-    
+
     // Configurações de compressão
     target: 'es2020',
     minify: 'terser',
@@ -38,35 +39,46 @@ export default defineConfig({
         safari10: true
       }
     },
-    
+
     // Limite de chunk size
     chunkSizeWarningLimit: 1000,
-    
+
     // Configurações de assets
     assetsDir: 'assets',
     assetsInlineLimit: 4096, // Inline assets menores que 4kb
-    
+
     // Source maps apenas em desenvolvimento
     sourcemap: process.env.NODE_ENV === 'development'
   },
-  
+
   // Otimizações de servidor de desenvolvimento
   server: {
     host: 'localhost', // Usar apenas localhost para evitar problemas de CORS
     port: 5173,
     open: false,
-    
-    // Permitir hosts do ngrok e outros tunnels
-    allowedHosts: [
-      'localhost',
-      '.ngrok.io',
-      '.ngrok-free.app',
-      '.ngrok.app',
-      '.tunnel.me',
-      '.localtunnel.me',
-      '.serveo.net'
-    ],
-    
+
+    // Configuração HTTPS para compatibilidade com Facebook SDK
+    https: (() => {
+      try {
+        const certPath = resolve(__dirname, 'certs/cert.pem');
+        const keyPath = resolve(__dirname, 'certs/key.pem');
+
+        if (fs.existsSync(certPath) && fs.existsSync(keyPath)) {
+          console.log('🔐 Usando certificados SSL personalizados');
+          return {
+            key: fs.readFileSync(keyPath),
+            cert: fs.readFileSync(certPath)
+          };
+        } else {
+          console.log('⚠️ Certificados SSL não encontrados, usando HTTP');
+          return false;
+        }
+      } catch (error) {
+        console.log('⚠️ Erro ao carregar certificados SSL, usando HTTP');
+        return false;
+      }
+    })(),
+
     // Configurações de proxy para desenvolvimento
     proxy: {
       '/api': {
@@ -76,23 +88,13 @@ export default defineConfig({
       }
     }
   },
-  
+
   // Preview server configurações
   preview: {
     port: 4173,
     host: 'localhost', // Usar apenas localhost para evitar problemas de CORS
-    // Permitir hosts para preview também
-    allowedHosts: [
-      'localhost',
-      '.ngrok.io',
-      '.ngrok-free.app',
-      '.ngrok.app',
-      '.tunnel.me',
-      '.localtunnel.me',
-      '.serveo.net'
-    ]
   },
-  
+
   // Configurações de alias
   resolve: {
     alias: {
@@ -105,7 +107,7 @@ export default defineConfig({
       '@styles': resolve(__dirname, './src/styles')
     }
   },
-  
+
   // Otimizações de dependências
   optimizeDeps: {
     include: [
@@ -121,7 +123,7 @@ export default defineConfig({
       // Excluir dependências que não precisam de pré-bundling
     ]
   },
-  
+
   // Configurações de CSS
   css: {
     devSourcemap: process.env.NODE_ENV === 'development',
@@ -129,17 +131,17 @@ export default defineConfig({
       // Configurações específicas do preprocessor se necessário
     }
   },
-  
+
   // Configurações de definições globais
   define: {
     __APP_VERSION__: JSON.stringify(process.env.npm_package_version || '1.0.0'),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString())
   },
-  
+
   // Configurações de PWA (se for implementar no futuro)
   // Deixar preparado para Service Worker
   manifest: false, // Será configurado quando implementar PWA
-  
+
   // Configurações de workers
   worker: {
     format: 'es'

@@ -7,7 +7,7 @@ document.addEventListener('DOMContentLoaded', function() {
   toastElList.map(function(toastEl) {
     return new bootstrap.Toast(toastEl);
   });
-  
+
   // Manipular botão de edição
   const editProfileBtn = document.querySelector('a[href="/profile/edit"]');
   if (editProfileBtn) {
@@ -16,10 +16,10 @@ document.addEventListener('DOMContentLoaded', function() {
       window.location.href = '/profile/edit';
     });
   }
-  
+
   // Inicializar tooltips se existirem
   const tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
   tooltipTriggerList.map(function(tooltipTriggerEl) {
     return new bootstrap.Tooltip(tooltipTriggerEl);
   });
-}); 
+});

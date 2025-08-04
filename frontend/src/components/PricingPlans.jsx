@@ -85,7 +85,7 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
     return (
       <div className="text-center py-12">
         <p className="text-red-300 mb-4">{error}</p>
-        <button 
+        <button
           onClick={fetchPlans}
           className="bg-gradient-to-r from-cyan-500 to-emerald-500 text-white px-4 py-2 rounded-lg hover:from-cyan-600 hover:to-emerald-600 transition-all duration-300"
         >
@@ -116,7 +116,7 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
               onClick={() => onPlanSelect(plan.id)}
             >
               {getPlanBadge(plan.id)}
-              
+
               <div className="text-center mb-2">
                 <div className="flex justify-center mb-1">
                   <div className="w-6 h-6">
@@ -177,4 +177,4 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
   );
 };
 
-export default PricingPlans; 
+export default PricingPlans;

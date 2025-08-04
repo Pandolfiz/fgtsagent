@@ -58,7 +58,7 @@ FgtsAgent é uma plataforma SaaS robusta que permite:
 │                 │    │                 │    │                 │
 │   Frontend      │────│   Nginx Proxy   │────│   Backend API   │
 │   (React SPA)   │    │   + SSL/TLS     │    │   (Node.js)     │
-│   Porta 5174    │    │   Porta 80/443  │    │   Porta 3000    │
+│   Porta 5173    │    │   Porta 80/443  │    │   Porta 3000    │
 │                 │    │                 │    │                 │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
                                                         │
@@ -79,7 +79,7 @@ stable-src/
 │   ├── src/
 │   │   ├── components/       # Componentes React
 │   │   │   ├── agent/        # Componentes de agentes
-│   │   │   ├── evolution-credentials/
+│   │   │   ├── whatsapp-credentials/
 │   │   │   └── partner-credentials/
 │   │   ├── pages/           # Páginas da aplicação
 │   │   │   ├── whatsapp-credentials/
@@ -216,7 +216,7 @@ Veja o arquivo `ENVIRONMENT_VARIABLES.md` para lista completa.
 ## 🌐 **Acesso à Aplicação**
 
 ### **Desenvolvimento**
-- 🌍 **Frontend**: http://localhost:5174
+- 🌍 **Frontend**: http://localhost:5173
 - 🔌 **API**: http://localhost:3000/api
 - 📊 **Health Check**: http://localhost:3000/api/health
 

@@ -1,11 +1,11 @@
 import React, { useEffect, useState, useRef, Fragment } from 'react'
-import { 
-  FaSearch, 
-  FaFilter, 
-  FaSort, 
-  FaEdit, 
-  FaFileAlt, 
-  FaRedo, 
+import {
+  FaSearch,
+  FaFilter,
+  FaSort,
+  FaEdit,
+  FaFileAlt,
+  FaRedo,
   FaEye,
   FaSpinner,
   FaTimes,
@@ -22,6 +22,20 @@ import supabase from '../lib/supabaseClient'
 
 // Remover o componente Portal customizado
 
+// Adicione a função de mapeamento no topo do componente (após imports)
+function mapMaritalStatus(status) {
+  if (!status) return '';
+  const normalized = status.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  switch (normalized) {
+    case 'solteiro': return 'single';
+    case 'casado': return 'married';
+    case 'divorciado': return 'divorced';
+    case 'viuvo':
+    case 'viúvo': return 'widowed';
+    default: return '';
+  }
+}
+
 export default function Leads() {
   const [leads, setLeads] = useState([])
   const [filteredLeads, setFilteredLeads] = useState([])
@@ -33,7 +47,7 @@ export default function Leads() {
   const [statusFilter, setStatusFilter] = useState('')
   const [sortField, setSortField] = useState('updated_at')
   const [sortDirection, setSortDirection] = useState('desc')
-  
+
   // Estados para modais
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [viewModalOpen, setViewModalOpen] = useState(false)
@@ -42,15 +56,15 @@ export default function Leads() {
   const [editingLead, setEditingLead] = useState({})
   const [isSaving, setIsSaving] = useState(false)
   const [saveError, setSaveError] = useState('')
-  
+
   // Estados para histórico de propostas
   const [proposalsHistory, setProposalsHistory] = useState([])
   const [selectedProposal, setSelectedProposal] = useState(null)
   const [isLoadingProposals, setIsLoadingProposals] = useState(false)
-  
+
   // Estado separado para proposta selecionada no histórico
   const [selectedProposalInHistory, setSelectedProposalInHistory] = useState(null)
-  
+
   // Estados para repetir consulta
   const [repeatingQuery, setRepeatingQuery] = useState(null)
   const [repeatError, setRepeatError] = useState('')
@@ -60,7 +74,7 @@ export default function Leads() {
   const [availableBanks, setAvailableBanks] = useState([])
   const [selectedBank, setSelectedBank] = useState('')
   const [loadingBanks, setLoadingBanks] = useState(false)
-  
+
   // Estados para criar proposta
   const [createProposalModalOpen, setCreateProposalModalOpen] = useState(false)
   const [selectedLeadForProposal, setSelectedLeadForProposal] = useState(null)
@@ -113,7 +127,7 @@ export default function Leads() {
     if (!isAuthenticated) return;
 
     console.log('[LEADS] Iniciando sincronização inteligente...');
-    
+
     const intervalId = setInterval(() => {
       console.log('[LEADS] Sincronização inteligente - atualizando dados...');
       reloadLeadsData();
@@ -129,26 +143,26 @@ export default function Leads() {
     try {
       setIsLoading(true)
       const { data: { session } } = await supabase.auth.getSession()
-      
+
       if (!session?.access_token) {
         throw new Error('Token de acesso não encontrado')
       }
-      
+
       const response = await fetch('/api/leads/complete', {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
         }
       })
-      
+
       if (!response.ok) {
         const errorText = await response.text()
         console.error('Erro na resposta:', errorText)
         throw new Error(`Erro ao buscar leads: ${response.status} ${response.statusText}`)
       }
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         setLeads(data.data)
         setFilteredLeads(data.data)
@@ -167,26 +181,26 @@ export default function Leads() {
     try {
       setIsSyncing(true);
       const { data: { session } } = await supabase.auth.getSession()
-      
+
       if (!session?.access_token) {
         throw new Error('Token de acesso não encontrado')
       }
-      
+
       const response = await fetch('/api/leads/complete', {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
         }
       })
-      
+
       if (!response.ok) {
         const errorText = await response.text()
         console.error('Erro na resposta:', errorText)
         throw new Error(`Erro ao buscar leads: ${response.status} ${response.statusText}`)
       }
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         console.log(`[LEADS] Dados recarregados:`, data.data.length, 'leads')
         setLeads(data.data)
@@ -209,16 +223,16 @@ export default function Leads() {
     if (lead.proposal_status === 'cancelled') return 'proposta_cancelada'
     if (lead.proposal_status === 'pending') return 'proposta_pendente'
     if (lead.proposal_status === 'formalization') return 'formalization'
-    
+
     // Verificar se tem proposta criada (mesmo sem status específico)
     if (lead.hasProposals || lead.proposal_id) return 'proposta_criada'
-    
+
     // Verificar simulação
     if (lead.simulation && lead.simulation > 0) return 'simulacao'
-    
+
     // Verificar consulta
     if (lead.balance && lead.balance > 0) return 'pre_consulta'
-    
+
     return 'pre_consulta'
   }
 
@@ -233,7 +247,7 @@ export default function Leads() {
       'proposta_cancelada': 'bg-red-100 text-red-800 border-red-200',
       'proposta_paga': 'bg-emerald-100 text-emerald-800 border-emerald-200'
     }
-    
+
     const labelMap = {
       'pre_consulta': 'Pré Consulta',
       'simulacao': 'Simulação',
@@ -243,10 +257,10 @@ export default function Leads() {
       'proposta_cancelada': 'Proposta Cancelada',
       'proposta_paga': 'Proposta Paga'
     }
-    
+
     const classes = statusMap[status] || statusMap['pre_consulta']
     const label = labelMap[status] || 'Pré Consulta'
-    
+
     return (
       <span className={`px-2.5 py-0.5 text-xs font-medium rounded-full border ${classes} inline-block`}>
         {label}
@@ -260,7 +274,7 @@ export default function Leads() {
     if (!value || value === 0 || value === '' || value === null || value === undefined) {
       return '-'
     }
-    
+
     // Converter para número se for string
     let numericValue = value
     if (typeof value === 'string') {
@@ -268,15 +282,15 @@ export default function Leads() {
       const cleanValue = value.replace(/[^\d.,]/g, '')
       numericValue = parseFloat(cleanValue.replace(',', '.'))
     }
-    
+
     // Verificar se é um número válido
     if (isNaN(numericValue) || !isFinite(numericValue)) {
       return '-'
     }
-    
-    return new Intl.NumberFormat('pt-BR', { 
-      style: 'currency', 
-      currency: 'BRL' 
+
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
     }).format(numericValue)
   }
 
@@ -289,8 +303,8 @@ export default function Leads() {
   // Função para formatar horário da última sincronização
   const formatLastSyncTime = (date) => {
     if (!date) return null;
-    return date.toLocaleTimeString('pt-BR', { 
-      hour: '2-digit', 
+    return date.toLocaleTimeString('pt-BR', {
+      hour: '2-digit',
       minute: '2-digit',
       second: '2-digit'
     });
@@ -305,7 +319,7 @@ export default function Leads() {
     return parcelas.map((parcela, index) => {
       let valor = '-'
       let ano = '-'
-      
+
       if (typeof parcela === 'object' && parcela.amount) {
         valor = formatCurrency(parcela.amount)
         if (parcela.dueDate) {
@@ -324,7 +338,7 @@ export default function Leads() {
           ano = yearMatch[1]
         }
       }
-      
+
       return { ano, valor, original: parcela }
     })
   }
@@ -336,7 +350,7 @@ export default function Leads() {
     // Aplicar filtro de busca
     if (searchTerm) {
       const term = searchTerm.toLowerCase()
-      filtered = filtered.filter(lead => 
+      filtered = filtered.filter(lead =>
         lead.name?.toLowerCase().includes(term) ||
         lead.cpf?.includes(term) ||
         lead.phone?.includes(term)
@@ -382,43 +396,63 @@ export default function Leads() {
   }, [leads, searchTerm, statusFilter, sortField, sortDirection])
 
   // Função para abrir modal de edição
-  const openEditModal = (lead) => {
+  const openEditModal = async (lead) => {
     setSelectedLead(lead)
-    setEditingLead({
-      name: lead.name || '',
-      cpf: lead.cpf || '',
-      phone: lead.phone || '',
-      email: lead.email || '',
-      status: lead.status || '',
-      data: lead.data || {},
-      // Campos adicionais da tabela leads
-      rg: lead.rg || '',
-      nationality: lead.nationality || '',
-      is_pep: lead.is_pep || false,
-      birth: lead.birth || '',
-      marital_status: lead.marital_status || '',
-      person_type: lead.person_type || '',
-      mother_name: lead.mother_name || '',
-      // Endereço
-      cep: lead.cep || '',
-      estado: lead.estado || '',
-      cidade: lead.cidade || '',
-      bairro: lead.bairro || '',
-      rua: lead.rua || '',
-      numero: lead.numero || '',
-      // Campos financeiros
-      balance: lead.balance || '',
-      pix: lead.pix || '',
-      pix_key: lead.pix_key || '',
-      simulation: lead.simulation || '',
-      balance_error: lead.balance_error || '',
-      proposal_error: lead.proposal_error || '',
-      parcelas: lead.parcelas || null,
-      // Outros campos
-      provider: lead.provider || 'cartos'
-    })
     setSaveError('')
-    setEditModalOpen(true)
+
+    try {
+      // Buscar dados completos do lead
+      const response = await fetch(`/api/leads/${lead.id}`, {
+        credentials: 'include'
+      })
+      const data = await response.json()
+
+      if (data.success) {
+        const fullLead = data.data
+        setEditingLead({
+          id: fullLead.id,
+          // Campos básicos
+          name: fullLead.name || '',
+          cpf: fullLead.cpf || '',
+          phone: fullLead.phone || '',
+          email: fullLead.email || '',
+          status: fullLead.status || '',
+          data: fullLead.data || {},
+          // Campos de documento
+          rg: fullLead.rg || '',
+          nationality: fullLead.nationality || '',
+          is_pep: fullLead.is_pep || false,
+          birth: fullLead.birth || '',
+          marital_status: mapMaritalStatus(fullLead.marital_status),
+          person_type: fullLead.person_type || '',
+          mother_name: fullLead.mother_name || '',
+          // Endereço
+          cep: fullLead.cep || '',
+          estado: fullLead.estado || '',
+          cidade: fullLead.cidade || '',
+          bairro: fullLead.bairro || '',
+          rua: fullLead.rua || '',
+          numero: fullLead.numero || '',
+          // Campos financeiros
+          balance: fullLead.balance || '',
+          pix: fullLead.pix || '',
+          pix_key: fullLead.pix_key || '',
+          simulation: fullLead.simulation || '',
+          balance_error: fullLead.balance_error || '',
+          proposal_error: fullLead.proposal_error || '',
+          parcelas: fullLead.parcelas || null,
+          // Outros campos
+          provider: fullLead.provider || 'cartos'
+        })
+        setEditModalOpen(true)
+      } else {
+        console.error('Erro ao buscar dados do lead:', data.message)
+        setSaveError('Erro ao carregar dados do lead')
+      }
+    } catch (error) {
+      console.error('Erro ao abrir modal de edição:', error)
+      setSaveError('Erro ao carregar dados')
+    }
   }
 
   // Função para abrir histórico de propostas
@@ -426,26 +460,26 @@ export default function Leads() {
     try {
       setIsLoadingProposals(true)
       setSelectedLead(lead)
-      
+
       const { data: { session } } = await supabase.auth.getSession()
-      
+
       if (!session?.access_token) {
         throw new Error('Token de acesso não encontrado')
       }
-      
+
       const response = await fetch(`/api/leads/${lead.id}/proposals`, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
         }
       })
-      
+
       if (!response.ok) {
         throw new Error(`Erro ao buscar propostas: ${response.status}`)
       }
-      
+
       const data = await response.json()
-      
+
       if (data.success) {
         setProposalsHistory(data.data)
         // Limpar proposta selecionada no histórico ao abrir o modal
@@ -470,7 +504,7 @@ export default function Leads() {
       setSaveError('')
 
       const { data: { session } } = await supabase.auth.getSession()
-      
+
       if (!session?.access_token) {
         throw new Error('Token de acesso não encontrado')
       }
@@ -533,21 +567,21 @@ export default function Leads() {
       }
 
       const result = await response.json()
-      
+
       if (result.success) {
         // Atualizar a lista de leads
-        setLeads(prevLeads => 
-          prevLeads.map(lead => 
-            lead.id === selectedLead.id 
+        setLeads(prevLeads =>
+          prevLeads.map(lead =>
+            lead.id === selectedLead.id
               ? { ...lead, ...updateData }
               : lead
           )
         )
-        
+
         setEditModalOpen(false)
         setSelectedLead(null)
         setEditingLead({})
-        
+
         // Mostrar mensagem de sucesso
         if (typeof window !== 'undefined' && window.toast) {
           window.toast.success('Lead atualizado com sucesso!')
@@ -568,9 +602,9 @@ export default function Leads() {
     try {
       setLoadingBanks(true)
       console.log('[LEADS] Iniciando busca de bancos...')
-      
+
       const { data: { session } } = await supabase.auth.getSession()
-      
+
       if (!session?.access_token) {
         throw new Error('Token de acesso não encontrado')
       }
@@ -581,20 +615,20 @@ export default function Leads() {
           'Content-Type': 'application/json'
         }
       })
-      
+
       if (!response.ok) {
         throw new Error(`Erro HTTP ${response.status}: ${response.statusText}`)
       }
-      
+
       const data = await response.json()
       console.log('[LEADS] Resposta da API de bancos:', data)
-      
+
       if (data.success && data.data) {
         // Filtrar apenas credenciais ativas
         const activeCredentials = data.data.filter(cred => cred.status === 'active')
         console.log('[LEADS] Bancos ativos encontrados:', activeCredentials.length)
         setAvailableBanks(activeCredentials)
-        
+
         // Selecionar o primeiro banco por padrão se houver
         if (activeCredentials.length > 0) {
           setSelectedBank(activeCredentials[0].id)
@@ -619,7 +653,7 @@ export default function Leads() {
       setRepeatError('')
 
       const { data: { session } } = await supabase.auth.getSession()
-      
+
       if (!session?.access_token) {
         throw new Error('Token de acesso não encontrado')
       }
@@ -632,60 +666,60 @@ export default function Leads() {
         }
       })
       const leadData = await leadResponse.json()
-      
+
       if (!leadData.success) {
         throw new Error('Erro ao buscar dados do lead: ' + leadData.message)
       }
-      
+
       // Buscar dados da credencial do banco selecionado
       console.log('Buscando dados do banco com ID:', bankId)
       const bankUrl = `/api/partner-credentials/${bankId}`
       console.log('URL do banco:', bankUrl)
-      
+
       const bankResponse = await fetch(bankUrl, {
         headers: {
           'Authorization': `Bearer ${session.access_token}`,
           'Content-Type': 'application/json'
         }
       })
-      
+
       console.log('Status da resposta do banco:', bankResponse.status)
       console.log('Headers da resposta:', bankResponse.headers)
-      
+
       if (!bankResponse.ok) {
         const errorText = await bankResponse.text()
         console.error('Erro na resposta do banco:', errorText)
         throw new Error(`Erro HTTP ${bankResponse.status}: ${errorText}`)
       }
-      
+
       const bankData = await bankResponse.json()
       console.log('Dados do banco recebidos:', bankData)
-      
+
       if (!bankData.success) {
         throw new Error('Erro ao buscar dados do banco: ' + bankData.message)
       }
-      
+
       // Preparar payload do webhook
       console.log('Dados do lead:', leadData.data)
       console.log('Dados do banco:', bankData.data)
       console.log('User ID da credencial do banco:', bankData.data.user_id)
-      
+
       // Verificar se os dados necessários estão presentes
       if (!leadData.data || !bankData.data) {
         throw new Error('Dados do lead ou banco não encontrados')
       }
-      
+
       // Verificar se o banco tem oauth_config
       if (!bankData.data.oauth_config) {
         console.warn('Banco não tem oauth_config, usando valores padrão')
         bankData.data.oauth_config = {}
       }
-      
+
       // Verificar se o user_id está presente na credencial do banco
       if (!bankData.data.user_id) {
         throw new Error('user_id não encontrado na credencial do banco')
       }
-      
+
       const webhookPayload = [
         {
           cpf: leadData.data.cpf || '',
@@ -701,14 +735,14 @@ export default function Leads() {
           phone: leadData.data.phone || ''
         }
       ]
-      
+
       console.log('Enviando webhook com payload:', webhookPayload)
-      
+
       // Enviar webhook para o n8n
       const webhookUrl = 'https://n8n-n8n.8cgx4t.easypanel.host/webhook/consulta_app'
       console.log('Enviando webhook para:', webhookUrl)
       console.log('Payload do webhook:', webhookPayload)
-      
+
       const webhookResponse = await fetch(webhookUrl, {
         method: 'POST',
         headers: {
@@ -716,14 +750,14 @@ export default function Leads() {
         },
         body: JSON.stringify(webhookPayload)
       })
-      
+
       console.log('Status da resposta do webhook:', webhookResponse.status)
       console.log('Headers da resposta do webhook:', webhookResponse.headers)
-      
+
       // Verificar apenas se a requisição foi enviada com sucesso (status 2xx)
       if (webhookResponse.status >= 200 && webhookResponse.status < 300) {
         console.log('Webhook enviado com sucesso para o n8n')
-        
+
         // Tentar ler a resposta para debug, mas não falhar se não conseguir
         try {
           const responseText = await webhookResponse.text()
@@ -736,10 +770,10 @@ export default function Leads() {
         console.error('Erro na resposta do webhook:', errorText)
         throw new Error(`Erro HTTP ${webhookResponse.status}: ${errorText}`)
       }
-      
+
       // Recarregar a lista de leads
       await reloadLeadsData()
-      
+
     } catch (error) {
       setRepeatError('Erro ao repetir consulta: ' + error.message)
     } finally {
@@ -753,7 +787,7 @@ export default function Leads() {
     setSelectedProvider('cartos') // Reset para padrão
     setSelectedBank('') // Reset banco selecionado
     setShowProviderModal(true)
-    
+
     // Buscar bancos disponíveis imediatamente
     fetchAvailableBanks() // Removido await para não bloquear a abertura do modal
   }
@@ -764,7 +798,7 @@ export default function Leads() {
         setRepeatError('Por favor, selecione um banco')
         return
       }
-      
+
       await repeatQuery(selectedLeadForQuery.id, selectedProvider, selectedBank)
       setShowProviderModal(false)
       setSelectedLeadForQuery(null)
@@ -777,17 +811,17 @@ export default function Leads() {
     setCreateProposalError('')
     setSelectedProvider('cartos') // Reset para padrão
     setSelectedBank('') // Reset banco selecionado
-    
+
     try {
       // Buscar dados completos do lead
       const response = await fetch(`/api/leads/${lead.id}`, {
         credentials: 'include'
       })
       const data = await response.json()
-      
+
       if (data.success) {
         const leadData = data.data
-        
+
         // Preparar dados do formulário
         const formData = {
           // Dados do lead
@@ -797,16 +831,16 @@ export default function Leads() {
           motherName: leadData.mother_name || leadData.motherName || '',
           email: leadData.email || '',
           birthDate: leadData.birth || leadData.birthDate || '',
-          maritalStatus: leadData.marital_status || leadData.maritalStatus || '',
+          maritalStatus: mapMaritalStatus(leadData.marital_status || leadData.maritalStatus),
           phone: leadData.phone || '',
           postalCode: leadData.cep || leadData.postalCode || '',
-          addressNumber: leadData.address_number || leadData.addressNumber || '',
-          chavePix: leadData.chave_pix || leadData.chavePix || ''
+          addressNumber: leadData.numero || leadData.address_number || leadData.addressNumber || '',
+          chavePix: leadData.pix_key || leadData.chave_pix || leadData.chavePix || ''
         }
-        
+
         setProposalFormData(formData)
         setCreateProposalModalOpen(true)
-        
+
         // Buscar bancos disponíveis imediatamente
         fetchAvailableBanks()
       } else {
@@ -821,28 +855,28 @@ export default function Leads() {
 
   const createProposal = async () => {
     if (!selectedLeadForProposal) return
-    
+
     if (!selectedBank) {
       setCreateProposalError('Por favor, selecione um banco')
       return
     }
-    
+
     setIsCreatingProposal(true)
     setCreateProposalError('')
-    
+
     try {
       // Buscar dados do partner_credentials selecionado
       const credentialsResponse = await fetch(`/api/partner-credentials/${selectedBank}`, {
         credentials: 'include'
       })
       const credentialsData = await credentialsResponse.json()
-      
+
       if (!credentialsData.success) {
         throw new Error('Erro ao buscar dados do banco selecionado')
       }
-      
+
       const bankData = credentialsData.data
-      
+
       const payload = [{
         name: proposalFormData.name,
         cpf: proposalFormData.cpf,
@@ -863,9 +897,9 @@ export default function Leads() {
         client_id: bankData.client_id || '',
         user_id: bankData.user_id || ''
       }]
-      
+
       console.log('[LEADS] Enviando proposta para webhook:', payload)
-      
+
       const webhookResponse = await fetch('https://n8n-n8n.8cgx4t.easypanel.host/webhook/criaPropostaApp', {
         method: 'POST',
         headers: {
@@ -873,15 +907,15 @@ export default function Leads() {
         },
         body: JSON.stringify(payload)
       })
-      
+
       console.log('[LEADS] Resposta do webhook:', webhookResponse.status)
-      
+
       if (webhookResponse.status >= 200 && webhookResponse.status < 300) {
         console.log('[LEADS] Proposta criada com sucesso')
         setCreateProposalModalOpen(false)
         setSelectedLeadForProposal(null)
         setProposalFormData({})
-        
+
         // Recarregar dados do dashboard
         await reloadLeadsData()
       } else {
@@ -956,12 +990,12 @@ export default function Leads() {
             <div className="mb-8">
               <h1 className="text-3xl font-bold text-white mb-2">Leads</h1>
               <p className="text-cyan-200">Gerencie todos os seus leads em um só lugar</p>
-    
+
             </div>
             <div className="bg-white/10 backdrop-blur-sm rounded-lg p-8 text-center">
               <p className="text-white text-lg">Nenhum lead encontrado</p>
 
-              <button 
+              <button
                 onClick={() => fetchLeads()}
                 className="mt-4 px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-lg transition-colors"
               >
@@ -1052,7 +1086,7 @@ export default function Leads() {
           {/* Com Erros */}
           <div className="bg-gradient-to-br from-red-900/50 to-pink-900/50 backdrop-blur-sm rounded-lg p-6 border border-red-700/30">
             <div className="text-3xl font-bold text-white mb-2">
-              {leads.filter(lead => 
+              {leads.filter(lead =>
                 (lead.balance_error && lead.balance_error.trim() !== '')
               ).length}
             </div>
@@ -1196,8 +1230,8 @@ export default function Leads() {
               </thead>
               <tbody>
                 {filteredLeads.map((lead, index) => (
-                  <tr 
-                    key={lead.id} 
+                  <tr
+                    key={lead.id}
                     className={`border-b border-gray-700/30 hover:bg-white/5 transition-colors ${index === filteredLeads.length - 1 ? 'border-b-0' : ''}`}
                   >
                     <td className="px-4 py-3 text-white">{lead.name || '-'}</td>
@@ -1230,16 +1264,16 @@ export default function Leads() {
                     </td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
-                        <button 
-                          className="p-1 rounded bg-cyan-700/70 hover:bg-cyan-500 transition-colors" 
+                        <button
+                          className="p-1 rounded bg-cyan-700/70 hover:bg-cyan-500 transition-colors"
                           title="Editar dados pessoais"
                           onClick={() => openEditModal(lead)}
                         >
                           <FaEdit className="w-4 h-4 text-white" />
                         </button>
-                        
-                        <button 
-                          className="p-1 rounded bg-purple-700/70 hover:bg-purple-500 transition-colors" 
+
+                        <button
+                          className="p-1 rounded bg-purple-700/70 hover:bg-purple-500 transition-colors"
                           title="Ver detalhes do lead"
                           onClick={() => {
                             setSelectedLead(lead)
@@ -1248,19 +1282,19 @@ export default function Leads() {
                         >
                           <FaEye className="w-4 h-4 text-white" />
                         </button>
-                        
+
                         {lead.hasProposals && (
-                          <button 
-                            className="p-1 rounded bg-blue-700/70 hover:bg-blue-500 transition-colors" 
+                          <button
+                            className="p-1 rounded bg-blue-700/70 hover:bg-blue-500 transition-colors"
                             title="Ver histórico de propostas"
                             onClick={() => openProposalsHistory(lead)}
                           >
                             <FaFileAlt className="w-4 h-4 text-white" />
                           </button>
                         )}
-                        
-                        <button 
-                          className="p-1 rounded bg-green-700/70 hover:bg-green-500 transition-colors" 
+
+                        <button
+                          className="p-1 rounded bg-green-700/70 hover:bg-green-500 transition-colors"
                           title="Repetir consulta"
                           onClick={() => openProviderModal(lead)}
                           disabled={repeatingQuery === lead.id}
@@ -1271,7 +1305,7 @@ export default function Leads() {
                             <FaRedo className="w-4 h-4 text-white" />
                           )}
                         </button>
-                        
+
                         <button
                           className={`p-1 rounded transition-colors ${
                             !lead.balance_error && lead.simulation && lead.simulation > 0
@@ -1334,7 +1368,7 @@ export default function Leads() {
                   <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
                     Editar Dados Pessoais
                   </Dialog.Title>
-                  
+
                   <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* Coluna Esquerda */}
                     <div className="space-y-6">
@@ -1405,11 +1439,10 @@ export default function Leads() {
                               className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
                             >
                               <option value="">Selecione...</option>
-                              <option value="solteiro">Solteiro</option>
-                              <option value="casado">Casado</option>
-                              <option value="divorciado">Divorciado</option>
-                              <option value="viuvo">Viúvo</option>
-                              <option value="uniao_estavel">União Estável</option>
+                              <option value="single">Solteiro</option>
+                              <option value="married">Casado</option>
+                              <option value="divorced">Divorciado</option>
+                              <option value="widowed">Viúvo</option>
                             </select>
                           </div>
                           <div>
@@ -1478,39 +1511,19 @@ export default function Leads() {
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Estado</label>
-                            <input
-                              type="text"
-                              value={editingLead.estado || ''}
-                              onChange={(e) => setEditingLead({...editingLead, estado: e.target.value})}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-white">{editingLead.estado || '-'}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Cidade</label>
-                            <input
-                              type="text"
-                              value={editingLead.cidade || ''}
-                              onChange={(e) => setEditingLead({...editingLead, cidade: e.target.value})}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-white">{editingLead.cidade || '-'}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Bairro</label>
-                            <input
-                              type="text"
-                              value={editingLead.bairro || ''}
-                              onChange={(e) => setEditingLead({...editingLead, bairro: e.target.value})}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-white">{editingLead.bairro || '-'}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Rua</label>
-                            <input
-                              type="text"
-                              value={editingLead.rua || ''}
-                              onChange={(e) => setEditingLead({...editingLead, rua: e.target.value})}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-white">{editingLead.rua || '-'}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Número</label>
@@ -1533,95 +1546,41 @@ export default function Leads() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Saldo</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={editingLead.balance || ''}
-                              onChange={(e) => setEditingLead({...editingLead, balance: e.target.value})}
-                              placeholder="0,00"
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-white">{formatCurrency(editingLead.balance)}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Simulação</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={editingLead.simulation || ''}
-                              onChange={(e) => setEditingLead({...editingLead, simulation: e.target.value})}
-                              placeholder="0,00"
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-white">{formatCurrency(editingLead.simulation)}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Consulta</label>
-                            <input
-                              type="text"
-                              value={editingLead.balance_error || ''}
-                              onChange={(e) => setEditingLead({...editingLead, balance_error: e.target.value})}
-                              placeholder="Erro da consulta"
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-red-400 text-sm">{editingLead.balance_error || '-'}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Proposta</label>
-                            <input
-                              type="text"
-                              value={editingLead.proposal_error || ''}
-                              onChange={(e) => setEditingLead({...editingLead, proposal_error: e.target.value})}
-                              placeholder="Erro da proposta"
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-red-400 text-sm">{editingLead.proposal_error || '-'}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
                             <input
                               type="text"
-                              value={editingLead.pix || ''}
-                              onChange={(e) => setEditingLead({...editingLead, pix: e.target.value})}
+                              value={editingLead.pix_key || ''}
+                              onChange={(e) => setEditingLead({...editingLead, pix_key: e.target.value})}
                               placeholder="Chave PIX"
                               className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
                             />
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo da Chave PIX</label>
-                            <select
-                              value={editingLead.pix_key || ''}
-                              onChange={(e) => setEditingLead({...editingLead, pix_key: e.target.value})}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            >
-                              <option value="">Selecione...</option>
-                              <option value="cpf">CPF</option>
-                              <option value="cnpj">CNPJ</option>
-                              <option value="email">Email</option>
-                              <option value="phone">Telefone</option>
-                              <option value="random">Chave Aleatória</option>
-                            </select>
+                            <p className="text-white">{editingLead.pix || '-'}</p>
                           </div>
                         </div>
                       </div>
 
-                      {/* Status e Configurações */}
+                      {/* Configurações */}
                       <div>
-                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Status e Configurações</h4>
+                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Configurações</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-cyan-300 mb-1">Status</label>
-                            <select
-                              value={editingLead.status || ''}
-                              onChange={(e) => setEditingLead({...editingLead, status: e.target.value})}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            >
-                              <option value="">Selecione...</option>
-                              <option value="novo">Novo</option>
-                              <option value="em_analise">Em Análise</option>
-                              <option value="aprovado">Aprovado</option>
-                              <option value="rejeitado">Rejeitado</option>
-                              <option value="finalizado">Finalizado</option>
-                            </select>
-                          </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Provedor</label>
                             <select
@@ -1637,23 +1596,23 @@ export default function Leads() {
                       </div>
                     </div>
                   </div>
-                  
+
                   {saveError && (
                     <div className="mt-4 text-red-400 text-sm">{saveError}</div>
                   )}
-                  
+
                   <div className="mt-6 flex justify-end gap-2">
-                    <button 
-                      type="button" 
-                      className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none"
                       onClick={() => setEditModalOpen(false)}
                       disabled={isSaving}
                     >
                       Cancelar
                     </button>
-                    <button 
-                      type="button" 
-                      className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60" 
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60"
                       onClick={saveLeadData}
                       disabled={isSaving}
                     >
@@ -1687,7 +1646,7 @@ export default function Leads() {
                   <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
                     Dados do Lead - {selectedLead?.name}
                   </Dialog.Title>
-                  
+
                   {selectedLead && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                       {/* Coluna Esquerda */}
@@ -1810,11 +1769,11 @@ export default function Leads() {
                             </div>
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
-                              <p className="text-white">{selectedLead.pix || '-'}</p>
+                              <p className="text-white">{selectedLead.pix_key || '-'}</p>
                             </div>
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo da Chave PIX</label>
-                              <p className="text-white">{selectedLead.pix_key || '-'}</p>
+                              <p className="text-white">{selectedLead.pix || '-'}</p>
                             </div>
                           </div>
                         </div>
@@ -1888,7 +1847,7 @@ export default function Leads() {
                               <p className="text-white">{selectedLead.updated_at ? new Date(selectedLead.updated_at).toLocaleString('pt-BR') : '-'}</p>
                             </div>
                           </div>
-                          
+
                           {/* Dados Adicionais */}
                           {selectedLead.data && Object.keys(selectedLead.data).length > 0 && (
                             <div className="mt-4">
@@ -1902,11 +1861,11 @@ export default function Leads() {
                       </div>
                     </div>
                   )}
-                  
+
                   <div className="mt-6 flex justify-end">
-                    <button 
-                      type="button" 
-                      className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none"
                       onClick={() => setViewModalOpen(false)}
                     >
                       Fechar
@@ -1932,7 +1891,7 @@ export default function Leads() {
                   <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
                     Histórico de Propostas - {selectedLead?.name}
                   </Dialog.Title>
-                  
+
                   {isLoadingProposals ? (
                     <div className="flex justify-center items-center py-8">
                       <FaSpinner className="w-8 h-8 text-cyan-500 animate-spin" />
@@ -1949,11 +1908,11 @@ export default function Leads() {
                         <h4 className="text-sm font-semibold text-cyan-300 mb-3">Lista de Propostas</h4>
                         <div className="space-y-2 max-h-64 overflow-y-auto">
                           {proposalsHistory.map((proposal, index) => (
-                            <div 
+                            <div
                               key={proposal.id || index}
                                                               className={`p-3 rounded-lg border cursor-pointer transition-colors ${
                                   selectedProposalInHistory && (selectedProposalInHistory.id === proposal.id || selectedProposalInHistory.proposal_id === proposal.proposal_id)
-                                    ? 'border-cyan-500 bg-cyan-900/20' 
+                                    ? 'border-cyan-500 bg-cyan-900/20'
                                     : 'border-gray-600 bg-gray-700 hover:bg-gray-600'
                                 }`}
                                                               onClick={() => {
@@ -2007,44 +1966,44 @@ export default function Leads() {
                               <label className="block text-sm font-medium text-cyan-300 mb-1">ID da Proposta</label>
                                                               <p className="text-white text-sm break-all">{selectedProposalInHistory.proposal_id || selectedProposalInHistory.id}</p>
                             </div>
-                            
+
                             {/* Valor */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Valor</label>
                               <p className="text-white">{formatCurrency(selectedProposalInHistory.value || selectedProposalInHistory.amount)}</p>
                             </div>
-                            
+
                             {/* Status */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Status</label>
                               <p className="text-white">{selectedProposalInHistory.status || '-'}</p>
                             </div>
-                            
+
                             {/* Data de Criação */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Criação</label>
                               <p className="text-white">{formatDate(selectedProposalInHistory.created_at)}</p>
                             </div>
-                            
+
                             {/* Data de Atualização */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Atualização</label>
                               <p className="text-white">{formatDate(selectedProposalInHistory.updated_at)}</p>
                             </div>
-                            
+
                             {/* Número do Contrato */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Número do Contrato</label>
                                                               <p className="text-white">{selectedProposalInHistory['Número contrato'] || '-'}</p>
                             </div>
-                            
+
                             {/* Link de Formalização */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Link de Formalização</label>
                               {selectedProposalInHistory['Link de formalização'] ? (
-                                <a 
-                                  href={selectedProposalInHistory['Link de formalização']} 
-                                  target="_blank" 
+                                <a
+                                  href={selectedProposalInHistory['Link de formalização']}
+                                  target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-cyan-400 hover:text-cyan-300 underline break-all text-sm"
                                 >
@@ -2054,31 +2013,31 @@ export default function Leads() {
                                 <p className="text-white">-</p>
                               )}
                             </div>
-                            
+
                             {/* Status Reason */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Status</label>
                               <p className="text-white">{selectedProposalInHistory.status_reason || '-'}</p>
                             </div>
-                            
+
                             {/* Status Description */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Descrição do Status</label>
                               <p className="text-white">{selectedProposalInHistory.status_description || '-'}</p>
                             </div>
-                            
+
                             {/* Error Reason */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Erro</label>
                               <p className="text-white">{selectedProposalInHistory.error_reason || '-'}</p>
                             </div>
-                            
+
                             {/* Chave PIX */}
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
                               <p className="text-white">{selectedProposalInHistory.chavePix || '-'}</p>
                             </div>
-                            
+
                             {/* Metadados - Ocupa toda a largura */}
                             {selectedProposalInHistory.metadata && Object.keys(selectedProposalInHistory.metadata).length > 0 && (
                               <div className="md:col-span-2">
@@ -2093,11 +2052,11 @@ export default function Leads() {
                       )}
                     </div>
                   )}
-                  
+
                   <div className="mt-6 flex justify-end gap-3">
-                    <button 
-                      type="button" 
-                      className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none"
                       onClick={() => setProposalsHistoryModalOpen(false)}
                     >
                       Fechar
@@ -2123,12 +2082,12 @@ export default function Leads() {
                   <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-4">
                     Selecionar Provedor
                   </Dialog.Title>
-                  
+
                   <div className="mb-6">
                     <p className="text-gray-200 mb-4">
                       Selecione qual provedor e banco deseja usar para consultar o saldo do lead <strong className="text-cyan-300">{selectedLeadForQuery?.name}</strong>:
                     </p>
-                    
+
                     <div className="space-y-4">
                       <div>
                         <label className="block text-sm font-medium text-cyan-300 mb-2">Provedor</label>
@@ -2141,7 +2100,7 @@ export default function Leads() {
                           <option value="qi">QI</option>
                         </select>
                       </div>
-                      
+
                       <div>
                         <label className="block text-sm font-medium text-cyan-300 mb-2">Banco</label>
                         {loadingBanks ? (
@@ -2170,18 +2129,18 @@ export default function Leads() {
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="flex justify-end gap-3">
-                    <button 
-                      type="button" 
-                      className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none"
                       onClick={() => setShowProviderModal(false)}
                     >
                       Cancelar
                     </button>
-                    <button 
-                      type="button" 
-                      className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60" 
+                    <button
+                      type="button"
+                      className="inline-flex justify-center rounded-md border border-cyan-700 bg-cyan-700 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-600 focus:outline-none disabled:opacity-60"
                       onClick={confirmRepeatQuery}
                       disabled={repeatingQuery === selectedLeadForQuery?.id}
                     >
@@ -2215,13 +2174,13 @@ export default function Leads() {
                   <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
                     Criar Proposta - {selectedLeadForProposal?.name}
                   </Dialog.Title>
-                  
+
                   {createProposalError && (
                     <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm">
                       {createProposalError}
                     </div>
                   )}
-                  
+
                   <div className="space-y-6">
                     {/* Dados do Lead */}
                     <div className="border-b border-gray-600 pb-4">
@@ -2333,7 +2292,7 @@ export default function Leads() {
                         </div>
                       </div>
                     </div>
-                    
+
                     {/* Seleção de Provedor e Banco */}
                     <div className="border-b border-gray-600 pb-4">
                       <h4 className="text-sm font-semibold text-cyan-300 mb-4">Configurações da Proposta</h4>
@@ -2349,7 +2308,7 @@ export default function Leads() {
                             <option value="qi">QI</option>
                           </select>
                         </div>
-                        
+
                         <div>
                           <label className="block text-sm font-medium text-cyan-300 mb-2">Banco</label>
                           {loadingBanks ? (
@@ -2379,7 +2338,7 @@ export default function Leads() {
                       </div>
                     </div>
                   </div>
-                  
+
                   <div className="mt-6 flex justify-end gap-3">
                     <button type="button" className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" onClick={() => setCreateProposalModalOpen(false)} disabled={isCreatingProposal}>
                       Cancelar
@@ -2408,7 +2367,7 @@ export default function Leads() {
           <div className="flex items-center gap-2">
             <FaExclamationTriangle />
             <span className="text-sm">{repeatError}</span>
-            <button 
+            <button
               onClick={() => setRepeatError('')}
               className="ml-auto text-white/70 hover:text-white"
             >
@@ -2419,4 +2378,4 @@ export default function Leads() {
       )}
     </>
   )
-} 
+}

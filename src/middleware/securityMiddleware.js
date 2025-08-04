@@ -226,6 +226,58 @@ const securityHeaders = (req, res, next) => {
 };
 
 /**
+ * Middleware para verificação de CSRF
+ */
+const validateCSRF = (req, res, next) => {
+  // Pular verificação CSRF para métodos seguros
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    return next();
+  }
+
+  // Verificação simplificada: verificar se a requisição vem do mesmo domínio
+  const origin = req.get('Origin');
+  const referer = req.get('Referer');
+  
+  // Permitir requisições locais e do mesmo domínio
+  const allowedOrigins = [
+    'https://localhost:5173',
+    'http://localhost:5173',
+    'https://localhost:3000',
+    'http://localhost:3000',
+    'https://fgtsagent.com.br',
+    'https://www.fgtsagent.com.br'
+  ];
+  
+  const isAllowedOrigin = allowedOrigins.some(allowed => 
+    origin?.startsWith(allowed) || referer?.startsWith(allowed)
+  );
+  
+  // Se não há origin/referer ou não é permitido, verificar token CSRF
+  if (!isAllowedOrigin) {
+    const csrfToken = req.headers['x-csrf-token'] || req.body._csrf;
+    const sessionToken = req.session?.csrfToken;
+
+    if (!csrfToken || !sessionToken || csrfToken !== sessionToken) {
+      logger.warn('Tentativa de CSRF detectada', {
+        ip: req.ip,
+        path: req.path,
+        method: req.method,
+        userAgent: req.get('User-Agent'),
+        origin,
+        referer
+      });
+
+      return res.status(403).json({
+        success: false,
+        message: 'Token de segurança inválido'
+      });
+    }
+  }
+
+  next();
+};
+
+/**
  * Middleware para sanitização de entrada
  */
 const sanitizeInput = (req, res, next) => {
@@ -330,5 +382,6 @@ module.exports = {
   detectSuspiciousActivity,
   rateLimiter,
   securityHeaders,
-  sanitizeInput
+  sanitizeInput,
+  validateCSRF
 }; 

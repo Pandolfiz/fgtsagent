@@ -13,21 +13,21 @@ export default function ConnectionDiagnostic({ onClose }) {
     try {
       // 1. Verificar se o navegador está online
       const isOnline = checkOnlineStatus();
-      
+
       // 2. Verificar a conexão com o Supabase
       let supabaseStatus = null;
-      
+
       if (isOnline) {
         supabaseStatus = await checkSupabaseConnection();
       }
-      
+
       // 3. Verificar status da rede
       const networkInfo = {
         type: navigator.connection ? navigator.connection.effectiveType : 'desconhecido',
         downlink: navigator.connection ? navigator.connection.downlink : 'desconhecido',
         rtt: navigator.connection ? navigator.connection.rtt : 'desconhecido'
       };
-      
+
       setResults({
         timestamp: new Date().toISOString(),
         browser: {
@@ -62,7 +62,7 @@ export default function ConnectionDiagnostic({ onClose }) {
         {!results && !isChecking && (
           <div className="text-center py-4">
             <p className="mb-4">Clique no botão abaixo para verificar sua conexão com o Supabase.</p>
-            <button 
+            <button
               onClick={runDiagnostic}
               className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
             >
@@ -83,8 +83,8 @@ export default function ConnectionDiagnostic({ onClose }) {
             <div className={`p-3 rounded-lg ${results.supabase?.connected ? 'bg-green-100' : 'bg-red-100'}`}>
               <h3 className="font-bold mb-1">Status da Conexão:</h3>
               <p className={results.supabase?.connected ? 'text-green-700' : 'text-red-700'}>
-                {results.supabase?.connected 
-                  ? '✅ Conectado ao Supabase' 
+                {results.supabase?.connected
+                  ? '✅ Conectado ao Supabase'
                   : `❌ Problema de conexão: ${results.supabase?.error || 'Erro desconhecido'}`}
               </p>
             </div>
@@ -92,8 +92,8 @@ export default function ConnectionDiagnostic({ onClose }) {
             <div className="border p-3 rounded-lg">
               <h3 className="font-bold mb-1">Status do Navegador:</h3>
               <p className={results.browser?.online ? 'text-green-700' : 'text-red-700'}>
-                {results.browser?.online 
-                  ? '✅ Navegador Online' 
+                {results.browser?.online
+                  ? '✅ Navegador Online'
                   : '❌ Navegador Offline'}
               </p>
             </div>
@@ -110,7 +110,7 @@ export default function ConnectionDiagnostic({ onClose }) {
             )}
 
             <div className="mt-4 text-right">
-              <button 
+              <button
                 onClick={runDiagnostic}
                 className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
               >
@@ -129,4 +129,4 @@ export default function ConnectionDiagnostic({ onClose }) {
       </div>
     </div>
   );
-} 
+}
