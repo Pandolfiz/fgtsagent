@@ -13,13 +13,7 @@ if (!supabaseUrl || !supabaseAnonKey) {
 const siteUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
 const redirectUrl = `${siteUrl}/auth/callback`;
 
-// Log detalhado para depuração
-console.log('Configuração do Supabase:', {
-  url: supabaseUrl || 'AUSENTE',
-  key: supabaseAnonKey ? 'PRESENTE' : 'AUSENTE',
-  siteUrl,
-  redirectUrl
-});
+
 
 // Verificar se as variáveis de ambiente estão presentes
 if (!supabaseUrl || !supabaseAnonKey) {
@@ -184,7 +178,6 @@ export const setupApiInterceptor = () => {
 
   // Função para limpar todas as requisições ativas
   window.clearAllActiveRequests = () => {
-    console.log(`Limpando ${activeRequests.size} requisições ativas`);
     activeRequests.clear();
   };
 
@@ -200,14 +193,12 @@ export const setupApiInterceptor = () => {
     window.clearAllActiveRequests();
   });
 
-  console.log('Interceptor de API configurado com sucesso (com timeout global)');
+
 };
 
 // Função melhorada para verificar a conexão com o Supabase
 export const verifySupabaseConnection = async () => {
   try {
-    console.log('Verificando conexão com o Supabase...');
-
     // Adicionar timeout para evitar que a verificação fique presa
     const timeoutPromise = new Promise((_, reject) => {
       setTimeout(() => reject(new Error('Timeout ao verificar conexão')), 10000);
@@ -220,7 +211,6 @@ export const verifySupabaseConnection = async () => {
         const { error } = await supabase.from('healthcheck').select('count', { count: 'exact', head: true });
 
         if (error && error.code !== 'PGRST116') { // PGRST116 é o código para "tabela não encontrada" e é esperado
-          console.error('Erro ao verificar conexão com Supabase:', error.message);
           return {
             connected: false,
             error: error.message,
@@ -228,14 +218,12 @@ export const verifySupabaseConnection = async () => {
           };
         }
 
-        console.log('Conexão com o Supabase verificada com sucesso');
         return {
           connected: true,
           timestamp: new Date().toISOString(),
           status: 'OK'
         };
       } catch (err) {
-        console.error('Exceção ao verificar conexão com Supabase:', err.message);
         // Em caso de exceção crítica, jogar o erro para ser tratado no nível superior
         if (err.name === 'TypeError' || err.name === 'NetworkError') {
           throw err;
@@ -252,7 +240,6 @@ export const verifySupabaseConnection = async () => {
     // Usar Promise.race para detectar timeout
     return await Promise.race([checkConnection(), timeoutPromise]);
   } catch (err) {
-    console.error('Erro crítico ao verificar conexão com Supabase:', err.message);
     return {
       connected: false,
       error: `Erro crítico: ${err.message}`,
@@ -270,9 +257,7 @@ export const checkOnlineStatus = () => {
 };
 
 // Executar verificação inicial de conexão
-verifySupabaseConnection().then(status => {
-  console.log('Status da conexão Supabase:', status);
-});
+verifySupabaseConnection();
 
 // Configurar interceptor automaticamente quando o cliente é inicializado
 if (typeof window !== 'undefined') {
