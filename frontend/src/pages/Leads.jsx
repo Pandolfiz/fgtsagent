@@ -396,43 +396,63 @@ export default function Leads() {
   }, [leads, searchTerm, statusFilter, sortField, sortDirection])
 
   // Função para abrir modal de edição
-  const openEditModal = (lead) => {
+  const openEditModal = async (lead) => {
     setSelectedLead(lead)
-    setEditingLead({
-      name: lead.name || '',
-      cpf: lead.cpf || '',
-      phone: lead.phone || '',
-      email: lead.email || '',
-      status: lead.status || '',
-      data: lead.data || {},
-      // Campos adicionais da tabela leads
-      rg: lead.rg || '',
-      nationality: lead.nationality || '',
-      is_pep: lead.is_pep || false,
-      birth: lead.birth || '',
-      marital_status: lead.marital_status || '',
-      person_type: lead.person_type || '',
-      mother_name: lead.mother_name || '',
-      // Endereço
-      cep: lead.cep || '',
-      estado: lead.estado || '',
-      cidade: lead.cidade || '',
-      bairro: lead.bairro || '',
-      rua: lead.rua || '',
-      numero: lead.numero || '',
-      // Campos financeiros
-      balance: lead.balance || '',
-      pix: lead.pix || '',
-      pix_key: lead.pix_key || '',
-      simulation: lead.simulation || '',
-      balance_error: lead.balance_error || '',
-      proposal_error: lead.proposal_error || '',
-      parcelas: lead.parcelas || null,
-      // Outros campos
-      provider: lead.provider || 'cartos'
-    })
     setSaveError('')
-    setEditModalOpen(true)
+
+    try {
+      // Buscar dados completos do lead
+      const response = await fetch(`/api/leads/${lead.id}`, {
+        credentials: 'include'
+      })
+      const data = await response.json()
+
+      if (data.success) {
+        const fullLead = data.data
+        setEditingLead({
+          id: fullLead.id,
+          // Campos básicos
+          name: fullLead.name || '',
+          cpf: fullLead.cpf || '',
+          phone: fullLead.phone || '',
+          email: fullLead.email || '',
+          status: fullLead.status || '',
+          data: fullLead.data || {},
+          // Campos de documento
+          rg: fullLead.rg || '',
+          nationality: fullLead.nationality || '',
+          is_pep: fullLead.is_pep || false,
+          birth: fullLead.birth || '',
+          marital_status: mapMaritalStatus(fullLead.marital_status),
+          person_type: fullLead.person_type || '',
+          mother_name: fullLead.mother_name || '',
+          // Endereço
+          cep: fullLead.cep || '',
+          estado: fullLead.estado || '',
+          cidade: fullLead.cidade || '',
+          bairro: fullLead.bairro || '',
+          rua: fullLead.rua || '',
+          numero: fullLead.numero || '',
+          // Campos financeiros
+          balance: fullLead.balance || '',
+          pix: fullLead.pix || '',
+          pix_key: fullLead.pix_key || '',
+          simulation: fullLead.simulation || '',
+          balance_error: fullLead.balance_error || '',
+          proposal_error: fullLead.proposal_error || '',
+          parcelas: fullLead.parcelas || null,
+          // Outros campos
+          provider: fullLead.provider || 'cartos'
+        })
+        setEditModalOpen(true)
+      } else {
+        console.error('Erro ao buscar dados do lead:', data.message)
+        setSaveError('Erro ao carregar dados do lead')
+      }
+    } catch (error) {
+      console.error('Erro ao abrir modal de edição:', error)
+      setSaveError('Erro ao carregar dados')
+    }
   }
 
   // Função para abrir histórico de propostas
@@ -1419,11 +1439,10 @@ export default function Leads() {
                               className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
                             >
                               <option value="">Selecione...</option>
-                              <option value="solteiro">Solteiro</option>
-                              <option value="casado">Casado</option>
-                              <option value="divorciado">Divorciado</option>
-                              <option value="viuvo">Viúvo</option>
-                              <option value="uniao_estavel">União Estável</option>
+                              <option value="single">Solteiro</option>
+                              <option value="married">Casado</option>
+                              <option value="divorced">Divorciado</option>
+                              <option value="widowed">Viúvo</option>
                             </select>
                           </div>
                           <div>
@@ -1492,39 +1511,19 @@ export default function Leads() {
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Estado</label>
-                            <input
-                              type="text"
-                              value={editingLead.estado || ''}
-                              onChange={(e) => setEditingLead({...editingLead, estado: e.target.value})}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-white">{editingLead.estado || '-'}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Cidade</label>
-                            <input
-                              type="text"
-                              value={editingLead.cidade || ''}
-                              onChange={(e) => setEditingLead({...editingLead, cidade: e.target.value})}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-white">{editingLead.cidade || '-'}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Bairro</label>
-                            <input
-                              type="text"
-                              value={editingLead.bairro || ''}
-                              onChange={(e) => setEditingLead({...editingLead, bairro: e.target.value})}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-white">{editingLead.bairro || '-'}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Rua</label>
-                            <input
-                              type="text"
-                              value={editingLead.rua || ''}
-                              onChange={(e) => setEditingLead({...editingLead, rua: e.target.value})}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-white">{editingLead.rua || '-'}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Número</label>
@@ -1547,95 +1546,41 @@ export default function Leads() {
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Saldo</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={editingLead.balance || ''}
-                              onChange={(e) => setEditingLead({...editingLead, balance: e.target.value})}
-                              placeholder="0,00"
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-white">{formatCurrency(editingLead.balance)}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Simulação</label>
-                            <input
-                              type="number"
-                              step="0.01"
-                              min="0"
-                              value={editingLead.simulation || ''}
-                              onChange={(e) => setEditingLead({...editingLead, simulation: e.target.value})}
-                              placeholder="0,00"
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-white">{formatCurrency(editingLead.simulation)}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Consulta</label>
-                            <input
-                              type="text"
-                              value={editingLead.balance_error || ''}
-                              onChange={(e) => setEditingLead({...editingLead, balance_error: e.target.value})}
-                              placeholder="Erro da consulta"
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-red-400 text-sm">{editingLead.balance_error || '-'}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Proposta</label>
-                            <input
-                              type="text"
-                              value={editingLead.proposal_error || ''}
-                              onChange={(e) => setEditingLead({...editingLead, proposal_error: e.target.value})}
-                              placeholder="Erro da proposta"
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            />
+                            <p className="text-red-400 text-sm">{editingLead.proposal_error || '-'}</p>
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
                             <input
                               type="text"
-                              value={editingLead.pix || ''}
-                              onChange={(e) => setEditingLead({...editingLead, pix: e.target.value})}
+                              value={editingLead.pix_key || ''}
+                              onChange={(e) => setEditingLead({...editingLead, pix_key: e.target.value})}
                               placeholder="Chave PIX"
                               className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
                             />
                           </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo da Chave PIX</label>
-                            <select
-                              value={editingLead.pix_key || ''}
-                              onChange={(e) => setEditingLead({...editingLead, pix_key: e.target.value})}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            >
-                              <option value="">Selecione...</option>
-                              <option value="cpf">CPF</option>
-                              <option value="cnpj">CNPJ</option>
-                              <option value="email">Email</option>
-                              <option value="phone">Telefone</option>
-                              <option value="random">Chave Aleatória</option>
-                            </select>
+                            <p className="text-white">{editingLead.pix || '-'}</p>
                           </div>
                         </div>
                       </div>
 
-                      {/* Status e Configurações */}
+                      {/* Configurações */}
                       <div>
-                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Status e Configurações</h4>
+                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Configurações</h4>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div>
-                            <label className="block text-sm font-medium text-cyan-300 mb-1">Status</label>
-                            <select
-                              value={editingLead.status || ''}
-                              onChange={(e) => setEditingLead({...editingLead, status: e.target.value})}
-                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                            >
-                              <option value="">Selecione...</option>
-                              <option value="novo">Novo</option>
-                              <option value="em_analise">Em Análise</option>
-                              <option value="aprovado">Aprovado</option>
-                              <option value="rejeitado">Rejeitado</option>
-                              <option value="finalizado">Finalizado</option>
-                            </select>
-                          </div>
                           <div>
                             <label className="block text-sm font-medium text-cyan-300 mb-1">Provedor</label>
                             <select
@@ -1824,11 +1769,11 @@ export default function Leads() {
                             </div>
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
-                              <p className="text-white">{selectedLead.pix || '-'}</p>
+                              <p className="text-white">{selectedLead.pix_key || '-'}</p>
                             </div>
                             <div>
                               <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo da Chave PIX</label>
-                              <p className="text-white">{selectedLead.pix_key || '-'}</p>
+                              <p className="text-white">{selectedLead.pix || '-'}</p>
                             </div>
                           </div>
                         </div>

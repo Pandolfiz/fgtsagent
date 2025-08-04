@@ -937,7 +937,7 @@ export default function Dashboard() {
       nationality: lead.nationality || '',
       is_pep: lead.is_pep || false,
       birth: lead.birth || '',
-      marital_status: lead.marital_status || '',
+      marital_status: mapMaritalStatus(lead.marital_status),
       person_type: lead.person_type || '',
       mother_name: lead.mother_name || '',
       cep: lead.cep || '',
@@ -989,7 +989,7 @@ export default function Dashboard() {
           nationality: fullLead.nationality || '',
           is_pep: fullLead.is_pep || false,
           birth: fullLead.birth || '',
-          marital_status: fullLead.marital_status || '',
+          marital_status: mapMaritalStatus(fullLead.marital_status),
           person_type: fullLead.person_type || '',
           mother_name: fullLead.mother_name || '',
           // Endereço
@@ -1034,9 +1034,9 @@ export default function Dashboard() {
           rg: lead.rg || '',
           nationality: lead.nationality || '',
           is_pep: lead.is_pep || false,
-          birth: lead.birth || '',
-          marital_status: lead.marital_status || '',
-          person_type: lead.person_type || '',
+                  birth: lead.birth || '',
+        marital_status: mapMaritalStatus(lead.marital_status),
+        person_type: lead.person_type || '',
           mother_name: lead.mother_name || '',
           cep: lead.cep || '',
           estado: lead.estado || '',
@@ -1077,7 +1077,7 @@ export default function Dashboard() {
         nationality: lead.nationality || '',
         is_pep: lead.is_pep || false,
         birth: lead.birth || '',
-        marital_status: lead.marital_status || '',
+        marital_status: mapMaritalStatus(lead.marital_status),
         person_type: lead.person_type || '',
         mother_name: lead.mother_name || '',
         cep: lead.cep || '',
@@ -2467,329 +2467,228 @@ export default function Dashboard() {
 
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                       {/* Coluna Esquerda */}
-                      <div className="space-y-4">
-                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Informações Básicas</h4>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Nome</label>
-                          <input
-                            type="text"
-                            value={editingLead.name || ''}
-                            onChange={(e) => setEditingLead({...editingLead, name: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
+                      <div className="space-y-6">
+                        {/* Informações Básicas */}
+                        <div className="border-b border-gray-600 pb-4">
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Informações Básicas</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Nome</label>
+                              <input
+                                type="text"
+                                value={editingLead.name || ''}
+                                onChange={(e) => setEditingLead({...editingLead, name: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">CPF</label>
+                              <input
+                                type="text"
+                                value={editingLead.cpf || ''}
+                                onChange={(e) => setEditingLead({...editingLead, cpf: e.target.value})}
+                                placeholder="000.000.000-00"
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">RG</label>
+                              <input
+                                type="text"
+                                value={editingLead.rg || ''}
+                                onChange={(e) => setEditingLead({...editingLead, rg: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Nascimento</label>
+                              <input
+                                type="date"
+                                value={editingLead.birth || ''}
+                                onChange={(e) => setEditingLead({...editingLead, birth: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Nome da Mãe</label>
+                              <input
+                                type="text"
+                                value={editingLead.mother_name || ''}
+                                onChange={(e) => setEditingLead({...editingLead, mother_name: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Nacionalidade</label>
+                              <input
+                                type="text"
+                                value={editingLead.nationality || ''}
+                                onChange={(e) => setEditingLead({...editingLead, nationality: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Estado Civil</label>
+                              <select
+                                value={editingLead.marital_status || ''}
+                                onChange={(e) => setEditingLead({...editingLead, marital_status: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              >
+                                <option value="">Selecione...</option>
+                                <option value="single">Solteiro</option>
+                                <option value="married">Casado</option>
+                                <option value="divorced">Divorciado</option>
+                                <option value="widowed">Viúvo</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo de Pessoa</label>
+                              <select
+                                value={editingLead.person_type || ''}
+                                onChange={(e) => setEditingLead({...editingLead, person_type: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              >
+                                <option value="">Selecione...</option>
+                                <option value="fisica">Pessoa Física</option>
+                                <option value="juridica">Pessoa Jurídica</option>
+                              </select>
+                            </div>
+                            <div className="flex items-center">
+                              <input
+                                type="checkbox"
+                                checked={editingLead.is_pep || false}
+                                onChange={(e) => setEditingLead({...editingLead, is_pep: e.target.checked})}
+                                className="mr-2"
+                              />
+                              <label className="text-sm font-medium text-cyan-300">Pessoa Exposta Politicamente (PEP)</label>
+                            </div>
+                          </div>
                         </div>
 
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">CPF</label>
-                          <input
-                            type="text"
-                            value={editingLead.cpf || ''}
-                            onChange={(e) => setEditingLead({...editingLead, cpf: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
+                        {/* Contato */}
+                        <div className="border-b border-gray-600 pb-4">
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Contato</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Email</label>
+                              <input
+                                type="email"
+                                value={editingLead.email || ''}
+                                onChange={(e) => setEditingLead({...editingLead, email: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Telefone</label>
+                              <input
+                                type="text"
+                                value={editingLead.phone || ''}
+                                onChange={(e) => setEditingLead({...editingLead, phone: e.target.value})}
+                                placeholder="(00) 00000-0000"
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                          </div>
                         </div>
 
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Email</label>
-                          <input
-                            type="email"
-                            value={editingLead.email || ''}
-                            onChange={(e) => setEditingLead({...editingLead, email: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Telefone</label>
-                          <input
-                            type="text"
-                            value={editingLead.phone || ''}
-                            onChange={(e) => setEditingLead({...editingLead, phone: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">RG</label>
-                          <input
-                            type="text"
-                            value={editingLead.rg || ''}
-                            onChange={(e) => setEditingLead({...editingLead, rg: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Nacionalidade</label>
-                          <input
-                            type="text"
-                            value={editingLead.nationality || ''}
-                            onChange={(e) => setEditingLead({...editingLead, nationality: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Data de Nascimento</label>
-                          <input
-                            type="date"
-                            value={editingLead.birth || ''}
-                            onChange={(e) => setEditingLead({...editingLead, birth: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Estado Civil</label>
-                          <input
-                            type="text"
-                            value={editingLead.marital_status || ''}
-                            onChange={(e) => setEditingLead({...editingLead, marital_status: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo de Pessoa</label>
-                          <input
-                            type="text"
-                            value={editingLead.person_type || ''}
-                            onChange={(e) => setEditingLead({...editingLead, person_type: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Nome da Mãe</label>
-                          <input
-                            type="text"
-                            value={editingLead.mother_name || ''}
-                            onChange={(e) => setEditingLead({...editingLead, mother_name: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
+                        {/* Endereço */}
+                        <div className="border-b border-gray-600 pb-4">
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Endereço</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">CEP</label>
+                              <input
+                                type="text"
+                                value={editingLead.cep || ''}
+                                onChange={(e) => setEditingLead({...editingLead, cep: e.target.value})}
+                                placeholder="00000-000"
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Estado</label>
+                              <p className="text-white">{editingLead.estado || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Cidade</label>
+                              <p className="text-white">{editingLead.cidade || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Bairro</label>
+                              <p className="text-white">{editingLead.bairro || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Rua</label>
+                              <p className="text-white">{editingLead.rua || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Número</label>
+                              <input
+                                type="text"
+                                value={editingLead.numero || ''}
+                                onChange={(e) => setEditingLead({...editingLead, numero: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                          </div>
                         </div>
                       </div>
 
                       {/* Coluna Direita */}
-                      <div className="space-y-4">
-                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Endereço</h4>
+                      <div className="space-y-6">
+                        {/* Informações Financeiras */}
+                        <div className="border-b border-gray-600 pb-4">
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Informações Financeiras</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Saldo</label>
+                              <p className="text-white">{formatCurrency(editingLead.balance)}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Simulação</label>
+                              <p className="text-white">{formatCurrency(editingLead.simulation)}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Consulta</label>
+                              <p className="text-red-400 text-sm">{editingLead.balance_error || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Proposta</label>
+                              <p className="text-red-400 text-sm">{editingLead.proposal_error || '-'}</p>
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
+                              <input
+                                type="text"
+                                value={editingLead.pix_key || ''}
+                                onChange={(e) => setEditingLead({...editingLead, pix_key: e.target.value})}
+                                placeholder="Chave PIX"
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo da Chave PIX</label>
+                              <p className="text-white">{editingLead.pix || '-'}</p>
+                            </div>
+                          </div>
+                        </div>
 
+                        {/* Configurações */}
                         <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">CEP</label>
-                          <input
-                            type="text"
-                            value={editingLead.cep || ''}
-                            onChange={(e) => setEditingLead({...editingLead, cep: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Estado</label>
-                          <input
-                            type="text"
-                            value={editingLead.estado || ''}
-                            onChange={(e) => setEditingLead({...editingLead, estado: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Cidade</label>
-                          <input
-                            type="text"
-                            value={editingLead.cidade || ''}
-                            onChange={(e) => setEditingLead({...editingLead, cidade: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Bairro</label>
-                          <input
-                            type="text"
-                            value={editingLead.bairro || ''}
-                            onChange={(e) => setEditingLead({...editingLead, bairro: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Rua</label>
-                          <input
-                            type="text"
-                            value={editingLead.rua || ''}
-                            onChange={(e) => setEditingLead({...editingLead, rua: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Número</label>
-                          <input
-                            type="text"
-                            value={editingLead.numero || ''}
-                            onChange={(e) => setEditingLead({...editingLead, numero: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <h4 className="text-sm font-semibold text-cyan-300 mb-4 mt-6">Informações Financeiras</h4>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Saldo</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={editingLead.balance || ''}
-                            onChange={(e) => setEditingLead({...editingLead, balance: e.target.value})}
-                            placeholder="0,00"
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Simulação</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={editingLead.simulation || ''}
-                            onChange={(e) => setEditingLead({...editingLead, simulation: e.target.value})}
-                            placeholder="0,00"
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Valor da Proposta</label>
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0"
-                            value={editingLead.proposal_value || ''}
-                            onChange={(e) => setEditingLead({...editingLead, proposal_value: e.target.value})}
-                            placeholder="0,00"
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Status da Proposta</label>
-                          <select
-                            value={editingLead.proposal_status || ''}
-                            onChange={(e) => setEditingLead({...editingLead, proposal_status: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          >
-                            <option value="">Selecione...</option>
-                            <option value="pending">Pendente</option>
-                            <option value="approved">Aprovada</option>
-                            <option value="rejected">Rejeitada</option>
-                            <option value="paid">Paga</option>
-                            <option value="cancelled">Cancelada</option>
-                          </select>
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">ID da Proposta</label>
-                          <input
-                            type="text"
-                            value={editingLead.proposal_id || ''}
-                            onChange={(e) => setEditingLead({...editingLead, proposal_id: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Consulta</label>
-                          <input
-                            type="text"
-                            value={editingLead.balance_error || ''}
-                            onChange={(e) => setEditingLead({...editingLead, balance_error: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Erro da Proposta</label>
-                          <input
-                            type="text"
-                            value={editingLead.proposal_error || ''}
-                            onChange={(e) => setEditingLead({...editingLead, proposal_error: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Motivo do Erro</label>
-                          <input
-                            type="text"
-                            value={editingLead.error_reason || ''}
-                            onChange={(e) => setEditingLead({...editingLead, error_reason: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Tipo da Chave PIX</label>
-                          <input
-                            type="text"
-                            value={editingLead.pix || ''}
-                            onChange={(e) => setEditingLead({...editingLead, pix: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Chave PIX</label>
-                          <input
-                            type="text"
-                            value={editingLead.pix_key || ''}
-                            onChange={(e) => setEditingLead({...editingLead, pix_key: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          />
-                        </div>
-
-                        <h4 className="text-sm font-semibold text-cyan-300 mb-4 mt-6">Configurações</h4>
-
-                        <div>
-                          <label className="block text-sm font-medium text-cyan-300 mb-1">Provedor</label>
-                          <select
-                            value={editingLead.provider || 'cartos'}
-                            onChange={(e) => setEditingLead({...editingLead, provider: e.target.value})}
-                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                          >
-                            <option value="cartos">Cartos</option>
-                            <option value="qi">QI</option>
-                          </select>
-                        </div>
-
-                        <div className="flex items-center">
-                          <input
-                            type="checkbox"
-                            id="is_pep"
-                            checked={editingLead.is_pep || false}
-                            onChange={(e) => setEditingLead({...editingLead, is_pep: e.target.checked})}
-                            className="w-4 h-4 text-cyan-600 bg-gray-800 border-gray-600 rounded focus:ring-cyan-500 focus:ring-2"
-                          />
-                          <label htmlFor="is_pep" className="ml-2 text-sm font-medium text-cyan-300">
-                            Pessoa Exposta Politicamente (PEP)
-                          </label>
-                        </div>
-
-                        <div className="flex items-center">
-                          <input
-                            type="checkbox"
-                            id="ressaque_tag"
-                            checked={editingLead.ressaque_tag || false}
-                            onChange={(e) => setEditingLead({...editingLead, ressaque_tag: e.target.checked})}
-                            className="w-4 h-4 text-cyan-600 bg-gray-800 border-gray-600 rounded focus:ring-cyan-500 focus:ring-2"
-                          />
-                          <label htmlFor="ressaque_tag" className="ml-2 text-sm font-medium text-cyan-300">
-                            Tag de Ressaque
-                          </label>
+                          <h4 className="text-sm font-semibold text-cyan-300 mb-4">Configurações</h4>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-cyan-300 mb-1">Provedor</label>
+                              <select
+                                value={editingLead.provider || 'cartos'}
+                                onChange={(e) => setEditingLead({...editingLead, provider: e.target.value})}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              >
+                                <option value="cartos">Cartos</option>
+                                <option value="qi">QI</option>
+                              </select>
+                            </div>
+                          </div>
                         </div>
                       </div>
                     </div>
