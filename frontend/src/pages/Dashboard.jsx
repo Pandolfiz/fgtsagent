@@ -186,6 +186,14 @@ export default function Dashboard() {
   const [isEditingProposal, setIsEditingProposal] = useState(false)
   const [editProposalError, setEditProposalError] = useState('')
 
+  // ✅ FUNÇÃO GLOBAL: formatDateToYYYYMMDD para uso em todo o componente
+  const formatDateToYYYYMMDD = (date) => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
   // Função para calcular a posição do calendário
   const updateCalendarPosition = () => {
     try {
@@ -452,13 +460,7 @@ export default function Dashboard() {
       // Formatar datas explicitamente para garantir que não haja problemas de timezone
       let url = `/api/dashboard/stats?period=${apiPeriod}`;
       if (isRange) {
-        const formatDateToYYYYMMDD = (date) => {
-          const year = date.getFullYear();
-          const month = String(date.getMonth() + 1).padStart(2, '0');
-          const day = String(date.getDate()).padStart(2, '0');
-          return `${year}-${month}-${day}`;
-        };
-
+        // ✅ USAR: Função global formatDateToYYYYMMDD
         const start = formatDateToYYYYMMDD(dateRange[0].startDate);
         const end = formatDateToYYYYMMDD(dateRange[0].endDate);
 
