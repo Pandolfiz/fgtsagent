@@ -1,17 +1,24 @@
 # Etapa 1: Build local (será feito fora do container)
 # Esta etapa assume que o build já foi feito localmente
 
-# Etapa 2: Imagem final com Alpine para copiar arquivos
-FROM alpine:3.19 AS final
+# Etapa 2: Imagem final com nginx
+FROM nginx:alpine AS final
 
-# Instalar rsync para cópia de arquivos
-RUN apk add --no-cache rsync
+# Instalar curl para health check
+RUN apk add --no-cache curl
 
-# Copiar arquivos construídos (assumindo que dist/ já existe)
-COPY dist/ /dist/
+# Copiar arquivos construídos
+COPY dist/ /usr/share/nginx/html/
 
-# Criar o diretório de destino antes de copiar
-RUN mkdir -p /usr/share/nginx/html
+# Copiar configuração customizada do nginx (opcional)
+# COPY nginx.conf /etc/nginx/nginx.conf
 
-# Comando para copiar arquivos para o volume montado e manter container ativo
-CMD ["sh", "-c", "rsync -av --delete /dist/ /usr/share/nginx/html/ && echo 'Frontend files copied successfully' && tail -f /dev/null"] 
+# Expor porta 80
+EXPOSE 80
+
+# Health check para o frontend
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:80/ || exit 1
+
+# Comando para iniciar nginx
+CMD ["nginx", "-g", "daemon off;"] 
