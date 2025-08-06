@@ -10,5 +10,8 @@ RUN apk add --no-cache rsync
 # Copiar arquivos construídos (assumindo que dist/ já existe)
 COPY dist/ /dist/
 
+# Criar o diretório de destino antes de copiar
+RUN mkdir -p /usr/share/nginx/html
+
 # Comando para copiar arquivos para o volume montado e manter container ativo
 CMD ["sh", "-c", "rsync -av --delete /dist/ /usr/share/nginx/html/ && echo 'Frontend files copied successfully' && tail -f /dev/null"] 
