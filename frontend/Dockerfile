@@ -1,17 +1,35 @@
-# Etapa 1: Build local (será feito fora do container)
-# Esta etapa assume que o build já foi feito localmente
+# Etapa 1: Build
+FROM node:20-alpine AS builder
 
-# Etapa 2: Imagem final usando alpine como base
-FROM alpine:3.19 AS final
+# Definir diretório de trabalho
+WORKDIR /app
 
-# Instalar nginx e curl como root
-RUN apk add --no-cache nginx curl
+# Copiar arquivos de dependências
+COPY package*.json ./
 
-# Criar diretório para arquivos web
-RUN mkdir -p /usr/share/nginx/html
+# Instalar dependências
+RUN npm ci --only=production --no-audit
 
-# Copiar arquivos construídos
-COPY dist/ /usr/share/nginx/html/
+# Copiar código fonte
+COPY . .
+
+# Build da aplicação
+RUN npm run build
+
+# Etapa 2: Imagem final
+FROM nginx:1.25-alpine
+
+# Instalar curl para health check
+RUN apk add --no-cache curl
+
+# Remover configuração padrão do nginx
+RUN rm -rf /etc/nginx/conf.d/*
+
+# Copiar configuração personalizada do nginx
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+
+# Copiar arquivos buildados
+COPY --from=builder /app/dist /usr/share/nginx/html
 
 # Expor porta 80
 EXPOSE 80
