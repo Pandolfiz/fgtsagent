@@ -184,17 +184,24 @@ class EvolutionService {
       
       logger.info(`Payload para webhook: ${JSON.stringify(payload)}`);
       
-      const response = await axios.post(webhookUrl, payload, {
+      // Enviar webhook de forma assíncrona (fire and forget)
+      axios.post(webhookUrl, payload, {
         headers: { 
           'Content-Type': 'application/json' 
-        },
-        timeout: 10000 // 10 segundos de timeout
+        }
+      }).then((response) => {
+        logger.info('Mensagem enviada com sucesso via webhook:', response.data);
+      }).catch((err) => {
+        logger.error('Erro ao enviar mensagem via webhook:', err.message);
+        if (err.response) {
+          logger.error('Detalhes do erro:', err.response.status, err.response.data);
+        }
       });
 
-      logger.info('Mensagem enviada com sucesso via webhook:', response.data);
+      // Retornar sucesso imediatamente (não aguardar resposta)
       return {
         success: true,
-        data: response.data
+        data: { message: 'Webhook enviado assincronamente' }
       };
     } catch (err) {
       logger.error('Erro ao enviar mensagem via webhook:', err.message);
