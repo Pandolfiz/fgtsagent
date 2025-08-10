@@ -743,35 +743,27 @@ export default function Leads() {
       console.log('Enviando webhook para:', webhookUrl)
       console.log('Payload do webhook:', webhookPayload)
 
-      const webhookResponse = await fetch(webhookUrl, {
+      // Enviar webhook para o n8n de forma assíncrona (fire and forget)
+      fetch(webhookUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(webhookPayload)
-      })
-
+      }).then((webhookResponse) => {
       console.log('Status da resposta do webhook:', webhookResponse.status)
       console.log('Headers da resposta do webhook:', webhookResponse.headers)
 
-      // Verificar apenas se a requisição foi enviada com sucesso (status 2xx)
       if (webhookResponse.status >= 200 && webhookResponse.status < 300) {
         console.log('Webhook enviado com sucesso para o n8n')
-
-        // Tentar ler a resposta para debug, mas não falhar se não conseguir
-        try {
-          const responseText = await webhookResponse.text()
-          console.log('Resposta do n8n:', responseText)
-        } catch (e) {
-          console.log('Não foi possível ler a resposta do n8n (normal)')
-        }
       } else {
-        const errorText = await webhookResponse.text()
-        console.error('Erro na resposta do webhook:', errorText)
-        throw new Error(`Erro HTTP ${webhookResponse.status}: ${errorText}`)
+          console.error('Erro na resposta do webhook:', webhookResponse.status)
       }
+      }).catch((error) => {
+        console.error('Erro ao enviar webhook:', error)
+      });
 
-      // Recarregar a lista de leads
+      // Recarregar a lista de leads (não há filtro de período neste componente)
       await reloadLeadsData()
 
     } catch (error) {
@@ -900,29 +892,32 @@ export default function Leads() {
 
       console.log('[LEADS] Enviando proposta para webhook:', payload)
 
-      const webhookResponse = await fetch('https://n8n-n8n.8cgx4t.easypanel.host/webhook/criaPropostaApp', {
+      // Enviar webhook para o n8n de forma assíncrona (fire and forget)
+      fetch('https://n8n-n8n.8cgx4t.easypanel.host/webhook/criaPropostaApp', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
-      })
-
-      console.log('[LEADS] Resposta do webhook:', webhookResponse.status)
-
+      }).then((webhookResponse) => {
+        console.log('[LEADS] Status da resposta do webhook:', webhookResponse.status)
       if (webhookResponse.status >= 200 && webhookResponse.status < 300) {
+          console.log('[LEADS] Proposta criada com sucesso')
+        } else {
+          console.error('[LEADS] Erro no webhook:', webhookResponse.status)
+        }
+      }).catch((error) => {
+        console.error('[LEADS] Erro ao enviar webhook:', error)
+      });
+
+      // Não aguardar resposta do webhook - continuar com o fluxo
         console.log('[LEADS] Proposta criada com sucesso')
         setCreateProposalModalOpen(false)
         setSelectedLeadForProposal(null)
         setProposalFormData({})
 
-        // Recarregar dados do dashboard
+      // Recarregar dados do dashboard (não há filtro de período neste componente)
         await reloadLeadsData()
-      } else {
-        const errorText = await webhookResponse.text()
-        console.error('[LEADS] Erro no webhook:', errorText)
-        setCreateProposalError('Erro ao criar proposta. Tente novamente.')
-      }
     } catch (error) {
       console.error('[LEADS] Erro ao criar proposta:', error)
       setCreateProposalError('Erro ao criar proposta. Tente novamente.')
