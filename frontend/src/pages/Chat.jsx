@@ -238,11 +238,13 @@ const ensureCSRFToken = async () => {
         }
       }
     }
-  } catch (error) {
-    console.error('[CSRF] Erro ao carregar token dinamicamente:', error);
-  }
-  
-  return '';
+      } catch (error) {
+      console.error('[CSRF] Erro ao carregar token dinamicamente:', error);
+      throw new Error('Não foi possível obter token CSRF válido');
+    }
+    
+    // Se chegou aqui, não foi possível obter o token
+    throw new Error('Token CSRF não disponível');
 };
 
 // ✅ SEGURANÇA: Verificar sessão
