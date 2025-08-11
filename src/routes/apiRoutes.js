@@ -57,6 +57,30 @@ router.get('/status', (req, res) => {
   });
 });
 
+// Rota para gerar token CSRF
+router.get('/auth/csrf-token', (req, res) => {
+  try {
+    // Gerar token CSRF único
+    const csrfToken = require('crypto').randomBytes(32).toString('hex');
+    
+    // Armazenar na sessão se disponível
+    if (req.session) {
+      req.session.csrfToken = csrfToken;
+    }
+    
+    res.json({
+      success: true,
+      csrfToken: csrfToken
+    });
+  } catch (error) {
+    logger.error('Erro ao gerar token CSRF:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao gerar token de segurança'
+    });
+  }
+});
+
 // Rota para verificar status da sessão
 router.get('/auth/check-session', async (req, res) => {
   try {

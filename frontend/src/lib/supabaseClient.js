@@ -123,6 +123,11 @@ export const setupApiInterceptor = () => {
       return originalFetch(resource, options);
     }
 
+    // Não interceptar webhooks para n8n (sem timeout para webhooks assíncronos)
+    if (resource.toString().includes('n8n') || resource.toString().includes('webhook')) {
+      return originalFetch(resource, options);
+    }
+
     // Adicionar timeout padrão se não especificado
     const timeoutMs = options.timeout || 30000; // 30 segundos padrão
 
