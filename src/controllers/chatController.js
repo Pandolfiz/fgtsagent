@@ -119,15 +119,15 @@ exports.sendMessage = async (req, res) => {
     
     const n8nUrl = (process.env.N8N_API_URL || (config.n8n && config.n8n.apiUrl) || 'http://localhost:5678') + '/webhook/sendMessageEvolution';
     
-    // Criar AbortController para timeout de 30 segundos
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    // ✅ Removido timeout para webhooks assíncronos
+    // const controller = new AbortController();
+    // const timeoutId = setTimeout(() => controller.abort(), 30000);
     
     try {
       const n8nRes = await fetch(n8nUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        signal: controller.signal,
+        // ✅ Removido signal e timeout
         body: JSON.stringify({ 
           to, 
           message, 
@@ -138,7 +138,7 @@ exports.sendMessage = async (req, res) => {
         })
       });
       
-      clearTimeout(timeoutId);
+      // ✅ Removido clearTimeout
       
       if (!n8nRes.ok) {
         let errorMsg = `Erro ao enviar mensagem para o n8n (status: ${n8nRes.status})`;
@@ -152,11 +152,7 @@ exports.sendMessage = async (req, res) => {
         throw new AppError(errorMsg, 500);
       }
     } catch (error) {
-      clearTimeout(timeoutId);
-      
-      if (error.name === 'AbortError') {
-        throw new AppError('Timeout ao enviar mensagem para n8n (30s)', 500);
-      }
+      // ✅ Removido clearTimeout e verificação de AbortError
       
       throw error;
     }
