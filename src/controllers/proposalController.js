@@ -396,7 +396,7 @@ exports.updateProposal = async (req, res) => {
           
           // Enviar webhook de forma assíncrona (fire and forget)
           axios.post(N8N_WEBHOOK_URL, webhookPayload, {
-            timeout: 30000,
+            // ✅ Removido timeout para webhooks assíncronos
             headers: {
               'Content-Type': 'application/json'
             }

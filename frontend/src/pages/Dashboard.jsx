@@ -138,7 +138,8 @@ function mapMaritalStatus(status) {
 
 export default function Dashboard() {
   const [stats, setStats] = useState(null)
-  const [period, setPeriod] = useState('daily')
+  // ✅ CORREÇÃO: Inicializar period como 'custom' para ser consistente com os botões de filtro
+  const [period, setPeriod] = useState('custom')
   const [dateRange, setDateRange] = useState([
     {
       startDate: new Date(),
@@ -201,6 +202,9 @@ export default function Dashboard() {
   const [isEditingProposal, setIsEditingProposal] = useState(false)
   const [editProposalError, setEditProposalError] = useState('')
 
+  // ✅ NOVO ESTADO: Controla se a sincronização recorrente está ativa
+  const [isRecurringSyncActive, setIsRecurringSyncActive] = useState(false)
+
   // ✅ FUNÇÃO GLOBAL: formatDateToYYYYMMDD para uso em todo o componente
   const formatDateToYYYYMMDD = (date) => {
     const year = date.getFullYear();
@@ -208,6 +212,9 @@ export default function Dashboard() {
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   };
+
+  // ✅ LOG DE INICIALIZAÇÃO para depuração
+  console.log(`[INIT-DEBUG] Estado inicial - Period: ${period}, DateRange:`, dateRange);
 
   // Função para calcular a posição do calendário
   const updateCalendarPosition = () => {
@@ -469,26 +476,34 @@ export default function Dashboard() {
 
     // Usar um temporizador para evitar múltiplas chamadas em sequência
     const timeoutId = setTimeout(() => {
-      const isRange = (period === 'custom' || period === 'monthly');
-      const apiPeriod = isRange ? 'range' : period;
+      // ✅ CORREÇÃO: Usar os valores atuais de period e dateRange
+      const currentPeriod = period;
+      const currentDateRange = dateRange;
+      
+      console.log(`[FETCH-DEBUG] Estado atual - Period: ${currentPeriod}, DateRange:`, currentDateRange);
+      
+      const isRange = (currentPeriod === 'custom');
+      const apiPeriod = isRange ? 'range' : currentPeriod;
+      
+      console.log(`[FETCH-DEBUG] isRange: ${isRange}, apiPeriod: ${apiPeriod}`);
 
       // Formatar datas explicitamente para garantir que não haja problemas de timezone
       let url = `/api/dashboard/stats?period=${apiPeriod}`;
       if (isRange) {
         // ✅ USAR: Função global formatDateToYYYYMMDD
-        const start = formatDateToYYYYMMDD(dateRange[0].startDate);
-        const end = formatDateToYYYYMMDD(dateRange[0].endDate);
+        const start = formatDateToYYYYMMDD(currentDateRange[0].startDate);
+        const end = formatDateToYYYYMMDD(currentDateRange[0].endDate);
 
         url += `&startDate=${start}&endDate=${end}`;
 
         // Logs para depuração
-        console.log(`[API-DEBUG] Data início objeto: ${dateRange[0].startDate}`);
+        console.log(`[API-DEBUG] Period: ${currentPeriod}, Data início objeto: ${currentDateRange[0].startDate}`);
         console.log(`[API-DEBUG] Data início formatada: ${start}`);
-        console.log(`[API-DEBUG] Data fim objeto: ${dateRange[0].endDate}`);
+        console.log(`[API-DEBUG] Data fim objeto: ${currentDateRange[0].endDate}`);
         console.log(`[API-DEBUG] Data fim formatada: ${end}`);
       }
 
-      console.log(`[DASHBOARD] Buscando dados com: ${url}`);
+      console.log(`[DASHBOARD] Buscando dados com: ${url} (period: ${currentPeriod})`);
 
       const fetchData = async () => {
         try {
@@ -538,7 +553,7 @@ export default function Dashboard() {
           if (isMounted) {
             console.log(`[DASHBOARD] Dados recebidos:`, data.data);
             setStats(data.data);
-            console.log(`[DASHBOARD] Dados atualizados para período: ${period}`);
+            console.log(`[DASHBOARD] Dados atualizados para período: ${currentPeriod}`);
 
             // Log específico para depuração das métricas de leads
             console.log(`[DASHBOARD-LEADS-DEBUG] Leads Novos: ${data.data.newLeadsCount}, Leads Antigos Ativos: ${data.data.returningLeadsCount}, Total de Leads: ${data.data.totalLeads}`);
@@ -561,6 +576,39 @@ export default function Dashboard() {
       clearTimeout(timeoutId);
     };
   }, [period, dateRange, navigate]);
+
+  // ✅ NOVA FUNCIONALIDADE: Sincronização recorrente inteligente
+  // Sincroniza automaticamente a cada 30 segundos apenas se o filtro incluir "hoje"
+  useEffect(() => {
+    // Só criar o intervalo se o filtro incluir "hoje"
+    if (!doesCurrentFilterIncludeToday(period, dateRange)) {
+      console.log(`[SYNC-DEBUG] Filtro não inclui hoje - sincronização recorrente desabilitada`);
+      setIsRecurringSyncActive(false);
+      return;
+    }
+
+    console.log(`[SYNC-DEBUG] Filtro inclui hoje - iniciando sincronização recorrente a cada 30 segundos`);
+    setIsRecurringSyncActive(true);
+    
+    const intervalId = setInterval(() => {
+      // Verificar novamente se o filtro ainda inclui "hoje" (pode ter mudado)
+      if (doesCurrentFilterIncludeToday(period, dateRange)) {
+        console.log(`[SYNC-DEBUG] Executando sincronização recorrente automática...`);
+        reloadDashboardData();
+      } else {
+        console.log(`[SYNC-DEBUG] Filtro não inclui mais hoje - parando sincronização recorrente`);
+        setIsRecurringSyncActive(false);
+        clearInterval(intervalId);
+      }
+    }, 30 * 1000); // 30 segundos
+
+    // Cleanup function
+    return () => {
+      console.log(`[SYNC-DEBUG] Limpando sincronização recorrente`);
+      setIsRecurringSyncActive(false);
+      clearInterval(intervalId);
+    };
+  }, [period, dateRange]); // Dependências: recria o intervalo quando period/dateRange mudam
 
   // Função para recarregar dados do dashboard
   const reloadDashboardData = async () => {
@@ -588,15 +636,26 @@ export default function Dashboard() {
         headers['Authorization'] = `Bearer ${authToken}`;
       }
 
+      // ✅ CORREÇÃO: Usar a mesma lógica de construção de URL que fetchData
+      console.log(`[RELOAD-DEBUG] Estado atual - Period: ${period}, DateRange:`, dateRange);
+      
+      const isRange = (period === 'custom');
+      const apiPeriod = isRange ? 'range' : period;
+      
+      console.log(`[RELOAD-DEBUG] isRange: ${isRange}, apiPeriod: ${apiPeriod}`);
+
       // Construir URL com parâmetros atuais
-      let url = '/api/dashboard/stats';
-      if (period === 'custom' && dateRange && dateRange.length > 0) {
+      let url = `/api/dashboard/stats?period=${apiPeriod}`;
+      if (isRange) {
         const start = formatDateToYYYYMMDD(dateRange[0].startDate);
         const end = formatDateToYYYYMMDD(dateRange[0].endDate);
-        url += `?start=${start}&end=${end}`;
-      } else if (period !== 'all') {
-        url += `?period=${period}`;
+        url += `&startDate=${start}&endDate=${end}`;
+        
+        // Log para depuração
+        console.log(`[RELOAD-DEBUG] Period: ${period}, Data início: ${start}, Data fim: ${end}`);
       }
+
+      console.log(`[DASHBOARD] Recarregando dados com: ${url} (period: ${period})`);
 
       const res = await fetch(url, { credentials: 'include', headers });
 
@@ -676,22 +735,8 @@ export default function Dashboard() {
     // Não definimos o período como 'custom' aqui para manter o comportamento padrão
   }, []);
 
-  // Atualizar o intervalo de datas quando o período for alterado para diário, semanal ou mensal
-  useEffect(() => {
-    if (period === 'custom') return;
-    const today = new Date();
-    if (period === 'daily') {
-      setDateRange([{ startDate: today, endDate: today, key: 'selection' }]);
-    } else if (period === 'weekly') {
-      const startDate = new Date();
-      startDate.setDate(today.getDate() - 6);
-      setDateRange([{ startDate, endDate: today, key: 'selection' }]);
-    } else if (period === 'monthly') {
-      const startDate = new Date();
-      startDate.setDate(today.getDate() - 29);
-      setDateRange([{ startDate, endDate: today, key: 'selection' }]);
-    }
-  }, [period]);
+  // ✅ CORREÇÃO: Removido useEffect problemático que sobrescrevia dateRange
+  // O dateRange agora é controlado apenas pelos botões de filtro
 
   // Garante que o calendário possa ser aberto corretamente após carregamento
   useEffect(() => {
@@ -1307,14 +1352,22 @@ export default function Dashboard() {
         console.log('Webhook enviado com sucesso para o n8n')
       } else {
           console.error('Erro na resposta do webhook:', webhookResponse.status)
-      }
+        }
       }).catch((error) => {
         console.error('Erro ao enviar webhook:', error)
       });
 
       // Recarregar dados do dashboard apenas se o filtro atual incluir a data de hoje
-      if (doesCurrentFilterIncludeToday(period, dateRange)) {
-      await reloadDashboardData()
+      console.log(`[REPEAT-QUERY-DEBUG] Period atual: ${period}, DateRange atual:`, dateRange);
+      const shouldReload = doesCurrentFilterIncludeToday(period, dateRange);
+      console.log(`[REPEAT-QUERY-DEBUG] Deve recarregar? ${shouldReload}`);
+      
+      if (shouldReload) {
+        console.log(`[REPEAT-QUERY-DEBUG] Iniciando recarregamento...`);
+        await reloadDashboardData();
+        console.log(`[REPEAT-QUERY-DEBUG] Recarregamento concluído`);
+      } else {
+        console.log(`[REPEAT-QUERY-DEBUG] Recarregamento não necessário - filtro não inclui hoje`);
       }
 
     } catch (err) {
@@ -1484,8 +1537,16 @@ export default function Dashboard() {
         setEditProposalModalOpen(false)
         setEditingProposal(null)
         // Recarregar dados do dashboard apenas se o filtro atual incluir a data de hoje
-        if (doesCurrentFilterIncludeToday(period, dateRange)) {
-        await reloadDashboardData()
+        console.log(`[SAVE-PROPOSAL-DEBUG] Period atual: ${period}, DateRange atual:`, dateRange);
+        const shouldReload = doesCurrentFilterIncludeToday(period, dateRange);
+        console.log(`[SAVE-PROPOSAL-DEBUG] Deve recarregar? ${shouldReload}`);
+        
+        if (shouldReload) {
+          console.log(`[SAVE-PROPOSAL-DEBUG] Iniciando recarregamento...`);
+          await reloadDashboardData();
+          console.log(`[SAVE-PROPOSAL-DEBUG] Recarregamento concluído`);
+        } else {
+          console.log(`[SAVE-PROPOSAL-DEBUG] Recarregamento não necessário - filtro não inclui hoje`);
         }
       } else {
         throw new Error(data.message || 'Erro ao editar proposta')
@@ -1552,10 +1613,28 @@ export default function Dashboard() {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify(payload)
-      }).then((webhookResponse) => {
+            }).then((webhookResponse) => {
         console.log('[DASHBOARD] Status da resposta do webhook:', webhookResponse.status)
       if (webhookResponse.status >= 200 && webhookResponse.status < 300) {
-          console.log('[DASHBOARD] Proposta criada com sucesso')
+        console.log('[DASHBOARD] Proposta criada com sucesso')
+          
+          // ✅ Ações de sucesso executadas APENAS após confirmar sucesso do webhook
+        setCreateProposalModalOpen(false)
+        setSelectedLeadForProposal(null)
+        setProposalFormData({})
+
+          // Recarregar dados do dashboard apenas se o filtro atual incluir a data de hoje
+          console.log(`[CREATE-PROPOSAL-DEBUG] Period atual: ${period}, DateRange atual:`, dateRange);
+          const shouldReload = doesCurrentFilterIncludeToday(period, dateRange);
+          console.log(`[CREATE-PROPOSAL-DEBUG] Deve recarregar? ${shouldReload}`);
+          
+          if (shouldReload) {
+            console.log(`[CREATE-PROPOSAL-DEBUG] Iniciando recarregamento...`);
+            reloadDashboardData(); // Removido await pois já estamos dentro de .then()
+            console.log(`[CREATE-PROPOSAL-DEBUG] Recarregamento iniciado`);
+      } else {
+            console.log(`[CREATE-PROPOSAL-DEBUG] Recarregamento não necessário - filtro não inclui hoje`);
+          }
         } else {
           console.error('[DASHBOARD] Erro no webhook:', webhookResponse.status)
         }
@@ -1563,16 +1642,7 @@ export default function Dashboard() {
         console.error('[DASHBOARD] Erro ao enviar webhook:', error)
       });
 
-      // Não aguardar resposta do webhook - continuar com o fluxo
-        console.log('[DASHBOARD] Proposta criada com sucesso')
-        setCreateProposalModalOpen(false)
-        setSelectedLeadForProposal(null)
-        setProposalFormData({})
-
-        // Recarregar dados do dashboard apenas se o filtro atual incluir a data de hoje
-        if (doesCurrentFilterIncludeToday(period, dateRange)) {
-        await reloadDashboardData()
-      }
+      // ✅ Código removido daqui - não executa mais prematuramente
     } catch (error) {
       console.error('[DASHBOARD] Erro ao criar proposta:', error)
       setCreateProposalError('Erro ao criar proposta. Tente novamente.')
@@ -1896,9 +1966,12 @@ export default function Dashboard() {
                         endDate: end,
                         key: 'selection'
                       }];
+                      console.log(`[FILTER-DEBUG] Botão "7 dias" clicado`);
+                      console.log(`[FILTER-DEBUG] Start: ${start.toISOString()}, End: ${end.toISOString()}`);
                       setPeriod('custom');
                       setDateRange(newDateRange);
                       setIsCalendarOpen(false);
+                      console.log(`[FILTER-DEBUG] Estado atualizado - Period: custom, DateRange:`, newDateRange);
                     }} className="text-sm px-3 py-1 whitespace-nowrap">7 dias</Button>
 
                     <Button onClick={() => {
