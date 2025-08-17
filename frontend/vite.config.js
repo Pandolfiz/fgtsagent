@@ -54,7 +54,7 @@ export default defineConfig({
   // Otimizações de servidor de desenvolvimento
   server: {
     host: 'localhost', // Usar apenas localhost para evitar problemas de CORS
-    port: 5173,
+    port: process.env.FRONTEND_PORT || 5173,
     open: false,
 
     // Configuração HTTPS para compatibilidade com Facebook SDK
@@ -82,7 +82,7 @@ export default defineConfig({
     // Configurações de proxy para desenvolvimento
     proxy: {
       '/api': {
-        target: 'http://localhost:3000',
+        target: process.env.BACKEND_URL || 'http://localhost:3000',
         changeOrigin: true,
         secure: false
       }

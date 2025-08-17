@@ -50,8 +50,10 @@ export const isFacebookConfigured = () => {
   const hasValidConfig = FACEBOOK_CONFIG.APP_ID !== 'your_META_APP_ID_here' &&
                         FACEBOOK_CONFIG.CONFIG_ID !== 'your_META_APP_CONFIG_ID_here';
 
-  // Facebook SDK requer HTTPS obrigatoriamente
-  const isSecureConnection = window.location.protocol === 'https:';
+  // Facebook SDK requer HTTPS, mas permite localhost para desenvolvimento
+  const isSecureConnection = window.location.protocol === 'https:' || 
+                           window.location.hostname === 'localhost' ||
+                           window.location.hostname === '127.0.0.1';
 
   const isDomainAllowed = FACEBOOK_CONFIG.SECURITY_CONFIG.isDomainAllowed();
 
