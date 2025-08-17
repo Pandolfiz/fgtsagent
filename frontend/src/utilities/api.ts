@@ -369,7 +369,19 @@ export const userApi = {
 export const api = {
   evolution: evolutionCredentialsApi,
   partnerCredentials: partnerCredentialsApi,
-  user: userApi
+  user: userApi,
+  whatsappCredentials: {
+    // Processar autenticação da Meta API
+    processFacebookAuth: async (code: string) => {
+      return await apiFetch('/api/whatsapp-credentials/facebook/auth', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code }),
+      });
+    }
+  }
 };
 
 export default api; 

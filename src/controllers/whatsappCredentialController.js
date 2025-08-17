@@ -1981,8 +1981,8 @@ class WhatsappCredentialController {
   async processFacebookAuth(req, res) {
     try {
       const { code } = req.body;
-      const clientId = req.clientId;
-      
+      const clientId = req.clientId; // Usar clientId do middleware, não do body
+
       if (!code) {
         return res.status(400).json({
           success: false,
@@ -1990,10 +1990,17 @@ class WhatsappCredentialController {
         });
       }
 
+      if (!clientId) {
+        return res.status(400).json({
+          success: false,
+          message: 'ID do cliente é obrigatório'
+        });
+      }
+
       logger.info(`[META-AUTH] Processando autenticação da Meta para cliente: ${clientId}`);
 
-      // 1. Trocar código por access token
-      const tokenResponse = await this.exchangeCodeForToken(code);
+      // 1. Trocar código por access token - Usar método estático
+      const tokenResponse = await WhatsappCredentialController.exchangeCodeForToken(code);
       if (!tokenResponse.success) {
         return res.status(400).json({
           success: false,
@@ -2004,8 +2011,8 @@ class WhatsappCredentialController {
 
       const { access_token, token_type, expires_in } = tokenResponse.data;
 
-      // 2. Buscar dados da conta WhatsApp Business
-      const whatsappData = await this.getWhatsAppBusinessAccount(access_token);
+      // 2. Buscar dados da conta WhatsApp Business - Usar método estático
+      const whatsappData = await WhatsappCredentialController.getWhatsAppBusinessAccount(access_token);
       if (!whatsappData.success) {
         return res.status(400).json({
           success: false,
@@ -2130,9 +2137,9 @@ class WhatsappCredentialController {
   }
 
   // Trocar código de autorização por access token
-  async exchangeCodeForToken(code) {
+  static async exchangeCodeForToken(code) {
     try {
-      const response = await axios.post('https://graph.facebook.com/v18.0/oauth/access_token', {
+      const response = await axios.post('https://graph.facebook.com/v2.2/oauth/access_token', {
         client_id: process.env.META_APP_ID,
         client_secret: process.env.META_APP_SECRET,
         redirect_uri: process.env.META_REDIRECT_URI,
@@ -2153,39 +2160,20 @@ class WhatsappCredentialController {
   }
 
   // Buscar dados da conta WhatsApp Business
-  async getWhatsAppBusinessAccount(accessToken) {
+  static async getWhatsAppBusinessAccount(accessToken) {
     try {
-      // Primeiro, buscar as contas do usuário
-      const accountsResponse = await axios.get(`https://graph.facebook.com/v18.0/me/accounts?access_token=${accessToken}`);
-      
-      if (!accountsResponse.data.data || accountsResponse.data.data.length === 0) {
-        return {
-          success: false,
-          error: 'Nenhuma conta encontrada'
-        };
-      }
-
-      // Buscar WhatsApp Business Accounts
-      const wabaResponse = await axios.get(`https://graph.facebook.com/v18.0/me?fields=whatsapp_business_accounts&access_token=${accessToken}`);
-      
-      if (!wabaResponse.data.whatsapp_business_accounts || wabaResponse.data.whatsapp_business_accounts.data.length === 0) {
-        return {
-          success: false,
-          error: 'Nenhuma conta WhatsApp Business encontrada'
-        };
-      }
-
-      const wabaId = wabaResponse.data.whatsapp_business_accounts.data[0].id;
-
-      // Buscar detalhes da conta WhatsApp Business
-      const wabaDetailsResponse = await axios.get(`https://graph.facebook.com/v18.0/${wabaId}?fields=id,name,currency,timezone_id,message_template_namespace,phone_numbers&access_token=${accessToken}`);
+      const response = await axios.get('https://graph.facebook.com/v2.2/me/whatsapp_business_accounts', {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
 
       return {
         success: true,
-        data: wabaDetailsResponse.data
+        data: response.data
       };
     } catch (error) {
-      logger.error(`[META-AUTH] Erro ao buscar dados da conta WhatsApp Business: ${error.message}`);
+      logger.error(`[META-AUTH] Erro ao buscar conta WhatsApp Business: ${error.message}`);
       return {
         success: false,
         error: error.message

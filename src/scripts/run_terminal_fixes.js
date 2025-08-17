@@ -74,18 +74,18 @@ async function checkServerStatus() {
 
     // Verificar se o frontend está respondendo
     try {
-      const response = await axios.get('http://localhost:5173', {
+      const response = await axios.get(`http://localhost:${process.env.FRONTEND_PORT || 5173}`, {
         timeout: 5000
       });
       
       if (response.status === 200) {
-        console.log('✅ Frontend está respondendo na porta 5173');
+        console.log(`✅ Frontend está respondendo na porta ${process.env.FRONTEND_PORT || 5173}`);
       } else {
         console.log('⚠️ Frontend respondeu com status inesperado:', response.status);
       }
     } catch (error) {
       if (error.code === 'ECONNREFUSED') {
-        console.log('❌ Frontend não está rodando na porta 5173');
+        console.log(`❌ Frontend não está rodando na porta ${process.env.FRONTEND_PORT || 5173}`);
         console.log('💡 Execute: npm run dev:all');
       } else {
         console.log('⚠️ Erro ao conectar com frontend:', error.message);
@@ -178,18 +178,18 @@ async function checkServerStatus() {
 
     // Verificar se o frontend está respondendo
     try {
-      const response = await axios.get('http://localhost:5173', {
+      const response = await axios.get(`http://localhost:${process.env.FRONTEND_PORT || 5173}`, {
         timeout: 5000
       });
       
       if (response.status === 200) {
-        console.log('✅ Frontend está respondendo na porta 5173');
+        console.log(`✅ Frontend está respondendo na porta ${process.env.FRONTEND_PORT || 5173}`);
       } else {
         console.log('⚠️ Frontend respondeu com status inesperado:', response.status);
       }
     } catch (error) {
       if (error.code === 'ECONNREFUSED') {
-        console.log('❌ Frontend não está rodando na porta 5173');
+        console.log(`❌ Frontend não está rodando na porta ${process.env.FRONTEND_PORT || 5173}`);
         console.log('💡 Execute: npm run dev:all');
       } else {
         console.log('⚠️ Erro ao conectar com frontend:', error.message);
