@@ -4,11 +4,16 @@ FROM node:20-alpine AS builder
 # Definir diretório de trabalho
 WORKDIR /app
 
+# Instalar dependências de sistema necessárias
+RUN apk add --no-cache python3 make g++
+
 # Copiar arquivos de dependências
 COPY package*.json ./
 
-# Instalar dependências
-RUN npm ci --only=production --no-audit
+# Limpar cache e instalar dependências com correção para Rollup
+RUN npm cache clean --force && \
+    npm ci --only=production --no-audit && \
+    npm install @rollup/rollup-linux-x64-musl --platform=linux --arch=x64 --libc=musl --force
 
 # Copiar código fonte
 COPY . .
