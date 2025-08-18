@@ -3,34 +3,34 @@ version: 0.2
 phases:
   pre_build:
     commands:
-      - echo Logging in to Amazon ECR...
+      - echo "Logging in to Amazon ECR..."
       - aws --version
       - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
       - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/fgtsagent-api
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
-      - echo Build started on `date`
-      - echo Building API for commit: $COMMIT_HASH
+      - echo "Build started on $(date)"
+      - echo "Building API for commit: $COMMIT_HASH"
   build:
     commands:
-      - echo Build started on `date`
-      - echo Building the Docker image...
+      - echo "Build started on $(date)"
+      - echo "Building the Docker image..."
       - cd src
-      - echo Checking Dockerfile...
+      - echo "Checking Dockerfile..."
       - ls -la
-      - echo Building Docker image...
+      - echo "Building Docker image..."
       - docker build -t $REPOSITORY_URI:latest .
       - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
-      - echo Docker image built successfully
+      - echo "Docker image built successfully"
   post_build:
     commands:
-      - echo Build completed on `date`
-      - echo Pushing the Docker image...
+      - echo "Build completed on $(date)"
+      - echo "Pushing the Docker image..."
       - docker push $REPOSITORY_URI:latest
       - docker push $REPOSITORY_URI:$IMAGE_TAG
-      - echo Writing image definitions file...
+      - echo "Writing image definitions file..."
       - printf '{"ImageURI":"%s"}' $REPOSITORY_URI:$IMAGE_TAG > imageDefinitions.json
-      - echo Build and push completed successfully
+      - echo "Build and push completed successfully"
 artifacts:
   files:
     - imageDefinitions.json
