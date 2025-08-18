@@ -1,9 +1,9 @@
-// Carregar variáveis de ambiente do arquivo .env na raiz do projeto
-require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+// Carregar variáveis de ambiente do arquivo .env no diretório src/
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
 // Validar se a chave do Stripe está disponível
 if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('STRIPE_SECRET_KEY não está configurada no arquivo .env da raiz do projeto');
+  throw new Error('STRIPE_SECRET_KEY não está configurada no arquivo .env do diretório src/');
 }
 
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);

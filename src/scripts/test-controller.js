@@ -1,7 +1,7 @@
 // Teste para verificar se o controller está funcionando
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
-const WhatsappCredentialController = require('./controllers/whatsappCredentialController');
+const WhatsappCredentialController = require('../controllers/whatsappCredentialController');
 
 console.log('🔍 Testando controller do WhatsApp...\n');
 

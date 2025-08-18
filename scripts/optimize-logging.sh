@@ -1,14 +1,13 @@
 #!/bin/bash
 
-echo "🔧 Otimizando configurações de logging..."
+echo "🔧 Adicionando configurações de logging otimizadas ao .env..."
 
 # Adicionar configurações de logging otimizadas ao .env
-cat >> .env << 'EOF'
+cat >> src/.env << 'EOF'
 
 # ==============================================
 # CONFIGURAÇÕES DE LOGGING OTIMIZADAS
 # ==============================================
-LOG_LEVEL=info                    # Nível de log: error, warn, info, debug
 ENABLE_REQUEST_LOGGING=true       # Habilitar logging de requisições
 LOG_REQUEST_BODY=false            # Não logar body de requisições por padrão
 LOG_QUERY_PARAMS=false            # Não logar parâmetros de query por padrão

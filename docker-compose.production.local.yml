@@ -6,7 +6,7 @@ services:
   api:
     restart: always
     env_file:
-      - ./.env
+      - ./src/.env
     environment:
       - NODE_ENV=production
       - PORT=3000
