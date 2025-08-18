@@ -9,13 +9,19 @@ phases:
       - REPOSITORY_URI=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/fgtsagent-api
       - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
       - IMAGE_TAG=${COMMIT_HASH:=latest}
+      - echo Build started on `date`
+      - echo Building API for commit: $COMMIT_HASH
   build:
     commands:
       - echo Build started on `date`
       - echo Building the Docker image...
       - cd src
+      - echo Checking Dockerfile...
+      - ls -la
+      - echo Building Docker image...
       - docker build -t $REPOSITORY_URI:latest .
       - docker tag $REPOSITORY_URI:latest $REPOSITORY_URI:$IMAGE_TAG
+      - echo Docker image built successfully
   post_build:
     commands:
       - echo Build completed on `date`
@@ -24,6 +30,7 @@ phases:
       - docker push $REPOSITORY_URI:$IMAGE_TAG
       - echo Writing image definitions file...
       - printf '{"ImageURI":"%s"}' $REPOSITORY_URI:$IMAGE_TAG > imageDefinitions.json
+      - echo Build and push completed successfully
 artifacts:
   files:
     - imageDefinitions.json
