@@ -99,7 +99,7 @@ async function main() {
   console.log('🚀 Iniciando testes do Meta API...\n');
   
   // Carregar variáveis de ambiente
-  require('dotenv').config({ path: '../.env' });
+  require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
   
   // Testar configurações
   const configValid = await testMetaConfig();
