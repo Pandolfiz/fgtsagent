@@ -21,18 +21,15 @@ check_docker() {
 }
 
 # Função para verificar se arquivo .env existe
-check_env() {
-    if [ ! -f ".env" ]; then
+check_env_file() {
+    if [ ! -f "src/.env" ]; then
         echo -e "${YELLOW}⚠️  Arquivo .env não encontrado${NC}"
-        if [ -f "src/env.example" ]; then
-            echo -e "${BLUE}📋 Copiando env.example para .env${NC}"
-            cp src/env.example .env
-            echo -e "${GREEN}✅ Arquivo .env criado${NC}"
-            echo -e "${YELLOW}⚠️  Configure as variáveis de ambiente em .env${NC}"
-        else
-            echo -e "${RED}❌ Arquivo env.example não encontrado${NC}"
-            exit 1
-        fi
+        echo -e "${BLUE}📋 Copiando env.example para src/.env${NC}"
+        cp src/env.example src/.env
+        echo -e "${GREEN}✅ Arquivo .env criado${NC}"
+        echo -e "${YELLOW}⚠️  Configure as variáveis de ambiente em src/.env${NC}"
+        echo ""
+        read -p "Pressione Enter para continuar..."
     else
         echo -e "${GREEN}✅ Arquivo .env encontrado${NC}"
     fi
@@ -139,7 +136,7 @@ show_urls() {
 echo ""
 check_docker
 echo ""
-check_env
+check_env_file
 echo ""
 create_directories
 echo ""

@@ -1,22 +1,27 @@
 #!/bin/bash
 
-echo "🔧 Corrigindo configuração de variáveis de ambiente..."
+# Script para corrigir configuração de ambiente
+# Este script cria/atualiza o arquivo .env com as configurações corretas
 
-# Verificar se estamos no diretório correto
+set -e
+
+echo "🔧 Corrigindo configuração de ambiente..."
+
+# Verificar se estamos no diretório raiz do projeto
 if [ ! -f "package.json" ]; then
     echo "❌ Execute este script na raiz do projeto"
     exit 1
 fi
 
 # Backup do arquivo .env atual
-if [ -f ".env" ]; then
+if [ -f "src/.env" ]; then
     echo "📋 Fazendo backup do .env atual..."
-    cp .env .env.backup.$(date +%Y%m%d_%H%M%S)
+    cp src/.env src/.env.backup.$(date +%Y%m%d_%H%M%S)
 fi
 
 # Criar novo arquivo .env com configurações corretas
 echo "📝 Criando novo arquivo .env..."
-cat > .env << 'EOF'
+cat > src/.env << 'EOF'
 # ==============================================
 # CONFIGURAÇÕES GLOBAIS DA APLICAÇÃO
 # ==============================================
@@ -41,41 +46,59 @@ APP_URL=http://localhost:3000
 # ==============================================
 # CONFIGURAÇÕES DE SEGURANÇA
 # ==============================================
-SESSION_SECRET=dev-session-secret-key-32-chars-long
-JWT_SECRET=dev-jwt-secret-key-32-chars-long
+SESSION_SECRET=fgtsagent-session-secret-2024-super-forte-32-chars-minimum
+JWT_SECRET=fgtsagent-jwt-secret-key-muito-segura-2024
 
 # ==============================================
 # CONFIGURAÇÕES DO SUPABASE
 # ==============================================
-SUPABASE_URL=https://seu-projeto.supabase.co
-SUPABASE_ANON_KEY=sua-chave-anonima-do-supabase
-SUPABASE_SERVICE_KEY=sua-chave-de-servico-do-supabase
-SUPABASE_JWT_SECRET=sua-jwt-secret-do-supabase
+SUPABASE_URL=https://uwcdaafcpezmzuveefrh.supabase.co
+SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3Y2RhYWZjcGV6bXp1dmVlZnJoIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDUyNzE0MjMsImV4cCI6MjA2MDg0NzQyM30.LuXtP_WSFTaDj41_zlIiEM0UXKXIRPiBNxCyrFPzAos
+SUPABASE_SERVICE_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV3Y2RhYWZjcGV6bXp1dmVlZnJoIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NTI3MTQyMywiZXhwIjoyMDYwODQ3NDIzfQ.uTtFgeRX4f3oh1ENfHnN82seFnnHJW25su3VS5-OnSc
+SUPABASE_JWT_SECRET=wxEinwOPEGvy1853ntkKZGzFpfDTn8052un1+Dr6EN6QWkSP8WKceTHK0Q8XzzqOh3UsbVI/mUXMBNXlYXFxw==
 
 # ==============================================
 # CONFIGURAÇÕES OAUTH (OPCIONAL)
 # ==============================================
-OAUTH_SUPABASE_REDIRECT_URL=http://localhost:3000/auth/google/callback
+OAUTH_SUPABASE_REDIRECT_URL=https://fgtsagent.com.br/auth/google/callback
 USE_SUPABASE_AUTH=true
 
 # ==============================================
 # CONFIGURAÇÕES DO WHATSAPP/EVOLUTION API
 # ==============================================
-WHATSAPP_ACCESS_TOKEN=seu-token-do-whatsapp
-EVOLUTION_API_URL=https://sua-evolution-api.com
-EVOLUTION_API_KEY=sua-chave-da-evolution-api
+META_APP_ID=980766987152980
+META_APP_CONFIG_ID=620544604425544
+WHATSAPP_ACCESS_TOKEN=EAAN8AJvgblQBO4r3Ddh7mDmCOiftKkK9TU1BjLPgGqVLv83HApiVPtC6zEiml9LZB3xXS7ZAorcx6OjZA9bhgn2cBnvMBsp2zd7HBVbx8mqHZCymZCAZCrjlZB1pcZBRlOlwWDD6Y5MPPE3pxHYyjkl6XTNdWTsrKe00EdK6Vjny8ZCbxJNIVKqyBXX01YN3ZCUeqQdod2uyuwpQGJ65Pg
+META_REDIRECT_URI=http://localhost:3000/api/whatsapp-credentials/facebook/auth
+META_APP_SECRET=ecce4e7ce182fb6bdce4e5893fa3efe6
 
-# ==============================================
-# CONFIGURAÇÕES DO FACEBOOK/META API
-# ==============================================
-META_APP_ID=seu-facebook-app-id
-META_APP_SECRET=seu-facebook-app-secret
-META_REDIRECT_URI=http://localhost:3000/auth/facebook/callback
+# Evolution
+EVOLUTION_API_URL=https://evolutionapi.miceliumagent.shop
+EVOLUTION_API_KEY=KwN06gV3jsOkkn4FcereolA8u1EFIHMM
 
 # ==============================================
 # CONFIGURAÇÕES N8N (OPCIONAL)
 # ==============================================
-N8N_API_URL=http://localhost:5678
+N8N_API_URL=https://n8n-n8n.8cgx4t.easypanel.host
+N8N_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJlNjQzOGI0OC04MGY4LTQ3MDQtOTk2Ni03OGI0MjI1ZWQ1ZmUiLCJpc3MiOiJuOG4iLCJhdWQiOiJwdWJsaWMtYXBpIiwiaWF0IjoxNzQzOTg2NDkwfQ.eiNOnGr9a2W2eVt8rjirbF0vorLNhBHxw1b6fNEV4sM
+
+# Segurança
+MASTER_KEY=f*Lk`rUwqc3tkg#`mM(Qfmf5{{Vt/?u*TM%Aku*ZAKV&b*(GT/&@V+Bh~(3W*kgL
+JWT_SECRET=LR`wa&!\^}vk7!3e8-~'WD6Y*;K</aT'DTXG3dp$=B42T#M))VgRwx)uAFjbdXvP
+
+# ==============================================
+# CONFIGURAÇÕES DE BANCO DE DADOS (SE USAR POSTGRES LOCAL)
+# ==============================================
+# POSTGRES_DB=saas_fgts
+# POSTGRES_USER=postgres
+# POSTGRES_PASSWORD=postgres
+# DATABASE_URL=postgresql://postgres:postgres@localhost:5432/saas_fgts
+
+# ==============================================
+# CONFIGURAÇÕES DE FRONTEND
+# ==============================================
+FRONTEND_URL=http://localhost:5173
+REACT_ROUTER_TYPE=browser
 
 # ==============================================
 # CONFIGURAÇÕES DE LOGS E MONITORAMENTO
@@ -87,7 +110,7 @@ ENABLE_REQUEST_LOGGING=true
 # CONFIGURAÇÕES DO STRIPE
 # ==============================================
 STRIPE_SECRET_KEY=sk_test_sua_chave_secreta_aqui
-STRIPE_PUBLISHABLE_KEY=pk_test_sua_chave_publica_aqui
+STRIPE_PUBLISHABLE_KEY=pk_test_51RYTKLRrfRhcM17zUKj2aCYDlG1GPyrVuZ6k5TeKiPj79V2MaGEZiRN0Y4R34FGfFHG7t4Xgjv4L2hqgLfM9kpjg00dDryfgRM
 STRIPE_WEBHOOK_SECRET=whsec_sua_chave_de_webhook_aqui
 
 # ==============================================
@@ -99,30 +122,33 @@ STRIPE_WEBHOOK_SECRET=whsec_sua_chave_de_webhook_aqui
 # SMTP_PASS=sua-senha-de-app
 
 # ==============================================
-# CONFIGURAÇÕES DE PRODUÇÃO (ALTERAR EM PRODUÇÃO)
+# CONFIGURAÇÕES DE LOGGING OTIMIZADAS
 # ==============================================
-# NODE_ENV=production
-# BACKEND_URL=https://api.fgtsagent.com.br
-# FRONTEND_URL=https://fgtsagent.com.br
-# APP_URL=https://fgtsagent.com.br
-# META_REDIRECT_URI=https://fgtsagent.com.br/auth/facebook/callback
-# OAUTH_SUPABASE_REDIRECT_URL=https://fgtsagent.com.br/auth/google/callback
+ENABLE_REQUEST_LOGGING=true       # Habilitar logging de requisições
+LOG_REQUEST_BODY=false            # Não logar body de requisições por padrão
+LOG_QUERY_PARAMS=false            # Não logar parâmetros de query por padrão
+LOG_RESPONSE_DATA=false           # Não logar dados de resposta por padrão
+CACHE_CLEANUP_INTERVAL=60000     # Limpeza de cache a cada 1 minuto
+MAX_CACHE_SIZE=5000              # Máximo 5k entradas no cache
+
+# ==============================================
+# CONFIGURAÇÕES DE NOTIFICAÇÃO
+# ==============================================
+NOTIFICATION_EMAIL_FROM=noreply@fgtsagent.com.br
+NOTIFICATION_EMAIL_TO=admin@fgtsagent.com.br
 EOF
 
-# Remover arquivo .env do diretório src se existir (não deve existir mais)
-if [ -f "src/.env" ]; then
-    echo "🗑️ Removendo .env duplicado do diretório src..."
-    rm src/.env
+# Remover arquivo .env da raiz se existir (não deve existir mais)
+if [ -f ".env" ]; then
+    echo "🗑️ Removendo .env duplicado da raiz..."
+    rm .env
 fi
 
-echo "✅ Configuração corrigida com sucesso!"
+echo "✅ Configuração de ambiente corrigida!"
 echo ""
 echo "📋 Próximos passos:"
-echo "1. Edite o arquivo .env com suas configurações reais"
-echo "2. Execute: npm run dev:all"
-echo "3. O backend deve rodar na porta 3000"
-echo "4. O frontend deve rodar na porta 5173"
+echo "1. Edite o arquivo src/.env com suas configurações reais"
+echo "2. Execute 'docker compose up -d' para testar"
+echo "3. Verifique se todos os serviços estão funcionando"
 echo ""
-echo "🔍 Para verificar se está funcionando:"
-echo "   Backend: http://localhost:3000/api/health"
-echo "   Frontend: http://localhost:5173"
+echo "🔒 IMPORTANTE: Nunca commite o arquivo .env no Git!"
