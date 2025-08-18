@@ -145,8 +145,8 @@ cd stable-src
 npm install
 
 # Configurar variáveis de ambiente
-cp src/env.example src/.env
-nano src/.env  # Editar com suas credenciais
+cp src/env.example .env
+nano .env  # Editar com suas credenciais
 
 # Criar .env para Docker Compose
 cat > .env << EOF
