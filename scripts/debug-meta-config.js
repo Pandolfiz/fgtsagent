@@ -41,7 +41,7 @@ async function debugMetaConfig() {
   
   try {
     // Testar se a API está acessível
-    const testResponse = await axios.get('https://graph.facebook.com/v18.0/', {
+          const testResponse = await axios.get('https://graph.facebook.com/v2.2/', {
       timeout: 5000
     });
     console.log('   ✅ API da Meta está acessível');

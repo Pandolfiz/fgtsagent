@@ -16,7 +16,7 @@ async function testMetaApiDetailed() {
   // 2. Testar endpoint básico da API
   console.log('\n🧪 Teste 1: Endpoint básico da API');
   try {
-    const basicResponse = await axios.get('https://graph.facebook.com/v18.0/', {
+          const basicResponse = await axios.get('https://graph.facebook.com/v2.2/', {
       timeout: 10000
     });
     console.log('   ✅ API básica acessível');
@@ -32,7 +32,7 @@ async function testMetaApiDetailed() {
   // 3. Testar endpoint de OAuth (sem credenciais reais)
   console.log('\n🧪 Teste 2: Endpoint OAuth (sem credenciais)');
   try {
-    const oauthResponse = await axios.post('https://graph.facebook.com/v18.0/oauth/access_token', {
+          const oauthResponse = await axios.post('https://graph.facebook.com/v2.2/oauth/access_token', {
       client_id: '123456789', // ID fake para teste
       client_secret: 'fake_secret',
       redirect_uri: 'http://localhost:3000/test',
@@ -71,7 +71,7 @@ async function testMetaApiDetailed() {
   // 4. Verificar se o app ID é válido
   console.log('\n🧪 Teste 3: Validação do App ID');
   try {
-    const appResponse = await axios.get(`https://graph.facebook.com/v18.0/${process.env.META_APP_ID}`, {
+          const appResponse = await axios.get(`https://graph.facebook.com/v2.2/${process.env.META_APP_ID}`, {
       timeout: 10000
     });
     console.log('   ✅ App ID válido');
@@ -90,7 +90,7 @@ async function testMetaApiDetailed() {
   // 5. Verificar permissões do app
   console.log('\n🧪 Teste 4: Permissões do App');
   try {
-    const permissionsResponse = await axios.get(`https://graph.facebook.com/v18.0/${process.env.META_APP_ID}/permissions`, {
+          const permissionsResponse = await axios.get(`https://graph.facebook.com/v2.2/${process.env.META_APP_ID}/permissions`, {
       timeout: 10000
     });
     console.log('   ✅ Permissões acessíveis');

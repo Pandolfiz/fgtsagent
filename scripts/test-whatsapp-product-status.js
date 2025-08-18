@@ -17,7 +17,7 @@ async function testWhatsAppProductStatus() {
   // 1. Verificar status detalhado do produto WhatsApp
   console.log('\n🧪 Teste 1: Status Detalhado do Produto WhatsApp');
   try {
-    const whatsappResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}/products?fields=id,name,status,product_type,created_time`, {
+          const whatsappResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}/products?fields=id,name,status,product_type,created_time`, {
       timeout: 15000
     });
     
@@ -61,7 +61,7 @@ async function testWhatsAppProductStatus() {
   // 2. Verificar configurações específicas do WhatsApp
   console.log('\n🧪 Teste 2: Configurações do WhatsApp');
   try {
-    const whatsappConfigResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}/whatsapp_business_accounts`, {
+          const whatsappConfigResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}/whatsapp_business_accounts`, {
       timeout: 15000
     });
     
@@ -134,7 +134,7 @@ async function testWhatsAppProductStatus() {
   // 4. Testar endpoint OAuth com análise detalhada
   console.log('\n🧪 Teste 4: Endpoint OAuth com Análise Detalhada');
   try {
-    const oauthTestResponse = await axios.post('https://graph.facebook.com/v2.2/oauth/access_token', {
+          const oauthTestResponse = await axios.post('https://graph.facebook.com/v2.2/oauth/access_token', {
       client_id: appId,
       client_secret: appSecret,
       redirect_uri: process.env.META_REDIRECT_URI,
@@ -170,7 +170,7 @@ async function testWhatsAppProductStatus() {
   // 5. Verificar status de revisão do app
   console.log('\n🧪 Teste 5: Status de Revisão do App');
   try {
-    const reviewResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}?fields=app_review_status,app_review_info,app_type,app_mode`, {
+          const reviewResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}?fields=app_review_status,app_review_info,app_type,app_mode`, {
       timeout: 15000
     });
     

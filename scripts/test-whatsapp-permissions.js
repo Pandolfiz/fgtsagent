@@ -17,7 +17,7 @@ async function testWhatsAppPermissions() {
   // 1. Verificar se o produto WhatsApp está adicionado
   console.log('\n🧪 Teste 1: Produto WhatsApp Adicionado');
   try {
-    const productsResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}/products`, {
+          const productsResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}/products`, {
       timeout: 15000
     });
     
@@ -85,7 +85,7 @@ async function testWhatsAppPermissions() {
   // 3. Verificar configurações OAuth específicas
   console.log('\n🧪 Teste 3: Configurações OAuth');
   try {
-    const oauthResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}?fields=oauth_client_id,oauth_redirect_uris,app_domains`, {
+          const oauthResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}?fields=oauth_client_id,oauth_redirect_uris,app_domains`, {
       timeout: 15000
     });
     
@@ -109,7 +109,7 @@ async function testWhatsAppPermissions() {
   // 4. Testar endpoint OAuth com erro detalhado
   console.log('\n🧪 Teste 4: Endpoint OAuth com Erro Detalhado');
   try {
-    const oauthTestResponse = await axios.post('https://graph.facebook.com/v2.2/oauth/access_token', {
+          const oauthTestResponse = await axios.post('https://graph.facebook.com/v2.2/oauth/access_token', {
       client_id: appId,
       client_secret: appSecret,
       redirect_uri: process.env.META_REDIRECT_URI,
