@@ -1,4 +1,4 @@
-require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env') });
+require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 const { supabaseAdmin } = require('../config/supabase');
 const logger = require('../utils/logger');
 

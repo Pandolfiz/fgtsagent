@@ -1,7 +1,7 @@
 // Teste para verificar se o método processFacebookAuth está funcionando
 require('dotenv').config({ path: require('path').resolve(__dirname, '../.env') });
 
-const WhatsappCredentialController = require('./controllers/whatsappCredentialController');
+const WhatsappCredentialController = require('../controllers/whatsappCredentialController');
 
 console.log('🔍 Testando método processFacebookAuth...\n');
 

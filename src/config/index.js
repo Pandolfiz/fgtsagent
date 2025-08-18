@@ -1,6 +1,6 @@
 const path = require('path');
-// Carregar variáveis de ambiente do arquivo .env na raiz do projeto
-require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
+// Carregar variáveis de ambiente do arquivo .env no diretório src/
+require('dotenv').config({ path: path.resolve(__dirname, '../.env') });
 
 // Verificar se as variáveis de ambiente foram carregadas
 // SUPABASE_URL pode ser usada em vez de SUPABASE_PROJECT_ID

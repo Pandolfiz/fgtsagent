@@ -7,7 +7,7 @@ services:
     expose:
       - "${BACKEND_PORT:-3000}"
     env_file:
-      - ./.env
+      - ./src/.env
     environment:
       - NODE_ENV=${NODE_ENV:-production}
       - PORT=${BACKEND_PORT:-3000}
