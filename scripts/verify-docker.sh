@@ -57,13 +57,13 @@ check_file "nginx/conf.d/app.local.conf"
 
 echo ""
 echo "3. Verificando arquivo .env..."
-if [ -f "src/.env" ]; then
-    echo -e "${GREEN}✅ src/.env existe${NC}"
+if [ -f ".env" ]; then
+    echo -e "${GREEN}✅ .env existe${NC}"
 else
-    echo -e "${YELLOW}⚠️  src/.env não existe - copiando de env.example${NC}"
+    echo -e "${YELLOW}⚠️  .env não existe - copiando de env.example${NC}"
     if [ -f "src/env.example" ]; then
-        cp src/env.example src/.env
-        echo -e "${GREEN}✅ src/.env criado${NC}"
+        cp src/env.example .env
+        echo -e "${GREEN}✅ .env criado${NC}"
     else
         echo -e "${RED}❌ src/env.example não encontrado${NC}"
     fi

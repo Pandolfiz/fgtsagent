@@ -109,7 +109,7 @@ STRIPE_WEBHOOK_SECRET=whsec_sua_chave_de_webhook_aqui
 # OAUTH_SUPABASE_REDIRECT_URL=https://fgtsagent.com.br/auth/google/callback
 EOF
 
-# Remover arquivo .env do diretório src se existir
+# Remover arquivo .env do diretório src se existir (não deve existir mais)
 if [ -f "src/.env" ]; then
     echo "🗑️ Removendo .env duplicado do diretório src..."
     rm src/.env

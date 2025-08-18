@@ -36,7 +36,7 @@ VITE_API_URL=http://localhost:3000
 ```
 
 #### **1.3 Configurar Backend:**
-Crie o arquivo `src/.env`:
+Crie o arquivo `.env` na raiz:
 ```env
 # Configurações do Stripe
 STRIPE_SECRET_KEY=sk_test_sua_chave_aqui
@@ -116,7 +116,7 @@ curl -X POST http://localhost:3000/api/stripe/create-signup-checkout-session \
 - **Solução**: Configure `VITE_STRIPE_PUBLISHABLE_KEY` no `frontend/.env`
 
 ### **2. "Invalid API Key provided":**
-- **Solução**: Configure `STRIPE_SECRET_KEY` válida no `src/.env`
+- **Solução**: Configure `STRIPE_SECRET_KEY` válida no `.env` da raiz
 
 ### **3. "Campo do cartão não aparece":**
 - **Solução**: Verifique se o Stripe está carregando corretamente

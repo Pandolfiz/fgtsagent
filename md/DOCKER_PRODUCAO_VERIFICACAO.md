@@ -98,8 +98,8 @@ git clone <repo>
 cd stable-src
 
 # 2. Configurar variáveis de ambiente
-cp src/.env.example src/.env
-# Editar src/.env com configurações de produção
+cp src/env.example .env
+# Editar .env com configurações de produção
 
 # 3. Iniciar serviços
 docker-compose up -d
