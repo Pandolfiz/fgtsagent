@@ -17,7 +17,7 @@ async function deepMetaInvestigation() {
   // 1. Verificar status básico do app
   console.log('\n🧪 Teste 1: Status Básico do App');
   try {
-    const appResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}?fields=id,name,category,app_domains,website_url,privacy_policy_url,terms_of_service_url,user_support_email,user_support_url,app_type,app_mode`, {
+          const appResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}?fields=id,name,category,app_domains,website_url,privacy_policy_url,terms_of_service_url,user_support_email,user_support_url,app_type,app_mode`, {
       timeout: 15000
     });
     
@@ -38,7 +38,7 @@ async function deepMetaInvestigation() {
   // 2. Verificar produtos adicionados ao app
   console.log('\n🧪 Teste 2: Produtos do App');
   try {
-    const productsResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}/products`, {
+          const productsResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}/products`, {
       timeout: 15000
     });
     
@@ -93,7 +93,7 @@ async function deepMetaInvestigation() {
   // 4. Verificar configurações OAuth
   console.log('\n🧪 Teste 4: Configurações OAuth');
   try {
-    const oauthResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}?fields=oauth_client_id,oauth_client_secret,oauth_redirect_uris`, {
+          const oauthResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}?fields=oauth_client_id,oauth_client_secret,oauth_redirect_uri`, {
       timeout: 15000
     });
     
@@ -113,7 +113,7 @@ async function deepMetaInvestigation() {
   // 5. Verificar status de revisão do app
   console.log('\n🧪 Teste 5: Status de Revisão');
   try {
-    const reviewResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}?fields=app_review_status,app_review_info`, {
+          const reviewResponse = await axios.get(`https://graph.facebook.com/v2.2/${appId}?fields=app_review_status,app_review_info`, {
       timeout: 15000
     });
     
@@ -130,7 +130,7 @@ async function deepMetaInvestigation() {
   console.log('\n🧪 Teste 6: Endpoint OAuth com Credenciais Reais');
   try {
     // Usar um código fake mas com credenciais reais
-    const oauthTestResponse = await axios.post('https://graph.facebook.com/v2.2/oauth/access_token', {
+          const oauthTestResponse = await axios.post('https://graph.facebook.com/v2.2/oauth/access_token', {
       client_id: appId,
       client_secret: appSecret,
       redirect_uri: process.env.META_REDIRECT_URI,

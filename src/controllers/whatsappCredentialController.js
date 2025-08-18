@@ -1999,8 +1999,8 @@ class WhatsappCredentialController {
 
       logger.info(`[META-AUTH] Processando autenticação da Meta para cliente: ${clientId}`);
 
-      // 1. Trocar código por access token - Usar método estático
-      const tokenResponse = await WhatsappCredentialController.exchangeCodeForToken(code);
+      // 1. Trocar código por access token - Usar método de instância
+      const tokenResponse = await this.exchangeCodeForToken(code);
       if (!tokenResponse.success) {
         return res.status(400).json({
           success: false,
@@ -2011,8 +2011,8 @@ class WhatsappCredentialController {
 
       const { access_token, token_type, expires_in } = tokenResponse.data;
 
-      // 2. Buscar dados da conta WhatsApp Business - Usar método estático
-      const whatsappData = await WhatsappCredentialController.getWhatsAppBusinessAccount(access_token);
+      // 2. Buscar dados da conta WhatsApp Business - Usar método de instância
+      const whatsappData = await this.getWhatsAppBusinessAccount(access_token);
       if (!whatsappData.success) {
         return res.status(400).json({
           success: false,
@@ -2137,7 +2137,7 @@ class WhatsappCredentialController {
   }
 
   // Trocar código de autorização por access token
-  static async exchangeCodeForToken(code) {
+  async exchangeCodeForToken(code) {
     try {
       const response = await axios.post('https://graph.facebook.com/v2.2/oauth/access_token', {
         client_id: process.env.META_APP_ID,
@@ -2160,7 +2160,7 @@ class WhatsappCredentialController {
   }
 
   // Buscar dados da conta WhatsApp Business
-  static async getWhatsAppBusinessAccount(accessToken) {
+  async getWhatsAppBusinessAccount(accessToken) {
     try {
       const response = await axios.get('https://graph.facebook.com/v2.2/me/whatsapp_business_accounts', {
         headers: {

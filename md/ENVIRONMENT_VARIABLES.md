@@ -14,7 +14,7 @@ NOTIFICATION_EMAIL_FROM=noreply@fgtsagent.com.br
 NOTIFICATION_EMAIL_TO=admin@fgtsagent.com.br
 ```
 
-### **🔒 Para a API (src/.env)**
+### **🔒 Para a API (.env na raiz)**
 ```bash
 # BÁSICAS DA APLICAÇÃO
 NODE_ENV=production
@@ -120,7 +120,7 @@ NOTIFICATION_EMAIL_TO=admin@fgtsagent.com.br
 
 ### **2. Erro: "Cannot find module 'stripe'"**
 ```bash
-# Solução: Configurar Stripe no src/.env
+# Solução: Configurar Stripe no .env da raiz
 STRIPE_SECRET_KEY=sk_live_...
 STRIPE_PUBLISHABLE_KEY=pk_live_...
 STRIPE_WEBHOOK_SECRET=whsec_...
@@ -128,7 +128,7 @@ STRIPE_WEBHOOK_SECRET=whsec_...
 
 ### **3. Erro: "SUPABASE_PROJECT_ID não definida"**
 ```bash
-# Solução: Configure SUPABASE_URL no src/.env
+# Solução: Configure SUPABASE_URL no .env da raiz
 SUPABASE_URL=https://seu-projeto.supabase.co
 ```
 
@@ -145,7 +145,7 @@ Variáveis para Docker Compose:
 - HTTP_PORT, HTTPS_PORT  
 - NOTIFICATION_EMAIL_FROM, NOTIFICATION_EMAIL_TO
 
-### **Arquivo 2: `src/.env` (Pasta src/)**
+### **Arquivo 2: `.env` (Raiz do projeto)**
 ```
 /saas_fgts_react/src/.env
 ```
@@ -192,7 +192,7 @@ nano .env
 ## ✅ **Checklist Final**
 
 - [ ] **.env** criado na **raiz** com variáveis do Docker
-- [ ] **src/.env** criado com todas as credenciais da aplicação  
+- [ ] **.env** criado com todas as credenciais da aplicação  
 - [ ] **Supabase** configurado corretamente
 - [ ] **Stripe** com chaves de produção
 - [ ] **Emails** de notificação configurados
