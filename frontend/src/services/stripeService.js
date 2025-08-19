@@ -12,27 +12,27 @@ export const STRIPE_COUPONS = {
   }
 };
 
-// Configuração base dos produtos do Stripe
+// Configuração base dos produtos do Stripe (ATUALIZADA para produção)
 export const STRIPE_PRODUCTS = {
   BASIC: {
-    productId: 'prod_STalRE6RzVNTUu',
-    priceId: 'price_1RYdaBRrfRhcM17zE4rOKO9U',
+    productId: 'prod_StLe32rSb1vwni',
+    priceId: 'price_1RxYwzH8jGtRbIKFzM62Xmkj',
     name: 'FGTS Agent - Plano Básico',
-    price: 9999, // centavos
-    formattedPrice: 'R$ 99,99'
+    price: 10000, // centavos (R$ 100,00)
+    formattedPrice: 'R$ 100,00'
   },
   PRO: {
-    productId: 'prod_STalhjSBTyHza7',
-    priceId: 'price_1RYdaFRrfRhcM17zecmj0hhT',
+    productId: 'prod_StTGwa0T0ZPLjJ',
+    priceId: 'price_1RxgK6H8jGtRbIKF79rax6aZ',
     name: 'FGTS Agent - Plano Pro',
-    price: 19999, // centavos
-    formattedPrice: 'R$ 199,99'
+    price: 29999, // centavos (R$ 299,99)
+    formattedPrice: 'R$ 299,99'
   },
   PREMIUM: {
-    productId: 'prod_STalNWvSe9GqRs',
-    priceId: 'price_1RYdaJRrfRhcM17zJsOCBmmi',
+    productId: 'prod_StTJjcT9YTpvCz',
+    priceId: 'price_1RxgMnH8jGtRbIKFO9Ictegk',
     name: 'FGTS Agent - Plano Premium',
-    price: 49999, // centavos
+    price: 49999, // centavos (R$ 499,99)
     formattedPrice: 'R$ 499,99'
   }
 };

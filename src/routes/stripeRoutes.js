@@ -118,7 +118,7 @@ router.post('/create-checkout-session', requireAuth, validate(checkoutSchema), a
  */
 router.post('/create-signup-checkout-session', async (req, res) => {
   try {
-    const { planType, userEmail, userName, successUrl, cancelUrl } = req.body;
+    const { planType, userEmail, userName, successUrl, cancelUrl, interval = 'monthly' } = req.body;
     
     // Validações básicas
     if (!planType || !userEmail || !userName) {
@@ -129,11 +129,11 @@ router.post('/create-signup-checkout-session', async (req, res) => {
     }
     
     // Validar se o plano existe
-    const planInfo = stripeService.getPlanInfo(planType);
+    const planInfo = stripeService.getPlanInfo(planType, interval);
     if (!planInfo) {
       return res.status(400).json({
         success: false,
-        message: 'Plano inválido'
+        message: `Plano ${planType} com intervalo ${interval} não encontrado`
       });
     }
     
@@ -147,16 +147,18 @@ router.post('/create-signup-checkout-session', async (req, res) => {
       successUrl || defaultSuccessUrl,
       cancelUrl || defaultCancelUrl,
       {
-        userName: userName,
-        isSignup: true
-      }
+        source: 'signup',
+        userName: userName.trim()
+      },
+      interval
     );
     
     res.status(200).json({
       success: true,
       data: {
         sessionId: session.id,
-        url: session.url
+        url: session.url,
+        plan: planInfo
       }
     });
   } catch (error) {

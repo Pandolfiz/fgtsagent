@@ -9,42 +9,110 @@ if (!process.env.STRIPE_SECRET_KEY) {
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const logger = require('../utils/logger');
 
-// Configuração dos planos disponíveis
+// Configuração dos planos disponíveis (IDs atualizados para produção)
 const PLANS = {
   BASIC: {
-    priceId: 'price_1RYdaBRrfRhcM17zE4rOKO9U',
-    productId: 'prod_STalRE6RzVNTUu',
     name: 'Plano Básico',
-    amount: 9999, // R$ 99,99
+    description: 'Ideal para pequenos negócios',
+    prices: {
+      monthly: {
+        priceId: 'price_1RxYwzH8jGtRbIKFzM62Xmkj',
+        amount: 10000, // R$ 100,00
+        interval: 'month',
+        intervalCount: 1
+      },
+      semiannual: {
+        priceId: 'price_1RxYwzH8jGtRbIKFNdCDRlrr',
+        amount: 9500, // R$ 95,00
+        interval: 'month',
+        intervalCount: 6,
+        discount: '5%'
+      },
+      annual: {
+        priceId: 'price_1RxYwzH8jGtRbIKFOZFuYVGV',
+        amount: 9000, // R$ 90,00
+        interval: 'year',
+        intervalCount: 1,
+        discount: '10%'
+      }
+    },
+    productId: 'prod_StLe32rSb1vwni',
     features: [
       'Até 50 consultas mensais',
       'Relatórios básicos',
-      'Suporte por email'
+      'Suporte por email',
+      'Dashboard simples'
     ]
   },
   PRO: {
-    priceId: 'price_1RYdaFRrfRhcM17zecmj0hhT',
-    productId: 'prod_STalhjSBTyHza7',
     name: 'Plano Pro',
-    amount: 19999, // R$ 199,99
+    description: 'Perfeito para empresas em crescimento',
+    prices: {
+      monthly: {
+        priceId: 'price_1RxgK6H8jGtRbIKF79rax6aZ',
+        amount: 29999, // R$ 299,99
+        interval: 'month',
+        intervalCount: 1
+      },
+      semiannual: {
+        priceId: 'price_1RxgLiH8jGtRbIKFjjtdhuQ4',
+        amount: 28999, // R$ 289,99
+        interval: 'month',
+        intervalCount: 6,
+        discount: '3.3%'
+      },
+      annual: {
+        priceId: 'price_1RxgLiH8jGtRbIKFSdpy1d3E',
+        amount: 27499, // R$ 274,99
+        interval: 'year',
+        intervalCount: 1,
+        discount: '8.3%'
+      }
+    },
+    productId: 'prod_StTGwa0T0ZPLjJ',
     features: [
       'Consultas ilimitadas',
       'Notificações em tempo real',
       'Relatórios avançados',
-      'Suporte prioritário'
+      'Suporte prioritário',
+      'API de integração',
+      'Múltiplos usuários'
     ]
   },
   PREMIUM: {
-    priceId: 'price_1RYdaJRrfRhcM17zJsOCBmmi',
-    productId: 'prod_STalNWvSe9GqRs',
     name: 'Plano Premium',
-    amount: 49999, // R$ 499,99
+    description: 'Solução completa para grandes empresas',
+    prices: {
+      monthly: {
+        priceId: 'price_1RxgMnH8jGtRbIKFO9Ictegk',
+        amount: 49999, // R$ 499,99
+        interval: 'month',
+        intervalCount: 1
+      },
+      semiannual: {
+        priceId: 'price_1RxgNdH8jGtRbIKFugHg15Dv',
+        amount: 48999, // R$ 489,99
+        interval: 'month',
+        intervalCount: 6,
+        discount: '2%'
+      },
+      annual: {
+        priceId: 'price_1RxgNdH8jGtRbIKFsVrqDeHq',
+        amount: 44999, // R$ 449,99
+        interval: 'year',
+        intervalCount: 1,
+        discount: '10%'
+      }
+    },
+    productId: 'prod_StTJjcT9YTpvCz',
     features: [
       'Todas as funcionalidades Pro',
       'API dedicada',
       'Integração personalizada',
       'Gerente de conta dedicado',
-      'SLA garantido'
+      'SLA garantido',
+      'Treinamento personalizado',
+      'Suporte 24/7'
     ]
   }
 };
@@ -82,9 +150,12 @@ class StripeService {
         throw new Error('Plano não encontrado');
       }
 
+      // Usar preço mensal como padrão
+      const defaultPrice = plan.prices.monthly;
+
       const paymentLink = await stripe.paymentLinks.create({
         line_items: [{
-          price: plan.priceId,
+          price: defaultPrice.priceId,
           quantity: 1,
         }],
         customer_creation: 'always',
@@ -112,17 +183,22 @@ class StripeService {
   /**
    * Cria uma sessão de checkout
    */
-  async createCheckoutSession(planType, customerEmail, successUrl, cancelUrl, metadata = {}) {
+  async createCheckoutSession(planType, customerEmail, successUrl, cancelUrl, metadata = {}, interval = 'monthly') {
     try {
       const plan = PLANS[planType.toUpperCase()];
       if (!plan) {
         throw new Error('Plano não encontrado');
       }
 
+      const priceConfig = plan.prices[interval];
+      if (!priceConfig) {
+        throw new Error(`Intervalo de pagamento '${interval}' não suportado para este plano`);
+      }
+
       const session = await stripe.checkout.sessions.create({
         payment_method_types: ['card'],
         line_items: [{
-          price: plan.priceId,
+          price: priceConfig.priceId,
           quantity: 1,
         }],
         mode: 'subscription',
@@ -131,13 +207,21 @@ class StripeService {
         cancel_url: cancelUrl,
         metadata: {
           plan: planType,
+          interval: interval,
           customerEmail,
           ...metadata
         },
-        locale: 'pt-BR'
+        locale: 'pt-BR',
+        subscription_data: {
+          metadata: {
+            plan: planType,
+            interval: interval,
+            customerEmail
+          }
+        }
       });
 
-      logger.info(`Sessão de checkout criada: ${session.id} para plano ${planType}`);
+      logger.info(`Sessão de checkout criada: ${session.id} para plano ${planType} (${interval})`);
       return session;
     } catch (error) {
       logger.error('Erro ao criar sessão de checkout:', error);
@@ -186,6 +270,15 @@ class StripeService {
           break;
         case 'payment_intent.payment_failed':
           await this.handlePaymentFailed(event.data.object);
+          break;
+        case 'customer.subscription.created':
+          await this.handleSubscriptionCreated(event.data.object);
+          break;
+        case 'customer.subscription.updated':
+          await this.handleSubscriptionUpdated(event.data.object);
+          break;
+        case 'customer.subscription.deleted':
+          await this.handleSubscriptionDeleted(event.data.object);
           break;
         default:
           logger.info(`Evento não tratado: ${event.type}`);
@@ -252,34 +345,115 @@ class StripeService {
   }
 
   /**
+   * Trata criação de assinatura
+   */
+  async handleSubscriptionCreated(subscription) {
+    try {
+      logger.info(`Assinatura criada: ${subscription.id}`);
+      
+      // Implementar lógica para ativar recursos do usuário
+      
+      return true;
+    } catch (error) {
+      logger.error('Erro ao processar criação de assinatura:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Trata atualização de assinatura
+   */
+  async handleSubscriptionUpdated(subscription) {
+    try {
+      logger.info(`Assinatura atualizada: ${subscription.id}`);
+      
+      // Implementar lógica para atualizar recursos do usuário
+      
+      return true;
+    } catch (error) {
+      logger.error('Erro ao processar atualização de assinatura:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Trata cancelamento de assinatura
+   */
+  async handleSubscriptionDeleted(subscription) {
+    try {
+      logger.info(`Assinatura cancelada: ${subscription.id}`);
+      
+      // Implementar lógica para desativar recursos do usuário
+      
+      return true;
+    } catch (error) {
+      logger.error('Erro ao processar cancelamento de assinatura:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Lista todos os planos disponíveis
    */
   getAvailablePlans() {
     return Object.entries(PLANS).map(([key, plan]) => ({
       id: key.toLowerCase(),
       name: plan.name,
-      price: plan.amount,
-      priceFormatted: `R$ ${(plan.amount / 100).toFixed(2).replace('.', ',')}`,
-      features: plan.features
+      description: plan.description,
+      features: plan.features,
+      prices: Object.entries(plan.prices).map(([interval, price]) => ({
+        interval: interval,
+        priceId: price.priceId,
+        amount: price.amount,
+        amountFormatted: `R$ ${(price.amount / 100).toFixed(2).replace('.', ',')}`,
+        intervalText: this.getIntervalText(price.interval, price.intervalCount),
+        discount: price.discount || null
+      }))
     }));
   }
 
   /**
    * Obtém informações de um plano específico
    */
-  getPlanInfo(planType) {
+  getPlanInfo(planType, interval = 'monthly') {
     const plan = PLANS[planType.toUpperCase()];
     if (!plan) {
       throw new Error('Plano não encontrado');
     }
 
+    const priceConfig = plan.prices[interval];
+    if (!priceConfig) {
+      throw new Error(`Intervalo de pagamento '${interval}' não suportado para este plano`);
+    }
+
     return {
       id: planType.toLowerCase(),
       name: plan.name,
-      price: plan.amount,
-      priceFormatted: `R$ ${(plan.amount / 100).toFixed(2).replace('.', ',')}`,
-      features: plan.features
+      description: plan.description,
+      price: priceConfig.amount,
+      priceFormatted: `R$ ${(priceConfig.amount / 100).toFixed(2).replace('.', ',')}`,
+      interval: interval,
+      intervalText: this.getIntervalText(priceConfig.interval, priceConfig.intervalCount),
+      discount: priceConfig.discount,
+      features: plan.features,
+      priceId: priceConfig.priceId
     };
+  }
+
+  /**
+   * Converte configuração de intervalo em texto legível
+   */
+  getIntervalText(interval, count) {
+    if (interval === 'month') {
+      if (count === 1) return 'por mês';
+      if (count === 6) return 'a cada 6 meses';
+      return `a cada ${count} meses`;
+    }
+    if (interval === 'year') {
+      if (count === 1) return 'por ano';
+      return `a cada ${count} anos`;
+    }
+    return `a cada ${count} ${interval}`;
   }
 
   /**
