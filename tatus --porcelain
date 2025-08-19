@@ -1,0 +1,22 @@
+warning: in the working copy of 'src/controllers/chatController.js', LF will be replaced by CRLF the next time Git touches it
+[1mdiff --git a/src/controllers/chatController.js b/src/controllers/chatController.js[m
+[1mindex c1bf813a..f846861d 100644[m
+[1m--- a/src/controllers/chatController.js[m
+[1m+++ b/src/controllers/chatController.js[m
+[36m@@ -231,7 +231,7 @@[m [mexports.getMessages = async (req, res) => {[m
+       throw new Error(error.message);[m
+     }[m
+ [m
+[31m-    // Processar mensagens e manter ordem do banco (mais recentes primeiro para paginação)[m
+[32m+[m[32m    // ✅ CORREÇÃO: Processar mensagens incluindo o campo status[m
+     const processedMessages = (messages || [])[m
+       .map(msg => ({[m
+         id: msg.id,[m
+[36m@@ -240,6 +240,7 @@[m [mexports.getMessages = async (req, res) => {[m
+         receiver_id: msg.recipient_id,[m
+         created_at: msg.timestamp,[m
+         timestamp: msg.timestamp,[m
+[32m+[m[32m        status: msg.status || 'pending', // ✅ ADICIONADO: Campo status[m
+         is_read: msg.status === 'read',[m
+         role: msg.role || 'USER'[m
+       }));[m

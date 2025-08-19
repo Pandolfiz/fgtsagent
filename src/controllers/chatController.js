@@ -231,7 +231,7 @@ exports.getMessages = async (req, res) => {
       throw new Error(error.message);
     }
 
-    // Processar mensagens e manter ordem do banco (mais recentes primeiro para paginação)
+    // ✅ CORREÇÃO: Processar mensagens incluindo o campo status
     const processedMessages = (messages || [])
       .map(msg => ({
         id: msg.id,
@@ -240,6 +240,7 @@ exports.getMessages = async (req, res) => {
         receiver_id: msg.recipient_id,
         created_at: msg.timestamp,
         timestamp: msg.timestamp,
+        status: msg.status || 'pending', // ✅ ADICIONADO: Campo status
         is_read: msg.status === 'read',
         role: msg.role || 'USER'
       }));

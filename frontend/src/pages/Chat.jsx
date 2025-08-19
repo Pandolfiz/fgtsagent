@@ -348,8 +348,53 @@ export default function Chat() {
   const [messages, setMessages] = useState([])
   const [newMessage, setNewMessage] = useState('')
   const [currentContact, setCurrentContact] = useState(null)
-  const [isLoading, setIsLoading] = useState(false) // Inicializar como false
-  const [isUpdating, setIsUpdating] = useState(false)
+  // ✅ SISTEMA DE ESTADOS UNIFICADO E SEM CONFLITOS
+  const [loadingState, setLoadingState] = useState({
+    // Estados de carregamento específicos
+    contacts: false,           // Carregamento de contatos
+    messages: false,           // Carregamento de mensagens
+    instances: false,          // Carregamento de instâncias
+    moreContacts: false,       // Carregamento de mais contatos
+    moreMessages: false,       // Carregamento de mais mensagens
+    
+    // Estados de sincronização
+    syncing: false,            // Sincronização em andamento
+    updating: false,           // Atualização em andamento
+    
+    // Estados de controle de scroll
+    initialLoad: false,        // Carregamento inicial (para ancoragem)
+    allowInfiniteScroll: false, // Permite scroll infinito
+    
+    // Estados de paginação
+    contactsPage: 1,
+    messagesPage: 1,
+    hasMoreContacts: true,
+    hasMoreMessages: true
+  });
+
+  // ✅ Função unificada para gerenciar estados
+  const setLoading = (type, value) => {
+    setLoadingState(prev => ({ ...prev, [type]: value }));
+  };
+
+  // ✅ Estados derivados para compatibilidade (não alterar diretamente)
+  const isLoading = loadingState.contacts || loadingState.messages || loadingState.instances;
+  const isSyncing = loadingState.syncing;
+  const isUpdating = loadingState.updating;
+  const isInitialLoad = loadingState.initialLoad;
+  const isLoadingMoreContacts = loadingState.moreContacts;
+  const isLoadingMoreMessages = loadingState.moreMessages;
+  const allowInfiniteScroll = loadingState.allowInfiniteScroll;
+  const contactsPage = loadingState.contactsPage;
+  const messagesPage = loadingState.messagesPage;
+  const hasMoreContacts = loadingState.hasMoreContacts;
+  const hasMoreMessages = loadingState.hasMoreMessages;
+
+  // ✅ Função para atualizar estado de paginação
+  const setPagination = (type, value) => {
+    setLoadingState(prev => ({ ...prev, [type]: value }));
+  };
+
   const [isSendingMessage, setIsSendingMessage] = useState(false) // Controle de envio
   const [lastMessageTimestamp, setLastMessageTimestamp] = useState(0) // Timestamp do último envio
   const [currentUser, setCurrentUser] = useState(null)
@@ -361,7 +406,6 @@ export default function Chat() {
   const [connectionStatus, setConnectionStatus] = useState(null)
   const [autoResponseContacts, setAutoResponseContacts] = useState({})
 
-  const [isSyncing, setIsSyncing] = useState(false)
   const [lastSyncTime, setLastSyncTime] = useState(null)
   const messagesContainerRef = useRef(null);
   const lastMessageIdRef = useRef(null) // Referência para o último ID de mensagem
@@ -395,7 +439,6 @@ export default function Chat() {
   
 
   const [selectedInstanceId, setSelectedInstanceId] = useState('all') // 'all' para todas as instâncias
-  const [isLoadingInstances, setIsLoadingInstances] = useState(false)
   const [dropdownOpen, setDropdownOpen] = useState(false)
   const dropdownRef = useRef(null)
   const currentIntervalRef = useRef(30000); // ✅ Ref para polling adaptativo
@@ -405,24 +448,11 @@ export default function Chat() {
   const contactsScrollTimeoutRef = useRef(null); // ✅ Ref para debounce do scroll de contatos
   const [contactInstances, setContactInstances] = useState({}) // Mapa de contato -> instância
   
-  // Estados para paginação e performance
-  const [contactsPage, setContactsPage] = useState(1)
-  const [hasMoreContacts, setHasMoreContacts] = useState(true)
-  const [isLoadingMoreContacts, setIsLoadingMoreContacts] = useState(false)
-  
-  // Estados para paginação de mensagens (scroll infinito)
-  const [messagesPage, setMessagesPage] = useState(1)
-  const [hasMoreMessages, setHasMoreMessages] = useState(true)
-  const [isLoadingMoreMessages, setIsLoadingMoreMessages] = useState(false)
-  
   // Estados para UX melhorada
   const [isAtBottom, setIsAtBottom] = useState(true)
   const [unreadCount, setUnreadCount] = useState(0)
   const [isOnline, setIsOnline] = useState(navigator.onLine)
   const [retryQueue, setRetryQueue] = useState([]) // ✅ Fila de operações para retry
-  // Removido: isMessagesReady - não é mais necessário
-  const [isInitialLoad, setIsInitialLoad] = useState(false) // ✅ Evita scrolls conflitantes
-  const [allowInfiniteScroll, setAllowInfiniteScroll] = useState(false) // ✅ Controla quando scroll infinito pode ser ativado
   const [lastStatusUpdate, setLastStatusUpdate] = useState('1970-01-01T00:00:00Z') // ✅ Controla última atualização de status
   
   const CONTACTS_PER_PAGE = 15
@@ -795,7 +825,7 @@ export default function Chat() {
   useEffect(() => {
     async function getCurrentUser() {
       try {
-        setIsLoading(true);
+        setLoading('contacts', true);
         setError(null);
         
         // Tenta obter do backend via API
@@ -832,7 +862,7 @@ export default function Chat() {
         console.error('Erro ao obter usuário:', error);
         setError(`Erro ao obter dados do usuário: ${error.message}. Por favor, tente novamente.`);
       } finally {
-        setIsLoading(false);
+        setLoading('contacts', false);
       }
     }
     
@@ -867,7 +897,7 @@ export default function Chat() {
 
   // Função para obter o texto de exibição da instância selecionada
   const getSelectedInstanceText = () => {
-    if (isLoadingInstances) return 'Carregando...';
+    if (loadingState.instances) return 'Carregando...';
     if (selectedInstanceId === 'all') return 'Todas as instâncias';
     
     const selectedInstance = instances.find(instance => instance.id === selectedInstanceId);
@@ -978,7 +1008,7 @@ export default function Chat() {
 
     
     try {
-      setIsLoadingInstances(true);
+      setLoading('instances', true);
       
       const response = await fetch('/api/whatsapp-credentials', {
         method: 'GET',
@@ -1032,7 +1062,7 @@ export default function Chat() {
       setInstances([]);
       // Não mostrar erro para não interferir na UX se não houver instâncias
     } finally {
-      setIsLoadingInstances(false);
+      setLoading('instances', false);
     }
   };
 
@@ -1043,12 +1073,12 @@ export default function Chat() {
   const fetchContacts = async (instanceId = null, page = 1, reset = true) => {
     try {
       if (reset) {
-        setIsLoading(true);
+          setLoading('contacts', true);
         setError(null);
-        setContactsPage(1);
-        setHasMoreContacts(true);
+          setPagination('contactsPage', 1);
+          setPagination('hasMoreContacts', true);
       } else {
-        setIsLoadingMoreContacts(true);
+          setLoading('moreContacts', true);
       }
       
       const instanceFilter = instanceId && instanceId !== 'all' ? instanceId : null;
@@ -1145,7 +1175,7 @@ export default function Chat() {
             console.log('[CONTACTS] ✅ Contato auto-selecionado:', firstContact.push_name || firstContact.name);
             
             // ✅ CORREÇÃO: Marcar como carregamento inicial para ativar ancoragem automática
-            setIsInitialLoad(true);
+            setLoading('initialLoad', true);
             
             // ✅ CORREÇÃO: Carregar mensagens do contato auto-selecionado
             if (firstContact?.remote_jid) {
@@ -1181,8 +1211,8 @@ export default function Chat() {
           }
         }
         
-        setHasMoreContacts(hasMore);
-        setContactsPage(page);
+        setPagination('hasMoreContacts', hasMore);
+        setPagination('contactsPage', page);
         
                 } else {
         if (reset) {
@@ -1202,8 +1232,8 @@ export default function Chat() {
         // ✅ Usar tratamento robusto de erro
         handleNetworkError(error, 'buscar contatos');
       } finally {
-        setIsLoading(false);
-      setIsLoadingMoreContacts(false);
+        setLoading('contacts', false);
+        setLoading('moreContacts', false);
     }
   };
 
@@ -1228,8 +1258,8 @@ export default function Chat() {
         setContactInstances({});
       }
       // Reset pagination states
-      setContactsPage(1);
-      setHasMoreContacts(true);
+      setPagination('contactsPage', 1);
+      setPagination('hasMoreContacts', true);
       
       // ✅ Delay para evitar conflito com ancoragem
       const delayedFetchTimeoutId = setTimeout(() => {
@@ -1305,50 +1335,68 @@ export default function Chat() {
 
   // Função para carregar mensagens antigas (scroll infinito)
   const loadMoreMessages = () => {
+    console.log('[SCROLL-INFINITO] 🔄 Tentativa de carregar mais mensagens:', {
+      isLoadingMoreMessages,
+      hasMoreMessages,
+      currentContact: currentContact?.remote_jid,
+      messagesPage,
+      allowInfiniteScroll
+    });
+    
     if (!isLoadingMoreMessages && hasMoreMessages && currentContact) {
-      setIsLoadingMoreMessages(true);
+      setLoading('moreMessages', true);
       const nextPage = messagesPage + 1;
+      console.log(`[SCROLL-INFINITO] ✅ Carregando página ${nextPage} de mensagens antigas`);
       fetchMessages(currentContact.remote_jid, nextPage, false);
+    } else {
+      console.log('[SCROLL-INFINITO] ❌ Condições não atendidas para carregar mais mensagens');
     }
   };
 
-  // ✅ Função para scroll INSTANTÂNEO para o final (mensagens recentes)
-  const scrollToBottom = () => {
-    // ✅ Não interferir durante carregamento inicial
-    if (isInitialLoad) return;
-    
+  // ✅ Função UNIFICADA para scroll com opções flexíveis
+  const scrollToPosition = (position = 'bottom', options = {}) => {
     const container = messagesContainerRef.current;
-    if (container) {
-      // ✅ Scroll instantâneo sem animação
-      container.scrollTop = container.scrollHeight;
+    if (!container) return;
+    
+    const { immediate = false, smooth = false, duringInitialLoad = false } = options;
+    
+    // ✅ Não interferir durante carregamento inicial (comportamento original)
+    if (!duringInitialLoad && isInitialLoad) return;
+    
+    if (position === 'bottom') {
+      const maxScroll = container.scrollHeight - container.clientHeight;
+      
+      if (immediate) {
+        // ✅ Scroll instantâneo sem animação (comportamento original de scrollToBottom)
+        container.scrollTop = maxScroll;
+      } else if (smooth) {
+        // ✅ Scroll suave (opção nova)
+        container.scrollTo({ top: maxScroll, behavior: 'smooth' });
+      } else {
+        // ✅ Scroll padrão (comportamento original de forceScrollToEnd)
+        container.scrollTop = maxScroll;
+      }
+      
+      // ✅ Manter comportamentos originais
       setIsAtBottom(true);
       setUnreadCount(0);
     }
   };
 
-  // ✅ Função DEFINITIVA para forçar ancoragem no final
-  // ✅ CORREÇÃO: Debounce para scroll para evitar muitas atualizações
+  // ✅ Função para scroll INSTANTÂNEO para o final (mensagens recentes) - MANTIDA PARA COMPATIBILIDADE
+  const scrollToBottom = () => {
+    scrollToPosition('bottom', { immediate: true });
+  };
+
+  // ✅ Função com debounce para scroll - MANTIDA PARA COMPATIBILIDADE
   const debouncedScrollToEnd = debounce(() => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    
-    const maxScroll = container.scrollHeight - container.clientHeight;
-    container.scrollTop = maxScroll;
+    scrollToPosition('bottom', { immediate: true });
   }, 100);
 
+  // ✅ Função para forçar ancoragem no final - MANTIDA PARA COMPATIBILIDADE
   const forceScrollToEnd = () => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    
-    const scrollToEnd = () => {
-      const maxScroll = container.scrollHeight - container.clientHeight;
-      container.scrollTop = maxScroll;
-    };
-    
-    // ✅ Scroll imediato SEM delays
-    scrollToEnd();
-    
-    return scrollToEnd;
+    scrollToPosition('bottom', { immediate: true });
+    return () => scrollToPosition('bottom', { immediate: true });
   };
 
   // ✅ SEGURANÇA: Função utilitária para sanitizar mensagens do banco (corrige dados inconsistentes)
@@ -1453,6 +1501,16 @@ export default function Chat() {
     const container = e.target;
     const { scrollTop } = container;
     
+    // ✅ CORREÇÃO: Log de debug para scroll infinito
+    console.log('[SCROLL-DEBUG] 🎯 Scroll debounced:', {
+      scrollTop,
+      hasMoreMessages,
+      isLoadingMoreMessages,
+      allowInfiniteScroll,
+      isInitialLoad,
+      currentContactId: currentContact?.remote_jid
+    });
+    
     // ✅ Ações PESADAS com debounce (podem ter delay)
     // Carregar mensagens antigas só após parar de rolar
     // ✅ MÚLTIPLAS PROTEÇÕES: Evitar conflitos com ancoragem
@@ -1463,7 +1521,10 @@ export default function Chat() {
         !isInitialLoad &&
         currentContact?.remote_jid) {
       
+      console.log('[SCROLL-DEBUG] ✅ Todas as condições atendidas - chamando loadMoreMessages');
       loadMoreMessages();
+    } else {
+      console.log('[SCROLL-DEBUG] ❌ Condições não atendidas para scroll infinito');
     }
   };
   
@@ -1515,14 +1576,20 @@ export default function Chat() {
   const fetchMessages = async (contactId, page = 1, reset = true) => {
     if (!contactId) return;
     
+    console.log('[FETCH-MSGS] 📨 Carregando mensagens:', { contactId, page, reset });
+    
     try {
       if (reset) {
+        console.log('[FETCH-MSGS] 🔄 RESETANDO estado das mensagens');
         // ✅ Estados básicos para reset (sem duplicações)
         setMessages([]);
-        setMessagesPage(1);
-        setHasMoreMessages(true);
+          setPagination('messagesPage', 1);
+          setPagination('hasMoreMessages', true);
         setUnreadCount(0);
-        setLastStatusUpdate('1970-01-01T00:00:00Z'); // Resetar última atualização
+                 // ✅ CORREÇÃO: NÃO resetar lastStatusUpdate para preservar polling
+         // setLastStatusUpdate('1970-01-01T00:00:00Z');
+      } else {
+        console.log('[FETCH-MSGS] ➕ Adicionando mensagens sem reset');
       }
       
       const response = await fetch(`/api/chat/messages/${contactId}?page=${page}&limit=${MESSAGES_PER_PAGE}`, {
@@ -1540,8 +1607,8 @@ export default function Chat() {
         const hasMore = data.hasMore || newMessages.length === MESSAGES_PER_PAGE;
         
         // Atualizar estado de paginação
-        setHasMoreMessages(hasMore);
-        setMessagesPage(page);
+        setPagination('hasMoreMessages', hasMore);
+        setPagination('messagesPage', page);
         
         if (reset) {
           // Primeira carga - reverter para ordem cronológica (antigas → recentes)
@@ -1554,11 +1621,11 @@ export default function Chat() {
           // ✅ Estados atualizados ANTES da ancoragem
           setIsAtBottom(true);
           
-          // ✅ CRÍTICO: Garantir que isLoading seja false ANTES da ancoragem
-          setIsLoading(false);
+          // ✅ CRÍTICO: Garantir que loading de mensagens seja false ANTES da ancoragem
+          setLoading('messages', false);
           
-          // ✅ CORREÇÃO: Definir isInitialLoad para ativar ancoragem automática
-          setIsInitialLoad(true);
+          // ✅ CORREÇÃO: Definir initialLoad para ativar ancoragem automática
+          setLoading('initialLoad', true);
           
           // Ancoragem programada
           
@@ -1583,6 +1650,7 @@ export default function Chat() {
           const preserveScrollTimeoutId = setTimeout(() => {
             if (container) {
               const newScrollHeight = container.scrollHeight;
+              // ✅ Usar função unificada para preservar posição
               container.scrollTop += (newScrollHeight - oldScrollHeight);
             }
           }, 50);
@@ -1592,9 +1660,9 @@ export default function Chat() {
               } else {
           if (reset) {
             setMessages([]);
-            setHasMoreMessages(false);
+            setPagination('hasMoreMessages', false);
             setIsAtBottom(true);
-            setIsInitialLoad(false); // ✅ Resetar estado (sem mensagens)
+            setLoading('initialLoad', false); // ✅ Resetar estado (sem mensagens)
           }
         }
     } catch (error) {
@@ -1603,10 +1671,10 @@ export default function Chat() {
       handleNetworkError(error, 'buscar mensagens');
       // ✅ Resetar estado em caso de erro
       if (reset) {
-        setIsInitialLoad(false); // ✅ Resetar estado
+        setLoading('initialLoad', false); // ✅ Resetar estado
         }
       } finally {
-      setIsLoadingMoreMessages(false);
+      setLoading('moreMessages', false);
     }
   };
 
@@ -1626,7 +1694,7 @@ export default function Chat() {
     }
     
     fetchContacts(selectedInstanceId === 'all' ? null : selectedInstanceId, 1, true);
-  }, [currentUser, isMobileView, navigate]); // ✅ Removida dependência isInitialLoad para evitar re-execução
+  }, [currentUser, isMobileView, navigate, isInitialLoad]); // ✅ Adicionada dependência isInitialLoad para re-execução quando necessário
 
   // Sincronização inteligente - atualizar contatos a cada 30 segundos
   useEffect(() => {
@@ -1635,7 +1703,13 @@ export default function Chat() {
     console.log('[CHAT] Iniciando sincronização inteligente...');
     
     const intervalId = setInterval(() => {
-      console.log('[CHAT] Sincronização inteligente - atualizando contatos...');
+      console.log('[CHAT] 🔄 Sincronização inteligente - atualizando contatos...');
+      console.log('[CHAT] 📊 Estado atual:', {
+        isInitialLoad,
+        currentContact: !!currentContact,
+        messagesLength: messages.length,
+        isSyncing
+      });
       syncContacts();
     }, 30000); // 30 segundos
       
@@ -1674,107 +1748,109 @@ export default function Chat() {
     
     const pollMessages = async () => {
       try {
-        // Só fazer polling se a página estiver visível e o componente montado
-        if (!document.hidden && isMounted) {
+        // ✅ CORREÇÃO: Não fazer polling durante sincronização
+        if (!document.hidden && isMounted && !isSyncing) {
           
-          // 1. Buscar mensagens novas
-          const response = await fetch(`/api/chat/messages/${currentContact.remote_jid}/last`, {
+          // 1. Buscar mensagens novas desde a última verificação
+          const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
+          const lastUpdate = lastStatusUpdate || '1970-01-01T00:00:00Z';
+          
+          const response = await fetch(`/api/chat/messages/${currentContact.remote_jid}?since=${encodeURIComponent(lastUpdate)}&after_id=${lastMessageId || ''}`, {
             credentials: 'include'
           });
           
+          // ✅ CORREÇÃO: Declarar data no escopo correto
+          let data = null;
+          
           if (response.ok && isMounted) {
-            const data = await response.json();
-            if (data.success && data.message) {
+            data = await response.json();
+            console.log('[POLLING] 📨 Resposta da API:', data);
+            
+            if (data.success && data.messages && data.messages.length > 0) {
               // ✅ CORREÇÃO: Verificar se é uma mensagem nova
               const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
-              if (data.message.id !== lastMessageId) {
-                // Nova mensagem detectada - adicionando incrementalmente
-                
-                // ✅ Sanitizar nova mensagem antes de adicionar
-                const sanitizedMessage = sanitizeMessage(data.message);
-                if (sanitizedMessage) {
-                  // Adicionar apenas a nova mensagem sem recarregar tudo
-                  setMessages(prevMessages => {
-                    // Verificar se a mensagem já existe
-                    const messageExists = prevMessages.some(msg => msg.id === sanitizedMessage.id);
-                    if (!messageExists) {
-                      return [...prevMessages, sanitizedMessage];
-                    }
-                    return prevMessages;
-                  });
-                }
-                
-                // Se não estiver no final, incrementar contador de não lidas
-                if (!isAtBottom) {
-                  setUnreadCount(prev => prev + 1);
-                } else {
-                  // ✅ CORREÇÃO: Scroll automático apenas quando usuário está no final E ativo
-                  if (!isInitialLoad && !isLoading && isAtBottom) {
-                    // ✅ CORREÇÃO: Usar debounce para evitar muitas atualizações
-                    debouncedScrollToEnd();
-                  }
-                }
-              }
-            }
-          }
-
-          // 2. Sincronização Inteligente Aprimorada - Verificar TODAS as mensagens
-          if (messages.length > 0) {
-            // Buscar IDs de todas as mensagens para verificar se foram atualizadas
-            const allMessageIds = messages.map(msg => msg.id);
-            
-            try {
-              const statusResponse = await fetch(
-                `/api/messages/${currentContact.remote_jid}/status-updates?message_ids=${allMessageIds.join(',')}`,
-                { credentials: 'include' }
-              );
-
-              if (statusResponse.ok && isMounted) {
-                const statusData = await statusResponse.json();
-                
-                if (statusData.success && statusData.updates && statusData.updates.length > 0) {
-                  
-                  // ✅ CORREÇÃO: Atualizar status das mensagens existentes com verificação otimizada
+              console.log('[POLLING] 🔍 Comparando IDs:', {
+                novasMensagens: data.messages.length,
+                ultimaMensagem: lastMessageId,
+                totalMensagens: messages.length,
+                mensagensCompletas: messages.map(m => ({ id: m.id, temp: m.temp, content: m.content?.substring(0, 20) }))
+              });
+              
+              // ✅ CORREÇÃO: SEMPRE processar mensagens para verificar se são novas
+                const sanitizedMessages = data.messages.map(msg => sanitizeMessage(msg)).filter(Boolean);
+              console.log('[POLLING] 🧹 Mensagens processadas:', sanitizedMessages.length);
+              
+              if (sanitizedMessages.length > 0) {
+                // ✅ UNIFICADO: Processar mensagens novas E atualizações de status em uma única operação
                   setMessages(prevMessages => {
                     const updatedMessages = [...prevMessages];
-                    let hasChanges = false;
-                    
-                    statusData.updates.forEach(update => {
-                      const messageIndex = updatedMessages.findIndex(msg => msg.id === update.id);
-                      if (messageIndex >= 0) {
-                        const currentMessage = updatedMessages[messageIndex];
-                        
-                        // ✅ CORREÇÃO: Verificação mais robusta de mudanças
-                        const statusChanged = currentMessage.status !== update.status;
-                        const metadataChanged = JSON.stringify(currentMessage.metadata || {}) !== JSON.stringify(update.metadata || {});
-                        
-                        if (statusChanged || metadataChanged) {
-                          updatedMessages[messageIndex] = {
-                            ...currentMessage,
-                            status: update.status,
-                            metadata: update.metadata,
-                            timestamp: update.timestamp
-                          };
-                          hasChanges = true;
-                        }
-                      }
-                    });
-                    
-                    // ✅ CORREÇÃO: Só atualizar se houve mudanças reais
-                    return hasChanges ? updatedMessages : prevMessages;
+                  let hasNewMessages = false;
+                  let hasStatusChanges = false;
+                  
+                  // ✅ CORREÇÃO: Manter ordem cronológica das mensagens
+                  const sortedSanitizedMessages = [...sanitizedMessages].sort((a, b) => {
+                    const timeA = new Date(a.timestamp || a.created_at).getTime();
+                    const timeB = new Date(b.timestamp || b.created_at).getTime();
+                    return timeA - timeB; // Ordem cronológica: mais antiga → mais recente
                   });
                   
-                  // Atualizar timestamp da última verificação
-                  setLastStatusUpdate(statusData.current_time);
-                }
+                  sortedSanitizedMessages.forEach(newMsg => {
+                    const existingIndex = updatedMessages.findIndex(msg => msg.id === newMsg.id);
+                    
+                    if (existingIndex >= 0) {
+                      // ✅ ATUALIZAR: Mensagem existente (pode ter novo status)
+                      const existingMsg = updatedMessages[existingIndex];
+                      if (existingMsg.status !== newMsg.status) {
+                        console.log('[POLLING] ✨ Atualizando status:', newMsg.id, existingMsg.status, '→', newMsg.status);
+                        updatedMessages[existingIndex] = { ...existingMsg, status: newMsg.status };
+                        hasStatusChanges = true;
+                      }
+                    } else {
+                      // ✅ ADICIONAR: Nova mensagem (manter ordem cronológica)
+                      updatedMessages.push(newMsg);
+                      hasNewMessages = true;
+                      console.log('[POLLING] ✨ Adicionada nova mensagem:', newMsg.id);
+                    }
+                  });
+                  
+                  // ✅ CORREÇÃO: Ordenar mensagens por timestamp após todas as operações
+                  const finalMessages = updatedMessages.sort((a, b) => {
+                    const timeA = new Date(a.timestamp || a.created_at).getTime();
+                    const timeB = new Date(b.timestamp || b.created_at).getTime();
+                    return timeA - timeB; // Ordem cronológica: mais antiga → mais recente
+                  });
+                  
+                  if (hasNewMessages) {
+                    console.log('[POLLING] ✅ Histórico atualizado com novas mensagens');
+                    
+                    // ✅ Auto-scroll e contadores
+                    if (isAtBottom) {
+                      setTimeout(() => scrollToBottom(), 100);
+                    } else {
+                      setUnreadCount(prev => prev + sanitizedMessages.filter(msg => !updatedMessages.some(existing => existing.id === msg.id)).length);
+                    }
+                  }
+                  
+                  if (hasStatusChanges) {
+                    console.log('[POLLING] ✅ Status atualizados nas mensagens existentes');
+                  }
+                  
+                  console.log('[POLLING] 🔍 Ordem final das mensagens:', finalMessages.length, 'mensagens');
+                  return finalMessages;
+                });
               }
-            } catch (error) {
-              console.error('Erro ao verificar status:', error);
-            }
+              } else {
+                console.log('[POLLING] ⚠️ Resposta da API sem sucesso ou sem mensagem');
+              }
+          } else {
+            console.log('[POLLING] ❌ Erro na resposta da API:', response.status);
           }
+
+                    // ✅ SIMPLIFICAÇÃO: Status já processado na lógica unificada acima
+          console.log('[POLLING] 🔍 Status das mensagens já incluído e processado na resposta principal');
         }
               } catch (error) {
-          console.error('Erro no polling:', error);
+        console.error('[POLLING] ❌ Erro no polling:', error);
         }
     };
     
@@ -1785,13 +1861,11 @@ export default function Chat() {
       const newInterval = getAdaptiveInterval();
       currentIntervalRef.current = newInterval;
       
-              // Log de polling apenas quando necessário (debug)
-        if (newInterval > 30000) { // Só log se interval for longo (aba oculta)
-          // Reduzindo frequência - aba oculta
-        }
+      // ✅ SILENCIOSO: Polling em background sem logs excessivos
       
       intervalId = setTimeout(() => {
         if (isMounted) {
+          // ✅ SILENCIOSO: Polling executando em background
           pollMessages().finally(() => {
             scheduleNextPoll(); // ✅ Reagenda com novo intervalo
           });
@@ -1802,34 +1876,40 @@ export default function Chat() {
     // Iniciar polling reativo
     scheduleNextPoll();
     
-    // ✅ Listener para mudanças de visibilidade (reagenda imediatamente)
-    const handleVisibilityChange = () => {
-      if (intervalId) {
-        clearTimeout(intervalId);
-        scheduleNextPoll(); // Reagenda com novo intervalo
-      }
-    };
-    
-    document.addEventListener('visibilitychange', handleVisibilityChange);
+    // ✅ CORREÇÃO: Removido handleVisibilityChange que estava causando loop infinito
+    // O intervalo adaptativo já ajusta baseado em document.hidden
       
     return () => {
       isMounted = false;
       clearTimeout(intervalId); // ✅ Corrigido: clearTimeout em vez de clearInterval
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [currentContact?.remote_jid, currentUser?.id, isAtBottom, lastStatusUpdate]); // ✅ Dependências corretas para polling adaptativo
+  }, [currentContact?.remote_jid, currentUser?.id]); // ✅ Dependências mínimas para evitar reinicializações desnecessárias
 
   // ✅ useEffect para garantir ancoragem INSTANTÂNEA após carregamento de mensagens
   useEffect(() => {
+    // ✅ PROTEÇÃO CRÍTICA: Não fazer ancoragem durante sincronização de contatos
+    if (isSyncing) {
+      console.log('[ANCHOR] ⏸️ Ancoragem adiada - sincronização de contatos em andamento');
+      return;
+    }
+    
     if (messages.length > 0 && isInitialLoad && messagesContainerRef.current && !isLoading && isAtBottom) {
-      // Aplicando ancoragem
+      console.log('[ANCHOR] 🎯 Iniciando ancoragem automática para mensagens');
+      console.log('[ANCHOR] 📊 Estado para ancoragem:', {
+        messagesLength: messages.length,
+        isInitialLoad,
+        hasContainer: !!messagesContainerRef.current,
+        isLoading,
+        isAtBottom
+      });
       
       // ✅ PROTEÇÃO EXTRA: Verificar se ainda é o mesmo contato
       const firstMessageContactId = messages[0]?.remote_jid;
       const currentContactId = currentContact?.remote_jid;
       
       if (firstMessageContactId && currentContactId && firstMessageContactId !== currentContactId) {
-        setIsInitialLoad(false);
+        console.log('[ANCHOR] ⚠️ Contato mudou durante ancoragem, cancelando');
+        setLoading('initialLoad', false);
         return;
       }
       
@@ -1843,6 +1923,7 @@ export default function Chat() {
             const container = messagesContainerRef.current;
             // Layout verificado, aplicando scroll
             
+            console.log('[ANCHOR] 📍 Aplicando scroll para o final das mensagens');
             const scrollFunction = forceScrollToEnd();
             scrollFunction();
             
@@ -1851,18 +1932,25 @@ export default function Chat() {
               const isAtEnd = Math.abs(container.scrollTop - (container.scrollHeight - container.clientHeight)) < 5;
               // Verificação final do scroll
               if (!isAtEnd) {
-                container.scrollTop = container.scrollHeight;
+                console.log('[ANCHOR] 🔧 Scroll final não aplicado, forçando...');
+                // ✅ Usar função unificada para scroll final
+                scrollToPosition('bottom', { immediate: true, duringInitialLoad: true });
+              } else {
+                console.log('[ANCHOR] ✅ Scroll final aplicado com sucesso');
               }
             }, 10);
           }
           
-          // ✅ CRÍTICO: Só resetar isInitialLoad APÓS toda verificação
-          setIsInitialLoad(false);
-          // Ancoragem concluída
+          // ✅ CRÍTICO: Só resetar initialLoad APÓS toda verificação
+          setLoading('initialLoad', false);
+          
+          // ✅ CORREÇÃO: Habilitar scroll infinito após ancoragem completa
+          setLoading('allowInfiniteScroll', true);
+          console.log('[ANCHOR] ✅ Ancoragem concluída - scroll infinito habilitado');
         });
       });
     }
-  }, [messages.length, isInitialLoad, currentContact?.remote_jid, isAtBottom]); // ✅ Adicionada dependência isAtBottom
+  }, [messages.length, isInitialLoad, currentContact?.remote_jid, isAtBottom, isSyncing]); // ✅ Adicionada dependência isSyncing
 
 
 
@@ -1872,15 +1960,54 @@ export default function Chat() {
 
 
 
-  // Função otimizada para sincronização inteligente
+  // ✅ Função para sincronização MANUAL de contatos (botão) - UX OTIMIZADA
+  const syncContactsManual = async () => {
+    if (!currentUser?.id) return;
+    
+    try {
+      // ✅ UX: Mostrar feedback visual mínimo apenas no botão
+      setLoading('syncing', true);
+      console.log('[SYNC-MANUAL] 🔄 Sincronização manual silenciosa iniciada...');
+      
+      // ✅ UX: Sincronização sempre executa em background sem interferir na interface
+      await syncContactsInternal();
+      
+    } catch (error) {
+      console.error('[SYNC-MANUAL] ❌ Erro na sincronização manual:', error);
+      // ✅ UX: Apenas mostrar erro real, não bloquear interface
+      setError('Erro na sincronização. Tente novamente.');
+      setTimeout(() => setError(null), 3000);
+    } finally {
+      setLoading('syncing', false);
+    }
+  };
+
+  // ✅ Função para sincronização AUTOMÁTICA de contatos (polling) - NÃO afeta histórico de mensagens
   const syncContacts = async () => {
     if (!currentUser?.id) return;
     
     try {
-      setIsSyncing(true);
-      console.log('[SYNC] 🔄 Sincronização inteligente iniciada...');
+      console.log('[SYNC-AUTO] 🔄 Sincronização automática iniciada...');
       
-      // Sincronizar apenas a primeira página de contatos (otimizado)
+      // ✅ CORREÇÃO: Permitir sincronização mesmo com contato selecionado
+      if (currentContact && messages.length > 0) {
+        console.log('[SYNC-AUTO] 🔄 Sincronização automática com contato selecionado - atualizando contatos em background');
+      }
+      
+      // ✅ Usar função interna para sincronização
+      await syncContactsInternal();
+      
+    } catch (error) {
+      console.error('[SYNC-AUTO] ❌ Erro na sincronização automática:', error);
+    }
+  };
+
+  // ✅ Função INTERNA para sincronização de contatos (UX OTIMIZADA)
+  const syncContactsInternal = async () => {
+    // ✅ UX: Sincronização silenciosa - não bloquear interface
+    console.log('[SYNC-INTERNAL] 🔄 Sincronização silenciosa em background...');
+    
+    // ✅ UX: Buscar apenas atualizações incrementais
       const contactsResponse = await fetch(`/api/contacts?page=1&limit=${CONTACTS_PER_PAGE}`, {
         credentials: 'include'
       });
@@ -1972,23 +2099,24 @@ export default function Chat() {
           fetchContactInstances(updatedContacts);
         }
         
-        // Manter o contato atual se ainda existir
+      // ✅ UX: Atualizar metadados do contato atual silenciosamente (sem reset)
         if (currentContact) {
           const updatedCurrentContact = contactsList.find(c => c.remote_jid === currentContact.remote_jid);
           if (updatedCurrentContact) {
-            setCurrentContact(updatedCurrentContact);
+          // ✅ UX: Atualizar apenas metadados, preservar estado da conversa
+          setCurrentContact(prev => ({
+            ...prev,
+            ...updatedCurrentContact,
+            // Preservar dados críticos para não quebrar a experiência
+            last_message_time: prev.last_message_time || updatedCurrentContact.last_message_time,
+            last_message: prev.last_message || updatedCurrentContact.last_message
+          }));
           }
         }
       }
       
       setLastSyncTime(new Date());
-      console.log('[SYNC] ✅ Sincronização concluída');
-      
-    } catch (error) {
-      console.error('[SYNC] ❌ Erro na sincronização:', error);
-    } finally {
-      setIsSyncing(false);
-    }
+    console.log('[SYNC-INTERNAL] ✅ Sincronização interna concluída');
   };
 
   // Função para sincronização completa das mensagens (equivalente ao refresh)
@@ -2000,18 +2128,25 @@ export default function Chat() {
     try {
       // ✅ CORREÇÃO: Desabilitar polling temporariamente para evitar conflitos
       const wasPollingEnabled = !isInitialLoad;
-      setIsInitialLoad(true); // Desabilita polling
+      setLoading('initialLoad', true); // Desabilita polling
       
-      // Resetar estados para garantir sincronização limpa
-      setMessages([]);
-      setMessagesPage(1);
-      setHasMoreMessages(true);
+      // ✅ CORREÇÃO: Marcar que estamos sincronizando para evitar conflitos
+      setLoading('syncing', true);
+      
+      // ✅ CORREÇÃO: Preservar estado das mensagens existentes
+      const existingMessages = messages.length > 0 ? [...messages] : [];
+      console.log('[SYNC] 💾 Preservando', existingMessages.length, 'mensagens existentes');
+      
+      // Resetar apenas paginação, não as mensagens
+      setPagination('messagesPage', 1);
+      setPagination('hasMoreMessages', true);
       setUnreadCount(0);
-      setLastStatusUpdate('1970-01-01T00:00:00Z');
-      setIsLoading(true);
+      // ✅ CORREÇÃO: NÃO resetar lastStatusUpdate para preservar polling
+      // setLastStatusUpdate('1970-01-01T00:00:00Z');
+      setLoading('messages', true);
       
-      // Recarregar mensagens do contato atual (equivalente ao fetchMessages com reset=true)
-      await fetchMessages(currentContact.remote_jid, 1, true);
+      // ✅ CORREÇÃO: Recarregar mensagens SEM resetar histórico
+      await fetchMessages(currentContact.remote_jid, 1, false);
       
       console.log('[SYNC] 📊 Estado após fetchMessages:', {
         messagesLength: messages.length,
@@ -2031,8 +2166,8 @@ export default function Chat() {
           // Forçar recálculo de layout
           container.offsetHeight;
           
-          // Scroll para o final
-          container.scrollTop = container.scrollHeight;
+          // ✅ Scroll para o final usando função unificada
+          scrollToPosition('bottom', { immediate: true, duringInitialLoad: true });
           
           console.log('[SYNC] 📊 Scroll executado:', {
             scrollTop: container.scrollTop,
@@ -2046,7 +2181,8 @@ export default function Chat() {
           setTimeout(() => {
             const isAtEnd = Math.abs(container.scrollTop - (container.scrollHeight - container.clientHeight)) < 5;
             if (!isAtEnd) {
-              container.scrollTop = container.scrollHeight;
+              // ✅ Usar função unificada para scroll forçado
+              scrollToPosition('bottom', { immediate: true, duringInitialLoad: true });
               console.log('[SYNC] ✅ Scroll forçado para o final após verificação');
             } else {
               console.log('[SYNC] ✅ Scroll já está no final');
@@ -2056,7 +2192,7 @@ export default function Chat() {
           // ✅ CORREÇÃO: Reabilitar polling após scroll (se estava habilitado antes)
           setTimeout(() => {
             if (wasPollingEnabled) {
-              setIsInitialLoad(false);
+          setLoading('initialLoad', false);
               console.log('[SYNC] ✅ Polling reabilitado após sincronização');
             }
           }, 100);
@@ -2077,9 +2213,9 @@ export default function Chat() {
     } catch (error) {
       console.error('[SYNC] ❌ Erro na sincronização completa:', error);
       // ✅ CORREÇÃO: Reabilitar polling em caso de erro
-      setIsInitialLoad(false);
+              setLoading('initialLoad', false);
     } finally {
-      setIsLoading(false);
+      setLoading('messages', false);
     }
   };
 
@@ -2129,7 +2265,7 @@ export default function Chat() {
           console.log('[REFRESH] ✅ Contato auto-selecionado:', firstContact.push_name || firstContact.name);
           
           // ✅ CORREÇÃO: Marcar como carregamento inicial para ativar ancoragem automática
-          setIsInitialLoad(true);
+          setLoading('initialLoad', true);
           
           // ✅ CORREÇÃO: Carregar mensagens do contato auto-selecionado
           if (firstContact?.remote_jid) {
@@ -2370,8 +2506,11 @@ export default function Chat() {
       // Adicionar a mensagem temporária imediatamente ao estado
       setMessages(prev => [...prev, tempMsg]);
       
-      // Indica que deve rolar para o final após enviar
-              // Removido: setShouldScrollToBottom não é mais usado
+      // ✅ EXPERIÊNCIA DO USUÁRIO: Scroll automático imediato para mostrar a mensagem
+      setTimeout(() => {
+        scrollToPosition('bottom', { immediate: true });
+        console.log('[SEND] ✅ Scroll automático após envio de mensagem');
+      }, 50);
       
       const payload = {
         conversationId: currentContact.remote_jid,
@@ -2439,6 +2578,12 @@ export default function Chat() {
             
             return [...withoutTemp, processedMsg];
           });
+          
+          // ✅ EXPERIÊNCIA DO USUÁRIO: Scroll automático após confirmação
+          setTimeout(() => {
+            scrollToPosition('bottom', { immediate: true });
+            console.log('[SEND] ✅ Scroll automático após confirmação da mensagem');
+          }, 100);
         }
       } else {
         // Verificar se é status 202 (mensagem salva mas pendente)
@@ -2460,6 +2605,12 @@ export default function Chat() {
               
               return [...withoutTemp, processedMsg];
             });
+            
+            // ✅ EXPERIÊNCIA DO USUÁRIO: Scroll automático após mensagem pendente
+            setTimeout(() => {
+              scrollToPosition('bottom', { immediate: true });
+              console.log('[SEND] ✅ Scroll automático após mensagem pendente');
+            }, 100);
           }
           
           // Mostrar aviso sobre Evolution API offline
@@ -2653,34 +2804,42 @@ export default function Chat() {
     }
   };
 
-  // Função para selecionar contato
+  // ✅ UX: Função para selecionar contato com transição suave
   const handleSelectContact = (contact) => {
-    // Selecionando contato
+    console.log('[CONTACT] 📱 Selecionando contato:', contact.name || contact.push_name);
+    console.log('[CONTACT] 🔍 Contato atual:', currentContact?.name || currentContact?.push_name);
+    console.log('[CONTACT] 🔍 Remote JID atual:', currentContact?.remote_jid);
+    console.log('[CONTACT] 🔍 Remote JID novo:', contact?.remote_jid);
     
-    // ✅ PROTEÇÃO: Bloquear apenas scroll infinito
-    setAllowInfiniteScroll(false);
-    setIsInitialLoad(true); // Marca como carregamento inicial
+    // ✅ UX: PROTEÇÃO - Se for o mesmo contato, não recarregar
+    if (currentContact?.remote_jid === contact?.remote_jid) {
+      console.log('[CONTACT] ⚠️ Mesmo contato já selecionado - mantendo histórico');
+      return;
+    }
     
-    // ✅ Limpar timeouts existentes para evitar conflitos
+    console.log('[CONTACT] ✅ Contato DIFERENTE detectado - carregando novo histórico');
+    
+    // ✅ UX: Transição imediata sem estados de carregamento visíveis
+    setCurrentContact(contact);
+    setLoading('allowInfiniteScroll', false);
+    setLoading('initialLoad', true);
+    
+    // ✅ UX: Limpar timeouts para evitar conflitos
     timeoutsRef.current.forEach(timeoutId => clearTimeout(timeoutId));
     timeoutsRef.current = [];
     
-    // Simples: definir contato e carregar mensagens
-    setCurrentContact(contact);
-    
     if (contact?.remote_jid) {
-      // Carregando mensagens do contato
-      fetchMessages(contact.remote_jid, 1, true);
+      // ✅ UX: Carregar mensagens do NOVO contato COM reset (contato diferente)
+      fetchMessages(contact.remote_jid, 1, true); // ← reset=true para contato diferente
       
-      // ✅ PROTEÇÃO: Habilitar sistemas após ancoragem (delay mínimo para não interferir)
+      // ✅ UX: Habilitar scroll infinito rapidamente para não interferir na experiência
       const enableSystemsTimeoutId = setTimeout(() => {
-        // Sistemas habilitados
-        setAllowInfiniteScroll(true);
-      }, 1000); // 1 segundo apenas para garantir estabilidade
+        setLoading('allowInfiniteScroll', true);
+      }, 500); // Reduzido para 500ms para resposta mais rápida
       timeoutsRef.current.push(enableSystemsTimeoutId);
     } else {
-      console.log('[CONTACT] ❌ Contato sem remote_jid!');
-      setIsInitialLoad(false);
+      console.error('[CONTACT] ❌ Contato sem remote_jid!');
+      setLoading('initialLoad', false);
     }
   };
 
@@ -2768,10 +2927,8 @@ export default function Chat() {
       try {
 
         
-        // Não limpar dados anteriores durante o carregamento
-        // Em vez disso, definimos apenas uma flag de carregamento
-        // que vai ser usada para mostrar o spinner
-        setIsLoading(true);
+        // ✅ UX: Carregamento silencioso - não mostrar spinner desnecessário
+        // setLoading('messages', true); // Removido para melhor UX
         
         // Buscar dados do contato de forma otimizada
         const fetchContactData = async () => {
@@ -3067,8 +3224,8 @@ export default function Chat() {
           chavePix: null
         });
       } finally {
-        // Independente do resultado, desativar o carregamento
-        setIsLoading(false);
+        // ✅ UX: Não há mais flag de carregamento para desativar
+        // Dados são carregados silenciosamente em background
       }
     }
     
@@ -3151,9 +3308,10 @@ export default function Chat() {
               <h4 className="text-sm font-semibold text-cyan-100">Saldo FGTS</h4>
             </div>
             
-            {isLoading && contactData.saldo === null && contactData.erroConsulta === null ? (
-              <div className="flex justify-center items-center py-2">
-                <FaSpinner className="animate-spin text-cyan-400" />
+            {/* ✅ UX: Mostrar placeholder enquanto carrega, sem spinner */}
+            {contactData.saldo === null && !contactData.erroConsulta ? (
+              <div className="py-2 text-cyan-300/60">
+                <div className="h-4 bg-cyan-800/20 rounded animate-pulse"></div>
               </div>
             ) : saldoFormatado ? (
               <p className="text-lg font-bold text-white">
@@ -3169,9 +3327,10 @@ export default function Chat() {
               <h4 className="text-sm font-semibold text-cyan-100">Simulação</h4>
             </div>
             
-            {isLoading && contactData.simulado === null && contactData.erroConsulta === null ? (
-              <div className="flex justify-center items-center py-2">
-                <FaSpinner className="animate-spin text-cyan-400" />
+            {/* ✅ UX: Skeleton loading suave para simulação */}
+            {contactData.simulado === null && !contactData.erroConsulta ? (
+              <div className="py-2 text-cyan-300/60">
+                <div className="h-4 bg-cyan-800/20 rounded animate-pulse"></div>
               </div>
             ) : simuladoFormatado ? (
               <p className="text-lg font-bold text-white">
@@ -3193,9 +3352,11 @@ export default function Chat() {
                 )}
               </h4>
             </div>
-            {isLoading && contactData.proposta === null && contactData.erroConsulta === null ? (
-              <div className="flex justify-center items-center py-2">
-                <FaSpinner className="animate-spin text-cyan-400" />
+            {/* ✅ UX: Skeleton loading para proposta */}
+            {contactData.proposta === null && !contactData.erroConsulta ? (
+              <div className="py-2 text-cyan-300/60">
+                <div className="h-4 bg-cyan-800/20 rounded animate-pulse mb-2"></div>
+                <div className="h-3 bg-cyan-800/20 rounded animate-pulse w-2/3"></div>
               </div>
             ) : contactData.proposta ? (
               <>
@@ -3451,7 +3612,7 @@ export default function Chat() {
                       </div>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => syncContacts()}
+                          onClick={() => syncContactsManual()}
                           className="p-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors"
                           title="Sincronizar contatos"
                         >
@@ -3468,14 +3629,14 @@ export default function Chat() {
                     
                     {/* Seletor de Instâncias Customizado */}
                     {(() => {
-                      const shouldShow = instances.length > 0 || isLoadingInstances;
+                      const shouldShow = instances.length > 0 || loadingState.instances;
                   
                       return shouldShow && (
                       <div className="mb-3 relative" ref={dropdownRef}>
                         <button
                           type="button"
-                          onClick={() => !isLoadingInstances && setDropdownOpen(!dropdownOpen)}
-                          disabled={isLoadingInstances}
+                          onClick={() => !loadingState.instances && setDropdownOpen(!dropdownOpen)}
+                          disabled={loadingState.instances}
                           className="w-full py-2 px-3 bg-white/10 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 border border-cyan-800/50 transition-colors duration-200 hover:bg-white/15 flex items-center justify-between cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           <span className="text-left">
@@ -3489,7 +3650,7 @@ export default function Chat() {
                         </button>
 
                         {/* Dropdown Options */}
-                        {dropdownOpen && !isLoadingInstances && (
+                        {dropdownOpen && !loadingState.instances && (
                           <div className="absolute z-50 w-full mt-1 bg-gradient-to-br from-emerald-950/95 via-cyan-950/95 to-blue-950/95 backdrop-blur-sm border border-cyan-800/50 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                             {/* Opção "Todas as instâncias" */}
                             <button
@@ -3553,8 +3714,17 @@ export default function Chat() {
                     onScroll={handleContactsScroll}
                   >
                     {contacts.length === 0 ? (
-                      <div className="p-4 text-center text-cyan-300">
-                        Nenhuma conversa encontrada
+                      <div className="p-6 text-center text-cyan-300">
+                        {/* ✅ UX: Estado vazio mais atrativo */}
+                        <div className="text-center">
+                          <div className="w-12 h-12 bg-cyan-600/20 rounded-full flex items-center justify-center mx-auto mb-3">
+                            <svg className="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+                            </svg>
+                          </div>
+                          <p className="text-base font-medium">Nenhuma conversa</p>
+                          <p className="text-sm mt-1 text-cyan-400">Aguardando mensagens...</p>
+                        </div>
                       </div>
                     ) : (
                       displayContacts
@@ -3662,9 +3832,35 @@ export default function Chat() {
               {/* Área de mensagens */}
               {currentContact ? (
                 <>
-                  <div className={`flex-shrink-0 flex-grow-0 min-w-0 w-full ${!isMobileView ? 'md:basis-2/4 md:max-w-[50%]' : ''} flex flex-col h-full p-0`}>
+                  <div className={`flex-shrink-0 flex-grow-0 min-w-0 w-full ${!isMobileView ? 'md:basis-2/4 md:max-w-[50%]' : ''} flex flex-col h-full p-0 relative`}>
                   {/* Cabeçalho do chat */}
                     {renderChatHeader()}
+                  
+                  {/* ✅ BOTÃO DE ANCORAGEM: Flutuante FIXO sobre a área de mensagens */}
+                  {!isAtBottom && messages.length > 0 && (
+                    <button
+                      onClick={() => {
+                        scrollToPosition('bottom', { immediate: true });
+                        console.log('[ANCHOR-BTN] ✅ Usuário clicou para ir à mensagem mais recente');
+                      }}
+                      className="absolute bottom-20 right-4 z-50 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white p-3 rounded-full shadow-lg transition-all duration-200 transform hover:scale-110 group"
+                      title="Ir para a mensagem mais recente"
+                    >
+                      <svg 
+                        className="w-5 h-5 transform group-hover:translate-y-[-2px] transition-transform duration-200" 
+                        fill="none" 
+                        stroke="currentColor" 
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
+                      </svg>
+                      {unreadCount > 0 && (
+                        <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[1.25rem] h-5 flex items-center justify-center">
+                          {unreadCount}
+                        </span>
+                      )}
+                    </button>
+                  )}
                   
                   {/* Área de mensagens */}
                   
@@ -3700,21 +3896,29 @@ export default function Chat() {
                       </div>
                     )}
                     
-                    {isLoading ? (
-                      <div className="flex justify-center items-center h-full">
-                        <FaSpinner className="animate-spin text-3xl text-cyan-400" />
-                      </div>
-                    ) : (
+                    {/* ✅ UX: Remover spinner principal - sempre mostrar conteúdo */}
+                    {(
                       <>
                         {isUpdating && (
                           <div className="absolute top-2 right-2 z-10 bg-cyan-800/60 p-1.5 rounded-full shadow-md">
                             <FaSpinner className="animate-spin text-xs text-cyan-100" />
                           </div>
                         )}
+                        
+
+                        
                         {messages.length === 0 ? (
                           <div className="flex flex-col items-center justify-center h-full text-cyan-300">
-                            <p className="text-lg">Nenhuma mensagem encontrada</p>
-                            <p className="text-sm mt-2">Comece uma conversa agora</p>
+                            {/* ✅ UX: Estado vazio elegante sem mencionar carregamento */}
+                            <div className="text-center p-8">
+                              <div className="w-16 h-16 bg-cyan-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
+                                <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                                </svg>
+                              </div>
+                              <p className="text-lg font-medium">Inicie uma conversa</p>
+                              <p className="text-sm mt-2 text-cyan-400">Suas mensagens aparecerão aqui</p>
+                            </div>
                           </div>
                         ) : (
                           <>
@@ -3794,6 +3998,18 @@ export default function Chat() {
                                           <span className="ml-1">
                                             <FaClock className="text-gray-400" />
                                           </span>
+                                        ) : msg.status === 'sent' ? (
+                                          <span className="ml-1">
+                                            <FaCheck className="text-cyan-400" />
+                                          </span>
+                                        ) : msg.status === 'delivered' ? (
+                                          <span className="ml-1">
+                                            <FaCheck className="text-blue-400" />
+                                          </span>
+                                        ) : msg.status === 'read' ? (
+                                          <span className="ml-1">
+                                            <FaCheck className="text-green-400" />
+                                          </span>
                                         ) : (msg.role === 'ME' || msg.role === 'AI') && (
                                         <span className="ml-1">
                                           {msg.is_read ? '✓✓' : '✓'}
@@ -3813,25 +4029,8 @@ export default function Chat() {
                       </>
                     )}
                     
-                    {/* Botão flutuante "ir para mensagens recentes" */}
-                    {!isAtBottom && (
-                      <button
-                        onClick={scrollToBottom}
-                        className="fixed bottom-24 right-6 bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-full p-3 shadow-lg hover:shadow-xl transition-all duration-300 z-50 flex items-center gap-2"
-                        style={{ transform: 'translateY(-50px)' }}
-                        aria-label={`Ir para mensagens recentes${unreadCount > 0 ? ` (${unreadCount} não lidas)` : ''}`}
-                      >
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
-                        </svg>
-                        {unreadCount > 0 && (
-                          <span className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[20px] text-center" aria-label={`${unreadCount} mensagens não lidas`}>
-                            {unreadCount > 99 ? '99+' : unreadCount}
-                          </span>
-                        )}
-                      </button>
-                    )}
-                  </div>
+
+                                    </div>
                   
                   {/* Formulário de envio de mensagem */}
                     <div className="border-t border-cyan-800/50 bg-white/5 w-full message-input-container flex" style={mobileStyles.messageInputContainer}>
