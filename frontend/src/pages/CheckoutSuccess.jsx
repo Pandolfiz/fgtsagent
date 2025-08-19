@@ -52,11 +52,11 @@ const CheckoutSuccess = () => {
   const getPlanPrice = (planType) => {
     switch (planType) {
       case 'basic':
-        return 'R$ 29,90/mês';
+        return 'R$ 90,00/mês (cobrado mensalmente com desconto anual) - Economia de R$ 120,00/ano';
       case 'pro':
-        return 'R$ 49,90/mês';
+        return 'R$ 274,99/mês (cobrado mensalmente com desconto anual) - Economia de R$ 300,00/ano';
       case 'premium':
-        return 'R$ 99,90/mês';
+        return 'R$ 449,99/mês (cobrado mensalmente com desconto anual) - Economia de R$ 600,00/ano';
       default:
         return '';
     }
