@@ -436,7 +436,41 @@ class StripeService {
       intervalText: this.getIntervalText(priceConfig.interval, priceConfig.intervalCount),
       discount: priceConfig.discount,
       features: plan.features,
-      priceId: priceConfig.priceId
+      priceId: priceConfig.priceId,
+      // Adicionar todos os preços disponíveis para o frontend
+      prices: Object.entries(plan.prices).map(([priceInterval, price]) => ({
+        interval: priceInterval,
+        priceId: price.priceId,
+        amount: price.amount,
+        amountFormatted: `R$ ${(price.amount / 100).toFixed(2).replace('.', ',')}`,
+        intervalText: this.getIntervalText(price.interval, price.intervalCount),
+        discount: price.discount || null
+      }))
+    };
+  }
+
+  /**
+   * Obtém todos os preços de um plano específico
+   */
+  getPlanPrices(planType) {
+    const plan = PLANS[planType.toUpperCase()];
+    if (!plan) {
+      throw new Error('Plano não encontrado');
+    }
+
+    return {
+      id: planType.toLowerCase(),
+      name: plan.name,
+      description: plan.description,
+      features: plan.features,
+      prices: Object.entries(plan.prices).map(([interval, price]) => ({
+        interval: interval,
+        priceId: price.priceId,
+        amount: price.amount,
+        amountFormatted: `R$ ${(price.amount / 100).toFixed(2).replace('.', ',')}`,
+        intervalText: this.getIntervalText(price.interval, price.intervalCount),
+        discount: price.discount || null
+      }))
     };
   }
 

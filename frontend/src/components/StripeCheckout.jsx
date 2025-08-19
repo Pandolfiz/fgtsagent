@@ -7,6 +7,14 @@ import api from '../utils/api.js';
 // Configurar Stripe (usar variável de ambiente em produção)
 const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_...');
 
+// Debug: Log das configurações
+console.log('🔍 StripeCheckout - Configurações:', {
+  stripeKey: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ? 'Configurada' : 'Não configurada',
+  stripeKeyLength: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY?.length || 0,
+  env: import.meta.env.MODE,
+  dev: import.meta.env.DEV
+});
+
 const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
   const stripe = useStripe();
   const elements = useElements();
@@ -15,27 +23,64 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
   const [success, setSuccess] = useState(false);
   const [selectedInterval, setSelectedInterval] = useState('monthly');
   const [planDetails, setPlanDetails] = useState(null);
+  const [debugInfo, setDebugInfo] = useState({});
+
+  // Debug: Log do estado do componente
+  useEffect(() => {
+    console.log('🔍 CheckoutForm - Estado atual:', {
+      selectedPlan,
+      userData: userData ? 'Presente' : 'Ausente',
+      stripe: stripe ? 'Carregado' : 'Não carregado',
+      elements: elements ? 'Carregado' : 'Não carregado',
+      planDetails: planDetails ? 'Carregado' : 'Não carregado'
+    });
+  }, [selectedPlan, userData, stripe, elements, planDetails]);
 
   useEffect(() => {
     // Carregar detalhes do plano selecionado
     const loadPlanDetails = async () => {
       try {
+        console.log('🔍 Carregando detalhes do plano:', selectedPlan);
         const response = await api.get(`/api/stripe/plans/${selectedPlan}`);
-        setPlanDetails(response.data);
+        console.log('✅ Detalhes do plano carregados:', response.data);
+        
+        // Extrair os dados do plano da resposta da API
+        const planData = response.data.data || response.data;
+        console.log('🔍 Dados extraídos do plano:', planData);
+        
+        setPlanDetails(planData);
+        
+        // Verificar se o intervalo selecionado está disponível
+        if (planData.prices && planData.prices.length > 0) {
+          const availableIntervals = planData.prices.map(p => p.interval);
+          if (!availableIntervals.includes(selectedInterval)) {
+            // Se o intervalo selecionado não estiver disponível, usar o primeiro disponível
+            setSelectedInterval(availableIntervals[0]);
+            console.log('🔄 Intervalo ajustado para:', availableIntervals[0]);
+          }
+        }
       } catch (err) {
-        console.error('Erro ao carregar detalhes do plano:', err);
+        console.error('❌ Erro ao carregar detalhes do plano:', err);
+        setError(`Erro ao carregar plano: ${err.message}`);
       }
     };
 
     if (selectedPlan) {
       loadPlanDetails();
     }
-  }, [selectedPlan]);
+  }, [selectedPlan, selectedInterval]);
+
+  const handleIntervalChange = (newInterval) => {
+    setSelectedInterval(newInterval);
+    console.log('🔄 Intervalo alterado para:', newInterval);
+  };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
 
     if (!stripe || !elements) {
+      console.error('❌ Stripe ou Elements não carregados:', { stripe: !!stripe, elements: !!elements });
+      setError('Sistema de pagamento não carregado. Recarregue a página.');
       return;
     }
 
@@ -65,7 +110,7 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
       }
 
     } catch (err) {
-      console.error('Erro no checkout:', err);
+      console.error('❌ Erro no checkout:', err);
       setError(err.response?.data?.message || err.message || 'Erro no processamento do pagamento');
       onError(err);
     } finally {
@@ -94,11 +139,102 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
   };
 
   const getSelectedPrice = () => {
-    if (!planDetails) return null;
-    return planDetails.prices.find(p => p.interval === selectedInterval);
+    if (!planDetails || !planDetails.prices || !Array.isArray(planDetails.prices)) {
+      console.warn('⚠️ PlanDetails ou prices não estão disponíveis:', planDetails);
+      return null;
+    }
+    
+    const price = planDetails.prices.find(p => p.interval === selectedInterval);
+    if (!price) {
+      console.warn(`⚠️ Preço para intervalo ${selectedInterval} não encontrado. Preços disponíveis:`, planDetails.prices);
+    }
+    return price;
   };
 
   const selectedPrice = getSelectedPrice();
+
+  // Debug: Renderizar informações de debug em desenvolvimento
+  if (import.meta.env.DEV) {
+    console.log('🔍 CheckoutForm - Renderizando com:', {
+      selectedPlan,
+      userData,
+      planDetails,
+      planDetailsType: typeof planDetails,
+      planDetailsKeys: planDetails ? Object.keys(planDetails) : 'N/A',
+      planDetailsPrices: planDetails?.prices,
+      planDetailsPricesLength: planDetails?.prices?.length,
+      planDetailsPricesType: typeof planDetails?.prices,
+      planDetailsPricesIsArray: Array.isArray(planDetails?.prices),
+      selectedPrice,
+      stripe: !!stripe,
+      elements: !!elements
+    });
+  }
+
+  // Se não há dados do plano, mostrar loading
+  if (!planDetails) {
+    return (
+      <div className="text-center py-8">
+        <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <h3 className="text-xl font-semibold text-white mb-2">
+          Carregando detalhes do plano...
+        </h3>
+        <p className="text-cyan-200">
+          Aguarde enquanto preparamos seu checkout
+        </p>
+        {import.meta.env.DEV && (
+          <div className="mt-4 p-3 bg-gray-800/50 rounded text-xs text-gray-300">
+            <p>Debug: selectedPlan = {selectedPlan}</p>
+            <p>Debug: userData = {userData ? 'Presente' : 'Ausente'}</p>
+            <p>Debug: planDetails = {JSON.stringify(planDetails, null, 2)}</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Se não há dados do usuário, mostrar erro
+  if (!userData || !userData.email) {
+    return (
+      <div className="text-center py-8">
+        <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+        <h3 className="text-xl font-semibold text-white mb-2">
+          Dados do usuário incompletos
+        </h3>
+        <p className="text-cyan-200">
+          Por favor, preencha todos os dados pessoais antes de continuar.
+        </p>
+        {import.meta.env.DEV && (
+          <div className="mt-4 p-3 bg-gray-800/50 rounded text-xs text-gray-300">
+            <p>Debug: userData = {JSON.stringify(userData, null, 2)}</p>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Se não há preços disponíveis, mostrar erro
+  if (!planDetails.prices || !Array.isArray(planDetails.prices) || planDetails.prices.length === 0) {
+    return (
+      <div className="text-center py-8">
+        <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+        <h3 className="text-xl font-semibold text-white mb-2">
+          Plano sem preços disponíveis
+        </h3>
+        <p className="text-cyan-200">
+          Este plano não possui preços configurados. Entre em contato com o suporte.
+        </p>
+        {import.meta.env.DEV && (
+          <div className="mt-4 p-3 bg-gray-800/50 rounded text-xs text-gray-300">
+            <p>Debug: planDetails = {JSON.stringify(planDetails, null, 2)}</p>
+            <p>Debug: planDetails.prices = {JSON.stringify(planDetails?.prices, null, 2)}</p>
+            <p>Debug: planDetails.prices type = {typeof planDetails?.prices}</p>
+            <p>Debug: planDetails.prices isArray = {Array.isArray(planDetails?.prices)}</p>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (success) {
     return (
@@ -108,24 +244,41 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
           Pagamento Processado com Sucesso!
         </h3>
         <p className="text-cyan-200">
-          Sua conta foi criada e o plano foi ativado.
+          Você será redirecionado em instantes...
         </p>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
+    <div className="space-y-6">
+      {/* Debug Info em desenvolvimento */}
+      {import.meta.env.DEV && (
+        <div className="p-3 bg-gray-800/50 rounded text-xs text-gray-300">
+          <p><strong>Debug Info:</strong></p>
+          <p>Plano: {selectedPlan}</p>
+          <p>Intervalo: {selectedInterval}</p>
+          <p>Stripe: {stripe ? '✅ Carregado' : '❌ Não carregado'}</p>
+          <p>Elements: {elements ? '✅ Carregado' : '❌ Não carregado'}</p>
+          <p>Plan Details: {planDetails ? '✅ Carregado' : '❌ Não carregado'}</p>
+          <p>Prices: {planDetails?.prices ? `${planDetails.prices.length} preços` : '❌ Não disponível'}</p>
+          <p>Selected Price: {selectedPrice ? '✅ Encontrado' : '❌ Não encontrado'}</p>
+        </div>
+      )}
+
       {/* Seleção de Intervalo de Pagamento */}
-      {planDetails && (
+      {planDetails && planDetails.prices && planDetails.prices.length > 1 && (
         <div className="bg-white/10 p-4 rounded-lg border border-cyan-400/20">
-          <h3 className="font-medium text-cyan-200 mb-3 text-sm">Escolha o Intervalo de Pagamento</h3>
+          <h3 className="font-medium text-cyan-200 mb-3 text-sm flex items-center gap-2">
+            <Calendar className="w-4 h-4" />
+            Escolha o Intervalo de Pagamento
+          </h3>
           <div className="grid grid-cols-3 gap-2">
             {planDetails.prices.map((price) => (
               <button
                 key={price.interval}
                 type="button"
-                onClick={() => setSelectedInterval(price.interval)}
+                onClick={() => handleIntervalChange(price.interval)}
                 className={`p-3 rounded-lg border transition-all ${
                   selectedInterval === price.interval
                     ? 'border-cyan-400 bg-cyan-400/20 text-cyan-200'
@@ -154,25 +307,36 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
         </div>
       )}
 
-      {/* Resumo do Pedido */}
+      {/* Resumo do Plano */}
       <div className="bg-white/10 p-4 rounded-lg border border-cyan-400/20">
         <h3 className="font-medium text-cyan-200 mb-3 text-sm flex items-center gap-2">
-          <Calendar className="w-4 h-4" />
-          Resumo do Pedido
+          <CheckCircle className="w-4 h-4" />
+          Resumo do Plano
         </h3>
+        
         <div className="space-y-2">
           <div className="flex justify-between items-center">
-            <span className="text-cyan-300 text-sm">Plano {selectedPlan}</span>
-            <span className="font-semibold text-white text-sm capitalize">
-              {selectedInterval}
+            <span className="text-cyan-300 text-sm">Plano</span>
+            <span className="font-semibold text-white text-sm">
+              {planDetails.name || 'Nome não disponível'}
             </span>
           </div>
+          
+          <div className="flex justify-between items-center">
+            <span className="text-cyan-300 text-sm">Intervalo</span>
+            <span className="font-semibold text-white text-sm">
+              {selectedInterval === 'monthly' ? 'Mensal' : 
+               selectedInterval === 'semiannual' ? 'Semestral' : 
+               selectedInterval === 'annual' ? 'Anual' : selectedInterval}
+            </span>
+          </div>
+          
           {selectedPrice && (
             <>
               <div className="flex justify-between items-center">
                 <span className="text-cyan-300 text-sm">Valor</span>
                 <span className="font-semibold text-white text-sm">
-                  {selectedPrice.amountFormatted}
+                  {selectedPrice.amountFormatted || 'Preço não disponível'}
                 </span>
               </div>
               {selectedPrice.discount && (
@@ -189,58 +353,77 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
       </div>
 
       {/* Formulário de Pagamento */}
-      <div className="bg-white/10 p-4 rounded-lg border border-cyan-400/20">
-        <h3 className="font-medium text-cyan-200 mb-3 text-sm flex items-center gap-2">
-          <CreditCard className="w-4 h-4" />
-          Informações do Cartão
-        </h3>
-        
-        <div className="space-y-3">
-          <div className="bg-white/5 p-3 rounded-lg border border-cyan-400/20">
-            <CardElement options={cardElementOptions} />
-          </div>
+      <form onSubmit={handleSubmit} className="space-y-6">
+        <div className="bg-white/10 p-4 rounded-lg border border-cyan-400/20">
+          <h3 className="font-medium text-cyan-200 mb-3 text-sm flex items-center gap-2">
+            <CreditCard className="w-4 h-4" />
+            Informações do Cartão
+          </h3>
           
-          <div className="flex items-center gap-2 text-xs text-cyan-300">
-            <Lock className="w-3 h-3" />
-            <span>Seus dados estão protegidos com criptografia SSL</span>
+          <div className="space-y-3">
+            <div className="bg-white/5 p-3 rounded-lg border border-cyan-400/20">
+              {stripe && elements ? (
+                <CardElement options={cardElementOptions} />
+              ) : (
+                <div className="text-center py-4 text-cyan-300">
+                  <div className="w-6 h-6 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                  Carregando formulário de pagamento...
+                </div>
+              )}
+            </div>
+            
+            <div className="flex items-center gap-2 text-xs text-cyan-300">
+              <Lock className="w-3 h-3" />
+              <span>Seus dados estão protegidos com criptografia SSL</span>
+            </div>
           </div>
         </div>
-      </div>
 
-      {/* Botão de Pagamento */}
-      <button
-        type="submit"
-        disabled={!stripe || loading}
-        className={`w-full py-3 px-4 rounded-lg font-semibold transition-all ${
-          loading
-            ? 'bg-gray-500 cursor-not-allowed'
-            : 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 transform hover:scale-105'
-        } text-white`}
-      >
-        {loading ? (
-          <div className="flex items-center justify-center gap-2">
-            <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-            Processando...
+        {/* Botão de Pagamento */}
+        <button
+          type="submit"
+          disabled={!stripe || loading || !selectedPrice}
+          className={`w-full py-3 px-4 rounded-lg font-semibold transition-all ${
+            loading || !selectedPrice
+              ? 'bg-gray-500 cursor-not-allowed'
+              : 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 transform hover:scale-105'
+          } text-white`}
+        >
+          {loading ? (
+            <div className="flex items-center justify-center gap-2">
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+              Processando...
+            </div>
+          ) : !selectedPrice ? (
+            'Preço não disponível'
+          ) : (
+            `Pagar ${selectedPrice.amountFormatted || 'Valor não disponível'}`
+          )}
+        </button>
+
+        {/* Mensagem de Erro */}
+        {error && (
+          <div className="bg-red-500/20 border border-red-400/30 rounded-lg p-3">
+            <div className="flex items-center gap-2 text-red-400">
+              <AlertCircle className="w-4 h-4" />
+              <span className="text-sm">{error}</span>
+            </div>
           </div>
-        ) : (
-          `Pagar ${selectedPrice ? selectedPrice.amountFormatted : ''}`
         )}
-      </button>
-
-      {/* Mensagem de Erro */}
-      {error && (
-        <div className="bg-red-500/20 border border-red-400/30 rounded-lg p-3">
-          <div className="flex items-center gap-2 text-red-400">
-            <AlertCircle className="w-4 h-4" />
-            <span className="text-sm">{error}</span>
-          </div>
-        </div>
-      )}
-    </form>
+      </form>
+    </div>
   );
 };
 
 const StripeCheckout = ({ selectedPlan, userData, onSuccess, onError }) => {
+  // Debug: Log das props recebidas
+  console.log('🔍 StripeCheckout - Props recebidas:', {
+    selectedPlan,
+    userData: userData ? 'Presente' : 'Ausente',
+    onSuccess: !!onSuccess,
+    onError: !!onError
+  });
+
   if (!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) {
     return (
       <div className="text-center py-8">

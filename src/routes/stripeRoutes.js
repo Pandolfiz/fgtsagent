@@ -52,20 +52,22 @@ router.get('/plans', (req, res) => {
 
 /**
  * GET /api/stripe/plans/:planType
- * Obtém informações de um plano específico
+ * Obtém informações detalhadas de um plano específico
  */
-router.get('/plans/:planType', (req, res) => {
+router.get('/plans/:planType', async (req, res) => {
   try {
     const { planType } = req.params;
-    const plan = stripeService.getPlanInfo(planType);
+    
+    // Usar a nova função que retorna todos os preços
+    const planInfo = stripeService.getPlanPrices(planType);
     
     res.status(200).json({
       success: true,
-      data: plan
+      data: planInfo
     });
   } catch (error) {
-    logger.error('Erro ao obter plano:', error);
-    res.status(404).json({
+    logger.error('Erro ao obter informações do plano:', error);
+    res.status(400).json({
       success: false,
       message: error.message || 'Plano não encontrado'
     });
