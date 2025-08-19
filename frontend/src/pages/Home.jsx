@@ -23,29 +23,34 @@ const style = <style>{`
 `}</style>;
 
 // Dados sincronizados com os produtos e preços do Stripe
-// Produtos no Stripe:
-// - prod_STalRE6RzVNTUu: FGTS Agent - Plano Básico (R$ 99,99/mês)
-// - prod_STalhjSBTyHza7: FGTS Agent - Plano Pro (R$ 199,99/mês)
-// - prod_STalNWvSe9GqRs: FGTS Agent - Plano Premium (R$ 499,99/mês)
+// Produtos no Stripe (ATUALIZADOS):
+// - prod_StLe32rSb1vwni: FGTS Agent - Plano Básico (R$ 100,00/mês)
+// - prod_StTGwa0T0ZPLjJ: FGTS Agent - Plano Pro (R$ 299,99/mês)
+// - prod_StTJjcT9YTpvCz: FGTS Agent - Plano Premium (R$ 499,99/mês)
 
 const features = [
   { icon: <FaRobot size={40} />, title: 'Automação 24/7', text: 'Nosso agente atende leads a qualquer hora, sem falhas.' },
-  { icon: <FaChartLine size={40} />, title: 'Aumente suas Vendas', text: 'Fluxo inteligente que converte mais clientes com menos esforço.' },
-  { icon: <FaHandHoldingUsd size={40} />, title: 'Especialista em FGTS', text: 'Cria propostas e simula antecipação de saque-aniversário FGTS automaticamente.' },
-  { icon: <FaUsers size={40} />, title: 'Integração Omnichannel', text: 'Atendimento via WhatsApp e web, garantindo proximidade com o cliente.' },
-  { icon: <FaShieldAlt size={40} />, title: 'Segurança & Compliance', text: 'Dados protegidos e conformidade com regulamentações do setor financeiro.' },
-  { icon: <FaChartPie size={40} />, title: 'Analytics em Tempo Real', text: 'Dashboards que mostram desempenho de leads, propostas e conversão.' }
+  { icon: <FaChartLine size={40} />, title: 'Conversão Inteligente', text: 'IA avançada que identifica leads qualificados automaticamente.' },
+  { icon: <FaHandHoldingUsd size={40} />, title: 'ROI Garantido', text: 'Aumente suas vendas em até 300% com nossa solução.' },
+  { icon: <FaUsers size={40} />, title: 'Escalabilidade Total', text: 'De 10 a 10.000 leads, nossa plataforma cresce com você.' },
+  { icon: <FaShieldAlt size={40} />, title: 'Segurança Máxima', text: 'Dados protegidos com criptografia de nível bancário.' },
+  { icon: <FaChartPie size={40} />, title: 'Analytics Avançado', text: 'Relatórios detalhados para otimizar suas campanhas.' }
 ];
 
-// Dados dos planos baseados no Stripe
+// Dados dos planos baseados no Stripe (PREÇOS ATUALIZADOS COM OPÇÕES ANUAIS)
 const plans = [
   {
     name: 'Plano Básico',
-    price: 'R$ 99,99',
+    price: 'R$ 100,00',
     period: '/mês',
+    annualPrice: 'R$ 90,00',
+    annualPeriod: '/mês',
+    annualBilling: 'Anual cobrado mensalmente',
+    annualSavings: 'Economia de R$ 120,00/ano',
     description: 'Indicado para operações pequenas com até 100 leads por mês',
-    stripeProductId: 'prod_STalRE6RzVNTUu',
-    stripePriceId: 'price_1RYdaBRrfRhcM17zE4rOKO9U',
+    stripeProductId: 'prod_StLe32rSb1vwni',
+    stripePriceId: 'price_1RxYwzH8jGtRbIKFzM62Xmkj',
+    annualPriceId: 'price_1RxYwzH8jGtRbIKFOZFuYVGV',
     features: [
       'Agente de IA por mensagens',
       'Consultas ilimitadas de saldo FGTS',
@@ -58,15 +63,20 @@ const plans = [
     ],
     icon: <FaWhatsapp size={32} />,
     popular: false,
-    buttonText: 'Testar 14 Dias Grátis'
+    buttonText: 'Testar 7 dias Grátis'
   },
   {
     name: 'Plano Pro',
-    price: 'R$ 199,99',
+    price: 'R$ 299,99',
     period: '/mês',
+    annualPrice: 'R$ 274,99',
+    annualPeriod: '/mês',
+    annualBilling: 'Anual cobrado mensalmente',
+    annualSavings: 'Economia de R$ 300,00/ano',
     description: 'Indicado para escritórios com até 500 leads por mês',
-    stripeProductId: 'prod_STalhjSBTyHza7',
-    stripePriceId: 'price_1RYdaFRrfRhcM17zecmj0hhT',
+    stripeProductId: 'prod_StTGwa0T0ZPLjJ',
+    stripePriceId: 'price_1RxgK6H8jGtRbIKF79rax6aZ',
+    annualPriceId: 'price_1RxgLiH8jGtRbIKFSdpy1d3E',
     features: [
       'Agente de IA que ouve/envia audios',
       'Consultas ilimitadas de saldo FGTS',
@@ -85,9 +95,14 @@ const plans = [
     name: 'Plano Premium',
     price: 'R$ 499,99',
     period: '/mês',
+    annualPrice: 'R$ 449,99',
+    annualPeriod: '/mês',
+    annualBilling: 'Anual cobrado mensalmente',
+    annualSavings: 'Economia de R$ 600,00/ano',
     description: 'Indicado para escritórios com alto fluxo de leads, +500 leads por mês',
-    stripeProductId: 'prod_STalNWvSe9GqRs',
-    stripePriceId: 'price_1RYdaJRrfRhcM17zJsOCBmmi',
+    stripeProductId: 'prod_StTJjcT9YTpvCz',
+    stripePriceId: 'price_1RxgMnH8jGtRbIKFO9Ictegk',
+    annualPriceId: 'price_1RxgNdH8jGtRbIKFsVrqDeHq',
     features: [
       'Todas as funcionalidades',
       'Consulta de saldo, simulação de propostas e criação de propostas Ilimitadas',
@@ -110,6 +125,7 @@ export default function Home({ isLoggedIn }) {
     window.scrollTo(0, 0);
   }, []);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [selectedInterval, setSelectedInterval] = useState('annual'); // Padrão para maximizar conversão
 
   // Fecha o menu ao clicar fora
   useEffect(() => {
@@ -374,6 +390,76 @@ export default function Home({ isLoggedIn }) {
           Transforme seu negócio de FGTS com nossos planos flexíveis
         </motion.p>
 
+        {/* Seletor de Intervalo de Pagamento */}
+        <motion.div
+          className="text-center mb-12"
+          initial={{ opacity: 0, y: 20 }}
+          whileInView={{ opacity: 1, y: 0 }}
+          viewport={{ once: true }}
+          transition={{ duration: 0.8, delay: 0.3 }}
+        >
+          <h3 className="text-xl font-semibold text-white mb-6">
+            Escolha como prefere pagar
+          </h3>
+          
+          <div className="flex justify-center">
+            <div className="bg-white/10 backdrop-blur-lg rounded-2xl p-2 border border-cyan-400/30 shadow-xl">
+              <div className="flex gap-2">
+                {/* Opção Mensal */}
+                <button
+                  onClick={() => setSelectedInterval('monthly')}
+                  className={`px-8 py-3 rounded-xl font-semibold transition-all duration-300 ${
+                    selectedInterval === 'monthly'
+                      ? 'bg-cyan-500 text-white shadow-lg shadow-cyan-500/25 transform scale-105'
+                      : 'text-white/70 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <div className="flex flex-col items-center">
+                    <span className="text-lg font-bold">Mensal</span>
+                    <span className="text-xs opacity-80">Sem compromisso</span>
+                  </div>
+                </button>
+                
+                {/* Opção Anual (Destacada) */}
+                <button
+                  onClick={() => setSelectedInterval('annual')}
+                  className={`px-8 py-3 rounded-xl font-semibold transition-all duration-300 relative ${
+                    selectedInterval === 'annual'
+                      ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white shadow-lg shadow-emerald-500/25 transform scale-105'
+                      : 'text-white/70 hover:text-white hover:bg-white/10'
+                  }`}
+                >
+                  <div className="flex flex-col items-center">
+                    <span className="text-lg font-bold">Anual</span>
+                    <span className="text-xs opacity-80">Economia garantida</span>
+                    
+                    {/* Badge de economia */}
+                    {selectedInterval === 'annual' && (
+                      <div className="absolute -top-2 -right-2 bg-emerald-400 text-black text-xs px-2 py-1 rounded-full font-bold animate-pulse">
+                        💰
+                      </div>
+                    )}
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+          
+          {/* Dica de economia */}
+          {selectedInterval === 'annual' && (
+            <motion.div
+              className="mt-4 max-w-md mx-auto"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.5 }}
+            >
+              <p className="text-emerald-300 text-sm font-medium">
+                ✨ Economia de até R$ 600,00 por ano com o plano anual!
+              </p>
+            </motion.div>
+          )}
+        </motion.div>
+
         <motion.div
           className="container mx-auto grid grid-cols-1 lg:grid-cols-3 gap-8 px-4"
           initial="hidden"
@@ -421,11 +507,42 @@ export default function Home({ isLoggedIn }) {
                 <h3 className="text-2xl font-bold text-white mb-2">{plan.name}</h3>
                 <p className="text-white/70 text-sm mb-4">{plan.description}</p>
 
+                {/* Preços com contraste mensal vs anual */}
                 <div className="mb-6">
-                  <span className={`text-4xl font-extrabold ${plan.popular ? 'text-emerald-300' : plan.premium ? 'text-blue-300' : 'text-cyan-300'}`}>
-                    {plan.price}
-                  </span>
-                  <span className="text-white/60 text-lg">{plan.period}</span>
+                  {selectedInterval === 'monthly' ? (
+                    /* Preço mensal em destaque */
+                    <div className="mb-2">
+                      <span className={`text-4xl font-extrabold ${plan.popular ? 'text-emerald-300' : plan.premium ? 'text-blue-300' : 'text-cyan-300'}`}>
+                        {plan.price}
+                      </span>
+                      <span className="text-white/60 text-lg ml-1">{plan.period}</span>
+                    </div>
+                  ) : (
+                    /* Preço anual em destaque (padrão) */
+                    <>
+                      {/* Preço mensal riscado */}
+                      <div className="mb-2">
+                        <span className="text-lg text-white/50 line-through">
+                          {plan.price}
+                        </span>
+                        <span className="text-white/40 text-sm ml-1">/mês</span>
+                      </div>
+                      
+                      {/* Preço anual em destaque */}
+                      <div className="mb-2">
+                        <span className={`text-4xl font-extrabold ${plan.popular ? 'text-emerald-300' : plan.premium ? 'text-blue-300' : 'text-cyan-300'}`}>
+                          {plan.annualPrice}
+                        </span>
+                        <span className="text-white/60 text-lg ml-1">{plan.annualPeriod}</span>
+                      </div>
+                      
+                      {/* Informações do plano anual */}
+                      <div className="text-center">
+                        <p className="text-white/70 text-xs mb-1">{plan.annualBilling}</p>
+                        <p className="text-emerald-400 text-sm font-semibold">{plan.annualSavings}</p>
+                      </div>
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -440,7 +557,7 @@ export default function Home({ isLoggedIn }) {
 
               <div className="mt-auto">
                 <Link
-                  to={`/signup?plan=${plan.stripePriceId}`}
+                  to={`/signup?plan=${selectedInterval === 'annual' ? plan.annualPriceId : plan.stripePriceId}&interval=${selectedInterval}`}
                   className={`w-full py-3 px-6 rounded-lg font-bold shadow-lg transition border-2 ${
                     plan.popular
                       ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white border-emerald-400/50 hover:from-emerald-400 hover:to-cyan-400'
@@ -448,11 +565,25 @@ export default function Home({ isLoggedIn }) {
                       ? 'bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-600 text-white border-cyan-300/80 hover:from-blue-500 hover:via-cyan-400 hover:to-blue-500 shadow-2xl shadow-cyan-400/50 transform hover:scale-105'
                       : 'bg-transparent text-cyan-300 border-cyan-400/50 hover:bg-cyan-900/50'
                   } drop-shadow-neon block text-center`}
-                  data-price-id={plan.stripePriceId}
+                  data-price-id={selectedInterval === 'annual' ? plan.annualPriceId : plan.stripePriceId}
                   data-product-id={plan.stripeProductId}
+                  data-interval={selectedInterval}
                 >
-                  {plan.buttonText}
+                  {selectedInterval === 'annual' ? plan.buttonText : 'Começar Agora'}
                 </Link>
+                
+                {/* Indicador de economia ou informação */}
+                <div className="mt-2 text-center">
+                  {selectedInterval === 'annual' ? (
+                    <span className="text-emerald-400 text-xs font-medium">
+                      💰 {plan.annualSavings}
+                    </span>
+                  ) : (
+                    <span className="text-cyan-300 text-xs font-medium">
+                      ⚡ Sem compromisso
+                    </span>
+                  )}
+                </div>
               </div>
             </motion.div>
           ))}
@@ -466,8 +597,32 @@ export default function Home({ isLoggedIn }) {
           transition={{ duration: 0.7, delay: 0.5 }}
         >
           <p className="text-white/70 mb-4">
-            Todos os planos incluem 14 dias de teste grátis
+            Todos os planos incluem 7 dias de teste grátis
           </p>
+          
+          {/* Destaque para economia anual */}
+          <div className="bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border border-emerald-400/30 rounded-lg p-4 mb-4 max-w-2xl mx-auto">
+            <h3 className="text-emerald-300 font-semibold mb-2">
+              {selectedInterval === 'annual' ? '💡 Dica de Economia' : '💡 Flexibilidade Total'}
+            </h3>
+                         <p className="text-white/80 text-sm mb-2">
+               {selectedInterval === 'annual' ? (
+                 <>
+                   Escolha o plano anual e economize até{' '}
+                   <span className="text-emerald-400 font-bold">R$ 600,00 por ano</span>!
+                 </>
+               ) : (
+                 'Comece com o plano mensal e mude para anual quando quiser economizar!'
+               )}
+             </p>
+            <p className="text-cyan-200 text-xs">
+              {selectedInterval === 'annual'
+                ? 'Cobrança mensal com desconto automático garantido por 12 meses'
+                : 'Sem compromisso de longo prazo - cancele a qualquer momento'
+              }
+            </p>
+          </div>
+          
           <p className="text-cyan-300 text-sm">
             Precisa de algo personalizado? <span className="underline cursor-pointer hover:text-cyan-200">Entre em contato</span>
           </p>
