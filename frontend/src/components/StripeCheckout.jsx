@@ -87,9 +87,9 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError, clientSecret
       }
     };
 
-         if (selectedPlan) {
-       loadPlanDetails();
-     }
+    if (selectedPlan) {
+      loadPlanDetails();
+    }
    }, [selectedPlan, selectedInterval]);
 
 
@@ -142,11 +142,11 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError, clientSecret
     try {
              // 1. Criar Payment Intent no backend
        const response = await api.post('/api/stripe/create-payment-intent', {
-         planType: selectedPlan,
-         userEmail: userData.email,
-         userName: `${userData.first_name} ${userData.last_name}`,
-         interval: selectedInterval
-       });
+        planType: selectedPlan,
+        userEmail: userData.email,
+        userName: `${userData.first_name} ${userData.last_name}`,
+        interval: selectedInterval
+      });
 
        const { clientSecret } = response.data.data;
 
@@ -188,7 +188,7 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError, clientSecret
          onSuccess(paymentIntent);
        } else {
          window.location.href = `${window.location.origin}/signup-success`;
-       }
+      }
 
     } catch (err) {
       console.error('❌ Erro no checkout:', err);
@@ -418,14 +418,14 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError, clientSecret
 
       {/* Formulário de Pagamento */}
       <form onSubmit={handleSubmit} className="space-y-6">
-        <div className="bg-white/10 p-4 rounded-lg border border-cyan-400/20">
-          <h3 className="font-medium text-cyan-200 mb-3 text-sm flex items-center gap-2">
-            <CreditCard className="w-4 h-4" />
-            Informações do Cartão
-          </h3>
-          
-          <div className="space-y-3">
-            <div className="bg-white/5 p-3 rounded-lg border border-cyan-400/20">
+      <div className="bg-white/10 p-4 rounded-lg border border-cyan-400/20">
+        <h3 className="font-medium text-cyan-200 mb-3 text-sm flex items-center gap-2">
+          <CreditCard className="w-4 h-4" />
+          Informações do Cartão
+        </h3>
+        
+        <div className="space-y-3">
+          <div className="bg-white/5 p-3 rounded-lg border border-cyan-400/20">
               {/* ✅ DEBUG: Status dos componentes */}
               {import.meta.env.DEV && (
                 <div className="mb-3 p-2 bg-gray-800/50 rounded text-xs text-gray-300">
@@ -559,49 +559,49 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError, clientSecret
                   {!stripe ? 'Carregando Stripe...' : !elements ? 'Carregando Elements...' : !elementsReady ? 'Inicializando Elements...' : !clientSecret ? 'Configurando formulário de pagamento...' : 'Carregando formulário de pagamento...'}
                 </div>
               )}
-            </div>
-            
-            <div className="flex items-center gap-2 text-xs text-cyan-300">
-              <Lock className="w-3 h-3" />
-              <span>Seus dados estão protegidos com criptografia SSL</span>
-            </div>
+          </div>
+          
+          <div className="flex items-center gap-2 text-xs text-cyan-300">
+            <Lock className="w-3 h-3" />
+            <span>Seus dados estão protegidos com criptografia SSL</span>
           </div>
         </div>
+      </div>
 
-        {/* Botão de Pagamento */}
-                 <button
-           type="submit"
+      {/* Botão de Pagamento */}
+      <button
+        type="submit"
            disabled={!stripe || loading || !selectedPrice || !clientSecret}
-           className={`w-full py-3 px-4 rounded-lg font-semibold transition-all ${
+        className={`w-full py-3 px-4 rounded-lg font-semibold transition-all ${
              loading || !selectedPrice || !clientSecret
-               ? 'bg-gray-500 cursor-not-allowed'
-               : 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 transform hover:scale-105'
-           } text-white`}
-         >
-          {loading ? (
-            <div className="flex items-center justify-center gap-2">
+            ? 'bg-gray-500 cursor-not-allowed'
+            : 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 transform hover:scale-105'
+        } text-white`}
+      >
+        {loading ? (
+          <div className="flex items-center justify-center gap-2">
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-              Processando...
-            </div>
+            Processando...
+          </div>
                      ) : !selectedPrice ? (
              'Preço não disponível'
            ) : !clientSecret ? (
              'Configurando pagamento...'
-           ) : (
+        ) : (
              `Pagar ${selectedPrice.amountFormatted || 'Valor não disponível'}`
-           )}
-        </button>
-
-        {/* Mensagem de Erro */}
-        {error && (
-          <div className="bg-red-500/20 border border-red-400/30 rounded-lg p-3">
-            <div className="flex items-center gap-2 text-red-400">
-              <AlertCircle className="w-4 h-4" />
-              <span className="text-sm">{error}</span>
-            </div>
-          </div>
         )}
-      </form>
+      </button>
+
+      {/* Mensagem de Erro */}
+      {error && (
+        <div className="bg-red-500/20 border border-red-400/30 rounded-lg p-3">
+          <div className="flex items-center gap-2 text-red-400">
+            <AlertCircle className="w-4 h-4" />
+            <span className="text-sm">{error}</span>
+          </div>
+        </div>
+      )}
+    </form>
     </div>
   );
 };
@@ -664,19 +664,19 @@ const StripeCheckout = ({ selectedPlan, userData, onSuccess, onError }) => {
     );
   }
 
-     if (!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) {
-     return (
-       <div className="text-center py-8">
-         <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
-         <h3 className="text-xl font-semibold text-white mb-2">
-           Configuração do Stripe Incompleta
-         </h3>
-         <p className="text-cyan-200">
-           A chave pública do Stripe não está configurada. Entre em contato com o suporte.
-         </p>
-       </div>
-     );
-   }
+  if (!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) {
+    return (
+      <div className="text-center py-8">
+        <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+        <h3 className="text-xl font-semibold text-white mb-2">
+          Configuração do Stripe Incompleta
+        </h3>
+        <p className="text-cyan-200">
+          A chave pública do Stripe não está configurada. Entre em contato com o suporte.
+        </p>
+      </div>
+    );
+  }
 
    if (loading) {
      return (
@@ -722,18 +722,18 @@ const StripeCheckout = ({ selectedPlan, userData, onSuccess, onError }) => {
         console.log('🔍 Elements Options:', { clientSecret: clientSecret.substring(0, 20) + '...', stripeConfig });
       }}
     >
-       <CheckoutForm
-         selectedPlan={selectedPlan}
-         userData={userData}
-         onSuccess={onSuccess}
-         onError={onError}
+      <CheckoutForm
+        selectedPlan={selectedPlan}
+        userData={userData}
+        onSuccess={onSuccess}
+        onError={onError}
          clientSecret={clientSecret}
          loading={loading}
          error={error}
          setError={setError}
          setLoading={setLoading}
-       />
-     </Elements>
+      />
+    </Elements>
   );
 };
 
