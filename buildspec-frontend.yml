@@ -32,4 +32,4 @@ artifacts:
   files:
     - imageDefinitions.json
     - appspec.yml
-    - taskdef.json 
+    - taskdef.json
