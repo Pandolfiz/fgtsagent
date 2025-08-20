@@ -246,6 +246,7 @@ app.use(cors({
       'https://www.fgtsagent.com.br',
       'http://fgtsagent.com.br',
       'http://www.fgtsagent.com.br',
+      'https://m.stripe.com',
       
       // Variáveis de ambiente
       process.env.FRONTEND_URL,

@@ -149,6 +149,24 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
         throw new Error(submitError.message);
       }
 
+      // ✅ CRIAR: PaymentMethod com os dados do cartão
+      console.log('💳 Criando PaymentMethod...');
+      const { paymentMethod, error: paymentMethodError } = await stripe.createPaymentMethod({
+        type: 'card',
+        card: elements.getElement(CardElement),
+        billing_details: {
+          name: `${userData.first_name} ${userData.last_name}`,
+          email: userData.email,
+        },
+      });
+
+      if (paymentMethodError) {
+        console.error('❌ Erro ao criar PaymentMethod:', paymentMethodError);
+        throw new Error(paymentMethodError.message);
+      }
+
+      console.log('✅ PaymentMethod criado:', paymentMethod.id);
+
       // ✅ MÉTODO SEGURO: Confirmar pagamento via backend (MAIS SEGURO)
       console.log('🔐 Confirmando pagamento via backend...');
       
@@ -156,7 +174,7 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
         // ✅ BACKEND: Enviar dados para confirmação segura
         const confirmResponse = await api.post('/stripe/confirm-payment', {
           paymentIntentId: clientSecret.split('_secret_')[0], // Extrair ID do PaymentIntent
-          paymentMethodId: null // Será criado pelo backend
+          paymentMethodId: paymentMethod.id // ✅ AGORA: Enviar PaymentMethod ID
         });
 
         console.log('✅ Resposta da confirmação via backend:', confirmResponse.data);

@@ -221,6 +221,7 @@ class StripeService {
           enabled: true,
           allow_redirects: 'always'
         }
+        // ✅ NOTA: return_url será configurado na confirmação, não na criação
       };
 
       console.log('🔍 Criando PaymentIntent com configuração anti-fraude:', paymentIntentData);
@@ -718,7 +719,8 @@ class StripeService {
       if (paymentMethodId) {
         // Confirmar com método de pagamento específico
         confirmedIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
-          payment_method: paymentMethodId
+          payment_method: paymentMethodId,
+          return_url: `${process.env.APP_URL || 'http://localhost:5173'}/payment/return`
         });
         
         logger.info('✅ PaymentIntent confirmado com método de pagamento:', {
@@ -729,7 +731,9 @@ class StripeService {
         });
       } else {
         // Confirmar sem método de pagamento (usar o já anexado)
-        confirmedIntent = await stripe.paymentIntents.confirm(paymentIntentId);
+        confirmedIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
+          return_url: `${process.env.APP_URL || 'http://localhost:5173'}/payment/return`
+        });
         
         logger.info('✅ PaymentIntent confirmado sem método de pagamento:', {
           id: confirmedIntent.id,

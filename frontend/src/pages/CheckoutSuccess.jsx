@@ -67,9 +67,10 @@ const CheckoutSuccess = () => {
       <>
         <LandingNavbar />
         <div className="min-h-screen bg-gray-50 flex items-center justify-center pt-20">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Verificando seu pagamento...</p>
+          <div className="text-center">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+            <p className="text-gray-600">Verificando seu pagamento...</p>
+          </div>
         </div>
       </>
     );
@@ -80,27 +81,28 @@ const CheckoutSuccess = () => {
       <>
         <LandingNavbar />
         <div className="min-h-screen bg-gray-50 flex items-center justify-center pt-20">
-        <div className="max-w-md mx-auto bg-white rounded-xl shadow-lg p-8 text-center">
-          <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <CreditCard className="w-8 h-8 text-red-600" />
-          </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-4">
-            Ops! Algo deu errado
-          </h2>
-          <p className="text-gray-600 mb-6">{error}</p>
-          <div className="space-y-3">
-            <button
-              onClick={() => navigate('/support')}
-              className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
-            >
-              Contatar Suporte
-            </button>
-            <button
-              onClick={() => navigate('/')}
-              className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 transition-colors"
-            >
-              Voltar ao Início
-            </button>
+          <div className="max-w-md mx-auto bg-white rounded-xl shadow-lg p-8 text-center">
+            <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
+              <CreditCard className="w-8 h-8 text-red-600" />
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+              Ops! Algo deu errado
+            </h2>
+            <p className="text-gray-600 mb-6">{error}</p>
+            <div className="space-y-3">
+              <button
+                onClick={() => navigate('/support')}
+                className="w-full bg-blue-600 text-white py-2 px-4 rounded-lg hover:bg-blue-700 transition-colors"
+              >
+                Contatar Suporte
+              </button>
+              <button
+                onClick={() => navigate('/')}
+                className="w-full bg-gray-100 text-gray-700 py-2 px-4 rounded-lg hover:bg-gray-200 transition-colors"
+              >
+                Voltar ao Início
+              </button>
+            </div>
           </div>
         </div>
       </>
@@ -111,7 +113,7 @@ const CheckoutSuccess = () => {
     <>
       <LandingNavbar />
       <div className="min-h-screen bg-gray-50 py-12 pt-20">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Success Header */}
         <div className="text-center mb-12">
           <div className="w-20 h-20 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-6">
@@ -251,6 +253,7 @@ const CheckoutSuccess = () => {
               (11) 99999-9999
             </a>
           </div>
+        </div>
         </div>
       </div>
     </>
