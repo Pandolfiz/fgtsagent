@@ -52,20 +52,22 @@ router.get('/plans', (req, res) => {
 
 /**
  * GET /api/stripe/plans/:planType
- * Obtém informações de um plano específico
+ * Obtém informações detalhadas de um plano específico
  */
-router.get('/plans/:planType', (req, res) => {
+router.get('/plans/:planType', async (req, res) => {
   try {
     const { planType } = req.params;
-    const plan = stripeService.getPlanInfo(planType);
+    
+    // Usar a nova função que retorna todos os preços
+    const planInfo = stripeService.getPlanPrices(planType);
     
     res.status(200).json({
       success: true,
-      data: plan
+      data: planInfo
     });
   } catch (error) {
-    logger.error('Erro ao obter plano:', error);
-    res.status(404).json({
+    logger.error('Erro ao obter informações do plano:', error);
+    res.status(400).json({
       success: false,
       message: error.message || 'Plano não encontrado'
     });
@@ -113,8 +115,61 @@ router.post('/create-checkout-session', requireAuth, validate(checkoutSchema), a
 });
 
 /**
+ * POST /api/stripe/create-payment-intent
+ * Cria um Payment Intent para checkout nativo (SEM AUTENTICAÇÃO)
+ */
+router.post('/create-payment-intent', async (req, res) => {
+  try {
+    const { planType, userEmail, userName, interval = 'monthly' } = req.body;
+    
+    // Validações básicas
+    if (!planType || !userEmail || !userName) {
+      return res.status(400).json({
+        success: false,
+        message: 'planType, userEmail e userName são obrigatórios'
+      });
+    }
+    
+    // Validar se o plano existe
+    const planInfo = stripeService.getPlanInfo(planType, interval);
+    if (!planInfo) {
+      return res.status(400).json({
+        success: false,
+        message: `Plano ${planType} com intervalo ${interval} não encontrado`
+      });
+    }
+    
+    const paymentIntent = await stripeService.createPaymentIntent(
+      planType,
+      userEmail,
+      {
+        source: 'signup',
+        userName: userName.trim()
+      },
+      interval
+    );
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id,
+        plan: planInfo
+      }
+    });
+  } catch (error) {
+    logger.error('Erro ao criar Payment Intent para cadastro:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Erro ao criar Payment Intent'
+    });
+  }
+});
+
+/**
  * POST /api/stripe/create-signup-checkout-session
  * Cria uma sessão de checkout do Stripe para CADASTRO (SEM AUTENTICAÇÃO)
+ * @deprecated Use create-payment-intent instead for native checkout
  */
 router.post('/create-signup-checkout-session', async (req, res) => {
   try {
@@ -147,7 +202,7 @@ router.post('/create-signup-checkout-session', async (req, res) => {
       successUrl || defaultSuccessUrl,
       cancelUrl || defaultCancelUrl,
       {
-        source: 'signup',
+        source: 'source',
         userName: userName.trim()
       },
       interval

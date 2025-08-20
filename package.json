@@ -20,7 +20,11 @@
         "migrate:security": "cd src && node scripts/apply_security_migration.js"
     },
     "devDependencies": {
-        "concurrently": "^8.2.2"
+        "autoprefixer": "^10.4.21",
+        "concurrently": "^8.2.2",
+        "cssnano": "^7.1.0",
+        "terser": "^5.43.1",
+        "webpack-bundle-analyzer": "^4.10.2"
     },
     "engines": {
         "node": ">=18.0.0",
