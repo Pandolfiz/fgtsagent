@@ -210,7 +210,11 @@ class StripeService {
         },
         description: `Assinatura ${plan.name} - ${interval}`,
         receipt_email: customerEmail,
-        payment_method_types: ['card']
+        // ✅ OBRIGATÓRIO: Configuração para 3D Secure e SCA
+        // NOTA: automatic_payment_methods está habilitado por padrão no Stripe
+        // Quando habilitado, return_url é OBRIGATÓRIO para métodos que podem redirecionar,
+        confirm: true,
+        return_url: `${process.env.APP_URL || 'https://fgtsagent.com.br'}/payment/return`
         // ✅ NOTA: confirm e return_url serão configurados na confirmação
         // quando o frontend enviar o PaymentMethod ID real
       };
@@ -672,6 +676,96 @@ class StripeService {
   }
 
   /**
+   * Cria E confirma um PaymentIntent em uma única operação
+   * Ideal para checkout nativo com 3D Secure
+   */
+  async createAndConfirmPaymentIntent(planType, customerEmail, paymentMethodId, metadata = {}, interval = 'monthly') {
+    try {
+      const plan = PLANS[planType.toUpperCase()];
+      if (!plan) {
+        throw new Error('Plano não encontrado');
+      }
+
+      const priceConfig = plan.prices[interval];
+      if (!priceConfig) {
+        throw new Error(`Intervalo de pagamento '${interval}' não suportado para este plano`);
+      }
+
+      // ✅ CONFIGURAÇÃO COMPLETA: Criar com payment_method + confirm + return_url
+      const paymentIntentData = {
+        amount: priceConfig.amount,
+        currency: 'brl',
+        capture_method: 'automatic',
+        payment_method: paymentMethodId, // ✅ MÉTODO: ID do PaymentMethod
+        confirm: true, // ✅ CONFIRMAR: Imediatamente após criação
+        return_url: `${process.env.APP_URL || 'https://fgtsagent.com.br'}/payment/return`, // ✅ RETORNO: Para 3D Secure
+        metadata: {
+          plan: planType,
+          interval: interval,
+          customerEmail,
+          source: 'web_checkout',
+          user_agent: 'fgtsagent_web',
+          ...metadata
+        },
+        description: `Assinatura ${plan.name} - ${interval}`,
+        receipt_email: customerEmail
+        // ✅ OBRIGATÓRIO: Configuração para 3D Secure e SCA
+        // NOTA: automatic_payment_methods está habilitado por padrão no Stripe
+        // Quando habilitado, return_url é OBRIGATÓRIO para métodos que podem redirecionar
+      };
+
+      console.log('🔍 Criando E confirmando PaymentIntent:', {
+        ...paymentIntentData,
+        return_url: paymentIntentData.return_url,
+        hasReturnUrl: !!paymentIntentData.return_url,
+        appUrl: process.env.APP_URL,
+        timestamp: new Date().toISOString()
+      });
+
+      const paymentIntent = await stripe.paymentIntents.create(paymentIntentData);
+
+      logger.info(`PaymentIntent criado E confirmado: ${paymentIntent.id} para plano ${planType} (${interval})`);
+      
+      // ✅ PROCESSAR: Resultado da confirmação
+      if (paymentIntent.status === 'requires_action') {
+        logger.info('⚠️ PaymentIntent requer ação adicional (3D Secure):', {
+          id: paymentIntent.id,
+          nextAction: paymentIntent.next_action?.type,
+          timestamp: new Date().toISOString()
+        });
+        
+        return {
+          ...paymentIntent,
+          requiresAction: true,
+          nextAction: paymentIntent.next_action
+        };
+      }
+
+      if (paymentIntent.status === 'succeeded') {
+        logger.info('🎉 PaymentIntent confirmado com sucesso:', {
+          id: paymentIntent.id,
+          amount: paymentIntent.amount,
+          currency: paymentIntent.currency,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      return {
+        id: paymentIntent.id,
+        client_secret: paymentIntent.client_secret,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency,
+        status: paymentIntent.status,
+        requiresAction: paymentIntent.status === 'requires_action',
+        nextAction: paymentIntent.next_action
+      };
+    } catch (error) {
+      logger.error('Erro ao criar E confirmar PaymentIntent:', error);
+      throw new Error(`Falha ao criar E confirmar PaymentIntent: ${error.message}`);
+    }
+  }
+
+  /**
    * Confirma um PaymentIntent no backend (MAIS SEGURO)
    * Usa a chave secreta para máxima segurança
    */
@@ -714,10 +808,10 @@ class StripeService {
         throw new Error('PaymentIntent foi cancelado e não pode ser confirmado');
       }
 
-      // ✅ CONFIRMAR: PaymentIntent com método de pagamento (OBRIGATÓRIO)
+      // ✅ CONFIRMAR: PaymentIntent com método de pagamento + return_url
       const confirmedIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
         payment_method: paymentMethodId,
-        return_url: `${process.env.APP_URL || 'http://localhost:5173'}/payment/return`
+        return_url: `${process.env.APP_URL || 'https://fgtsagent.com.br'}/payment/return`
       });
       
       logger.info('✅ PaymentIntent confirmado com método de pagamento:', {

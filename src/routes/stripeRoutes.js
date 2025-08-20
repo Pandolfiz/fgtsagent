@@ -115,6 +115,81 @@ router.post('/create-checkout-session', requireAuth, validate(checkoutSchema), a
 });
 
 /**
+ * POST /api/stripe/create-and-confirm-payment
+ * Cria E confirma um PaymentIntent em uma única operação
+ * Ideal para checkout nativo com 3D Secure
+ */
+router.post('/create-and-confirm-payment', async (req, res) => {
+  try {
+    const { planType, userEmail, userName, paymentMethodId, interval = 'monthly' } = req.body;
+    
+    // ✅ DEBUG: Log dos dados recebidos
+    console.log('🔍 Dados recebidos na rota create-and-confirm-payment:', {
+      planType,
+      userEmail,
+      userName,
+      paymentMethodId,
+      interval,
+      body: req.body
+    });
+    
+    // Validações básicas
+    if (!planType || !userEmail || !userName || !paymentMethodId) {
+      console.log('❌ Validação falhou:', { planType, userEmail, userName, paymentMethodId });
+      return res.status(400).json({
+        success: false,
+        message: 'planType, userEmail, userName e paymentMethodId são obrigatórios'
+      });
+    }
+    
+    // ✅ DEBUG: Log antes de chamar getPlanInfo
+    console.log('🔍 Chamando getPlanInfo com:', { planType, interval });
+    
+    // Validar se o plano existe
+    const planInfo = stripeService.getPlanInfo(planType, interval);
+    if (!planInfo) {
+      console.log('❌ Plano não encontrado:', { planType, interval });
+      return res.status(400).json({
+        success: false,
+        message: `Plano ${planType} com intervalo ${interval} não encontrado`
+      });
+    }
+    
+    console.log('✅ Plano encontrado:', planInfo);
+    
+    // ✅ NOVO MÉTODO: Criar E confirmar em uma operação
+    const paymentIntent = await stripeService.createAndConfirmPaymentIntent(
+      planType,
+      userEmail,
+      paymentMethodId,
+      {
+        source: 'signup',
+        userName: userName.trim()
+      },
+      interval
+    );
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        clientSecret: paymentIntent.client_secret,
+        paymentIntentId: paymentIntent.id,
+        plan: planInfo,
+        status: paymentIntent.status,
+        requiresAction: paymentIntent.requiresAction,
+        nextAction: paymentIntent.nextAction
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erro ao criar E confirmar PaymentIntent:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Erro ao criar E confirmar PaymentIntent'
+    });
+  }
+});
+
+/**
  * POST /api/stripe/create-payment-intent
  * Cria um Payment Intent para checkout nativo (SEM AUTENTICAÇÃO)
  */
