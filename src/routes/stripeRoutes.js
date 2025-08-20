@@ -122,22 +122,38 @@ router.post('/create-payment-intent', async (req, res) => {
   try {
     const { planType, userEmail, userName, interval = 'monthly' } = req.body;
     
+    // ✅ DEBUG: Log dos dados recebidos
+    console.log('🔍 Dados recebidos na rota create-payment-intent:', {
+      planType,
+      userEmail,
+      userName,
+      interval,
+      body: req.body
+    });
+    
     // Validações básicas
     if (!planType || !userEmail || !userName) {
+      console.log('❌ Validação falhou:', { planType, userEmail, userName });
       return res.status(400).json({
         success: false,
         message: 'planType, userEmail e userName são obrigatórios'
       });
     }
     
+    // ✅ DEBUG: Log antes de chamar getPlanInfo
+    console.log('🔍 Chamando getPlanInfo com:', { planType, interval });
+    
     // Validar se o plano existe
     const planInfo = stripeService.getPlanInfo(planType, interval);
     if (!planInfo) {
+      console.log('❌ Plano não encontrado:', { planType, interval });
       return res.status(400).json({
         success: false,
         message: `Plano ${planType} com intervalo ${interval} não encontrado`
       });
     }
+    
+    console.log('✅ Plano encontrado:', planInfo);
     
     const paymentIntent = await stripeService.createPaymentIntent(
       planType,
@@ -158,7 +174,7 @@ router.post('/create-payment-intent', async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('Erro ao criar Payment Intent para cadastro:', error);
+    console.error('❌ Erro ao criar Payment Intent para cadastro:', error);
     res.status(400).json({
       success: false,
       message: error.message || 'Erro ao criar Payment Intent'

@@ -23,7 +23,7 @@ const CheckoutSuccess = () => {
 
   const verifyPayment = async (sessionId) => {
     try {
-      const response = await axios.post('/api/stripe/verify-payment', {
+      const response = await axios.post('/stripe/verify-payment', {
         sessionId
       });
       

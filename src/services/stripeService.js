@@ -449,16 +449,29 @@ class StripeService {
    * Obtém informações de um plano específico
    */
   getPlanInfo(planType, interval = 'monthly') {
-    const plan = PLANS[planType.toUpperCase()];
+    console.log('🔍 getPlanInfo chamado com:', { planType, interval });
+    console.log('🔍 PLANS disponíveis:', Object.keys(PLANS));
+    
+    const planKey = planType.toUpperCase();
+    console.log('🔍 Procurando plano com chave:', planKey);
+    
+    const plan = PLANS[planKey];
     if (!plan) {
-      throw new Error('Plano não encontrado');
+      console.log('❌ Plano não encontrado para chave:', planKey);
+      throw new Error(`Plano ${planType} não encontrado`);
     }
-
+    
+    console.log('✅ Plano encontrado:', plan.name);
+    console.log('🔍 Preços disponíveis:', Object.keys(plan.prices));
+    
     const priceConfig = plan.prices[interval];
     if (!priceConfig) {
+      console.log('❌ Intervalo não encontrado:', interval);
       throw new Error(`Intervalo de pagamento '${interval}' não suportado para este plano`);
     }
-
+    
+    console.log('✅ Configuração de preço encontrada:', priceConfig);
+    
     return {
       id: planType.toLowerCase(),
       name: plan.name,
