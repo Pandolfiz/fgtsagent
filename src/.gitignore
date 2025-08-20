@@ -1,0 +1,2 @@
+# Não versionar arquivos de ambiente nesta pasta
+.env

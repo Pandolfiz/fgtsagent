@@ -20,3 +20,12 @@ node_modules
 *.njsproj
 *.sln
 *.sw?
+
+# Arquivos de ambiente (.env) - NÃO versionar, contém dados sensíveis!
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+.env.staging
+.env.*.local
