@@ -546,6 +546,90 @@ router.post('/retry-payment', async (req, res) => {
 });
 
 /**
+ * POST /api/stripe/confirm-payment
+ * Confirma um pagamento no backend (MAIS SEGURO)
+ */
+router.post('/confirm-payment', async (req, res) => {
+  try {
+    const { paymentIntentId, paymentMethodId } = req.body;
+    
+    if (!paymentIntentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'paymentIntentId é obrigatório'
+      });
+    }
+    
+    logger.info('🔐 Confirmando pagamento no backend:', {
+      paymentIntentId,
+      hasPaymentMethod: !!paymentMethodId,
+      timestamp: new Date().toISOString()
+    });
+    
+    // ✅ CONFIRMAR: Pagamento no backend usando chave secreta
+    const result = await stripeService.confirmPaymentIntent(
+      paymentIntentId,
+      paymentMethodId
+    );
+    
+    logger.info('✅ Pagamento confirmado com sucesso:', {
+      paymentIntentId,
+      status: result.status,
+      timestamp: new Date().toISOString()
+    });
+    
+    res.status(200).json({
+      success: true,
+      message: 'Pagamento confirmado com sucesso',
+      data: result
+    });
+    
+  } catch (error) {
+    logger.error('❌ Erro ao confirmar pagamento:', {
+      error: error.message,
+      type: error.type,
+      code: error.code,
+      timestamp: new Date().toISOString()
+    });
+    
+    // ✅ TRATAMENTO ESPECÍFICO: Erros do Stripe
+    if (error.type === 'StripeCardError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Erro no cartão de crédito',
+        error: {
+          type: error.type,
+          code: error.code,
+          message: error.message,
+          decline_code: error.decline_code
+        }
+      });
+    }
+    
+    if (error.type === 'StripeInvalidRequestError') {
+      return res.status(400).json({
+        success: false,
+        message: 'Requisição inválida para o Stripe',
+        error: {
+          type: error.type,
+          code: error.code,
+          message: error.message
+        }
+      });
+    }
+    
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno ao confirmar pagamento',
+      error: {
+        type: error.type || 'UnknownError',
+        message: error.message
+      }
+    });
+  }
+});
+
+/**
  * Middleware para tratamento de erros específicos do Stripe
  */
 router.use((error, req, res, next) => {
