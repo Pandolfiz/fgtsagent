@@ -26,8 +26,8 @@ nano .env  # Editar com suas credenciais
 **Arquivo `src/.env`:**
 ```env
 # STRIPE (OBRIGATÓRIO)
-STRIPE_SECRET_KEY=sk_live_sua_chave_secreta_de_producao
-STRIPE_PUBLISHABLE_KEY=pk_live_sua_chave_publica_de_producao
+STRIPE_SECRET_KEY=sk_live_YOUR_SECRET_KEY_chave_secreta_de_producao
+STRIPE_PUBLISHABLE_KEY=pk_live_YOUR_PUBLISHABLE_KEY_chave_publica_de_producao
 STRIPE_WEBHOOK_SECRET=whsec_seu_webhook_secret
 
 # APLICAÇÃO
@@ -52,7 +52,7 @@ nano .env  # Editar com suas credenciais
 **Arquivo `frontend/.env`:**
 ```env
 # STRIPE (OBRIGATÓRIO)
-VITE_STRIPE_PUBLISHABLE_KEY=pk_live_sua_chave_publica_de_producao
+VITE_STRIPE_PUBLISHABLE_KEY=pk_live_YOUR_PUBLISHABLE_KEY_chave_publica_de_producao
 
 # API
 VITE_API_URL=https://fgtsagent.com.br

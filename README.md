@@ -194,8 +194,8 @@ SUPABASE_SERVICE_KEY=sua-chave-servico
 SUPABASE_JWT_SECRET=sua-jwt-secret
 
 # STRIPE (Obrigatório)
-STRIPE_SECRET_KEY=sk_live_sua_chave_secreta
-STRIPE_PUBLISHABLE_KEY=pk_live_sua_chave_publica
+STRIPE_SECRET_KEY=sk_live_YOUR_SECRET_KEY_chave_secreta
+STRIPE_PUBLISHABLE_KEY=pk_live_YOUR_PUBLISHABLE_KEY_chave_publica
 STRIPE_WEBHOOK_SECRET=whsec_sua_chave_webhook
 
 # APLICAÇÃO

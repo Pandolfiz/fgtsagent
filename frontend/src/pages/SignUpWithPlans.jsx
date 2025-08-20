@@ -374,12 +374,20 @@ const SignUpWithPlans = () => {
   );
 
   const renderStep3 = () => (
-    <StripeCheckout
-      selectedPlan={selectedPlan}
-      userData={userData}
-      onSuccess={handleCheckoutSuccess}
-      onError={handleCheckoutError}
-    />
+    <div className="space-y-4">
+      {/* ✅ DEBUG: Indicador visual de que estamos no step 3 */}
+      <div className="bg-green-900/20 border border-green-400/30 rounded-lg p-4">
+        <h3 className="text-green-200 text-sm mb-2">✅ Step 3: Checkout de Pagamento</h3>
+        <p className="text-green-300 text-xs">Renderizando componente StripeCheckout...</p>
+      </div>
+      
+      <StripeCheckout
+        selectedPlan={selectedPlan}
+        userData={userData}
+        onSuccess={handleCheckoutSuccess}
+        onError={handleCheckoutError}
+      />
+    </div>
   );
 
   const renderStepContent = () => {

@@ -19,27 +19,22 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
 
   console.log('🔍 Estados do CheckoutForm:', { stripe: !!stripe, elements: !!elements, loading, error, success, selectedInterval, planDetails });
 
-  // ✅ FALLBACK: Renderização de debug para identificar problemas
-  if (!stripe || !elements) {
-    console.log('⚠️ Stripe ou Elements não carregados:', { stripe: !!stripe, elements: !!elements });
-    return (
-      <div className="text-center py-8">
-        <AlertCircle className="w-16 h-16 text-yellow-400 mx-auto mb-4" />
-        <h3 className="text-xl font-semibold text-white mb-2">
-          Carregando Stripe...
-        </h3>
-        <p className="text-cyan-200">
-          Aguarde enquanto carregamos o sistema de pagamento
-        </p>
-        <div className="mt-4 p-3 bg-gray-800/50 rounded text-xs text-gray-300">
-          <p>Debug: stripe = {stripe ? 'Carregado' : 'Não carregado'}</p>
-          <p>Debug: elements = {elements ? 'Carregado' : 'Não carregado'}</p>
-        </div>
-      </div>
-    );
-  }
+  // ✅ DEBUG: Monitorar carregamento do Stripe (SEMPRE EXECUTAR)
+  useEffect(() => {
+    console.log('🔄 useEffect CheckoutForm - Stripe status:', {
+      stripe: !!stripe,
+      elements: !!elements,
+      timestamp: new Date().toISOString()
+    });
+    
+    if (stripe && elements) {
+      console.log('✅ Stripe e Elements carregados com sucesso');
+    } else {
+      console.log('⏳ Aguardando carregamento do Stripe...');
+    }
+  }, [stripe, elements]);
 
-  // Carregar detalhes do plano quando selecionado
+  // ✅ DEBUG: Carregar detalhes do plano (SEMPRE EXECUTAR)
   useEffect(() => {
     if (selectedPlan) {
       const loadPlanDetails = async () => {
@@ -67,6 +62,46 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
       loadPlanDetails();
     }
   }, [selectedPlan, onError]);
+
+  // ✅ TESTE VISUAL: Garantir que o componente está sendo renderizado
+  console.log('🎨 Renderizando CheckoutForm...');
+
+  // ✅ DEBUG: Renderização de debug para identificar problemas
+  if (!stripe || !elements) {
+    console.log('⚠️ Stripe ou Elements não carregados:', { stripe: !!stripe, elements: !!elements });
+    return (
+      <div 
+        className="text-center py-8 bg-gray-800/50 rounded-lg border border-yellow-400/30"
+        style={{
+          position: 'relative',
+          zIndex: 1000,
+          backgroundColor: 'rgba(31, 41, 55, 0.8)',
+          border: '2px solid rgba(250, 204, 21, 0.5)',
+          borderRadius: '12px',
+          padding: '32px',
+          margin: '16px 0',
+          minHeight: '200px',
+          display: 'flex',
+          flexDirection: 'column',
+          justifyContent: 'center',
+          alignItems: 'center'
+        }}
+      >
+        <AlertCircle className="w-16 h-16 text-yellow-400 mb-4" />
+        <h3 className="text-xl font-semibold text-white mb-2">
+          Carregando Stripe...
+        </h3>
+        <p className="text-cyan-200 mb-4">
+          Aguarde enquanto carregamos o sistema de pagamento
+        </p>
+        <div className="p-3 bg-gray-900/80 rounded text-xs text-gray-300 border border-gray-600">
+          <p>Debug: stripe = {stripe ? 'Carregado' : 'Não carregado'}</p>
+          <p>Debug: elements = {elements ? 'Carregado' : 'Não carregado'}</p>
+          <p>Debug: stripePromise = {stripePromise ? 'Presente' : 'Ausente'}</p>
+        </div>
+      </div>
+    );
+  }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -314,6 +349,30 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
 
   return (
     <div className="space-y-6">
+      {/* ✅ TESTE VISUAL: Garantir que o componente está sendo renderizado */}
+      <div 
+        className="bg-purple-900/20 border border-purple-400/30 rounded-lg p-4"
+        style={{
+          position: 'relative',
+          zIndex: 1000,
+          backgroundColor: 'rgba(88, 28, 135, 0.3)',
+          border: '2px solid rgba(168, 85, 247, 0.5)',
+          borderRadius: '12px',
+          padding: '20px',
+          margin: '16px 0',
+          minHeight: '120px'
+        }}
+      >
+        <h3 className="text-purple-200 text-lg font-semibold mb-2">🎨 CheckoutForm Renderizado com Sucesso</h3>
+        <p className="text-purple-300 text-sm mb-3">Stripe e Elements carregados corretamente</p>
+        <div className="grid grid-cols-2 gap-2 text-xs text-purple-400">
+          <p><strong>selectedPlan:</strong> {selectedPlan}</p>
+          <p><strong>userData:</strong> {userData ? 'Presente' : 'Ausente'}</p>
+          <p><strong>stripe:</strong> {stripe ? '✅ Carregado' : '❌ Não carregado'}</p>
+          <p><strong>elements:</strong> {elements ? '✅ Carregado' : '❌ Não carregado'}</p>
+        </div>
+      </div>
+
       {/* Seleção de Intervalo de Pagamento */}
       <div className="bg-white/10 p-4 rounded-lg border border-cyan-400/20">
         <h3 className="font-medium text-cyan-200 mb-3 text-sm">Escolha o Intervalo de Pagamento</h3>
@@ -443,15 +502,66 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
 const StripeCheckout = ({ selectedPlan, userData, onSuccess, onError }) => {
   console.log('🔍 StripeCheckout renderizando com:', { selectedPlan, userData, onSuccess, onError });
   
+  // ✅ TESTE VISUAL: Garantir que o componente está sendo renderizado
+  console.log('🎨 Renderizando StripeCheckout...');
+  
+  // ✅ DEBUG: Verificar se stripePromise está carregado
+  if (!stripePromise) {
+    console.error('❌ stripePromise não está carregado');
+    return (
+      <div className="text-center py-8 bg-red-900/50 rounded-lg border border-red-400/30">
+        <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+        <h3 className="text-xl font-semibold text-white mb-2">
+          Erro na Configuração do Stripe
+        </h3>
+        <p className="text-red-200">
+          Não foi possível carregar o sistema de pagamento
+        </p>
+        <div className="mt-4 p-3 bg-gray-800/50 rounded text-xs text-gray-300">
+          <p>Debug: stripePromise = {stripePromise ? 'Presente' : 'Ausente'}</p>
+          <p>Debug: VITE_STRIPE_PUBLISHABLE_KEY = {import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ? 'Configurada' : 'Não configurada'}</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // ✅ SEMPRE renderizar algo visual
   return (
-    <Elements stripe={stripePromise}>
-      <CheckoutForm
-        selectedPlan={selectedPlan}
-        userData={userData}
-        onSuccess={onSuccess}
-        onError={onError}
-      />
-    </Elements>
+    <div className="space-y-4">
+      {/* ✅ TESTE VISUAL: Garantir que o componente está sendo renderizado */}
+      <div 
+        className="bg-blue-900/20 border border-blue-400/30 rounded-lg p-4"
+        style={{
+          position: 'relative',
+          zIndex: 1000,
+          backgroundColor: 'rgba(30, 58, 138, 0.3)',
+          border: '2px solid rgba(96, 165, 250, 0.5)',
+          borderRadius: '12px',
+          padding: '20px',
+          margin: '16px 0',
+          minHeight: '120px'
+        }}
+      >
+        <h3 className="text-blue-200 text-lg font-semibold mb-2">🔍 Debug: StripeCheckout Renderizado</h3>
+        <p className="text-blue-300 text-sm mb-3">Componente carregado com sucesso</p>
+        <div className="grid grid-cols-2 gap-2 text-xs text-blue-400">
+          <p><strong>selectedPlan:</strong> {selectedPlan}</p>
+          <p><strong>userData:</strong> {userData ? 'Presente' : 'Ausente'}</p>
+          <p><strong>stripePromise:</strong> {stripePromise ? '✅ Carregado' : '❌ Não carregado'}</p>
+          <p><strong>timestamp:</strong> {new Date().toLocaleTimeString()}</p>
+        </div>
+      </div>
+      
+      {/* ✅ Renderizar Elements apenas se stripePromise estiver pronto */}
+      <Elements stripe={stripePromise}>
+        <CheckoutForm
+          selectedPlan={selectedPlan}
+          userData={userData}
+          onSuccess={onSuccess}
+          onError={onError}
+        />
+      </Elements>
+    </div>
   );
 };
 
