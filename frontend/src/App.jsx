@@ -5,6 +5,7 @@ import AgentsConfigPage from './pages/AgentsConfigPage';
 import AgentView from './pages/AgentView.jsx';
 import SignUpWithPlans from './pages/SignUpWithPlans.jsx';
 import SignupSuccess from './pages/SignupSuccess.jsx';
+import CheckoutSuccess from './pages/CheckoutSuccess.jsx';
 import Profile from './pages/Profile.jsx';
 // import Settings from './pages/Settings.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -13,6 +14,7 @@ import Leads from './pages/Leads.jsx';
 import EvolutionCredentialsRoute from './pages/whatsapp-credentials';
 import PartnerCredentialsRoute from './pages/partner-credentials';
 import AuthCallback from './pages/AuthCallback.jsx';
+import PaymentReturn from './pages/PaymentReturn.jsx';
 import TermsOfUse from './pages/TermsOfUse.jsx';
 import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
 
@@ -30,6 +32,7 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<SignUpWithPlans />} />
         <Route path="/signup-success" element={<SignupSuccess />} />
+        <Route path="/payment/success" element={<CheckoutSuccess />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/leads" element={<Leads />} />
@@ -49,6 +52,9 @@ export default function App() {
 
         {/* Rota de callback para compatibilidade (agora apenas redireciona para login) */}
         <Route path="/auth/callback" element={<AuthCallback />} />
+        
+        {/* Rota de retorno do pagamento 3D Secure */}
+        <Route path="/payment/return" element={<PaymentReturn />} />
 
         {/* Rotas de erro */}
         <Route path="/error" element={<ErrorPage />} />

@@ -245,7 +245,8 @@ const validateCSRF = (req, res, next) => {
     'https://localhost:3000',
     'http://localhost:3000',
     'https://fgtsagent.com.br',
-    'https://www.fgtsagent.com.br'
+    'https://www.fgtsagent.com.br',
+    'https://m.stripe.com',
   ];
   
   const isAllowedOrigin = allowedOrigins.some(allowed => 

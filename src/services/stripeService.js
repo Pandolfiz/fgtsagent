@@ -199,11 +199,7 @@ class StripeService {
       const paymentIntentData = {
         amount: priceConfig.amount,
         currency: 'brl',
-        // ✅ CORRIGIR: Remover payment_method_types conflitante
-        // payment_method_types: ['card'], // ❌ REMOVIDO - conflita com automatic_payment_methods
-        // ✅ CONFIGURAÇÃO: Captura automática
         capture_method: 'automatic',
-        // ✅ CONFIGURAÇÃO: Metadados para Radar
         metadata: {
           plan: planType,
           interval: interval,
@@ -212,15 +208,11 @@ class StripeService {
           user_agent: 'fgtsagent_web',
           ...metadata
         },
-        // ✅ CONFIGURAÇÃO: Descrição clara
         description: `Assinatura ${plan.name} - ${interval}`,
-        // ✅ CONFIGURAÇÃO: Email de recibo
         receipt_email: customerEmail,
-        // ✅ CONFIGURAÇÃO: Configurações de 3D Secure (sem conflito)
-        automatic_payment_methods: {
-          enabled: true,
-          allow_redirects: 'always'
-        }
+        payment_method_types: ['card']
+        // ✅ NOTA: confirm e return_url serão configurados na confirmação
+        // quando o frontend enviar o PaymentMethod ID real
       };
 
       console.log('🔍 Criando PaymentIntent com configuração anti-fraude:', paymentIntentData);
@@ -685,8 +677,18 @@ class StripeService {
    */
   async confirmPaymentIntent(paymentIntentId, paymentMethodId = null) {
     try {
+      // ✅ VALIDAÇÃO: Verificar se os parâmetros estão corretos
+      if (!paymentIntentId) {
+        throw new Error('paymentIntentId é obrigatório');
+      }
+      
+      if (!paymentMethodId) {
+        throw new Error('paymentMethodId é obrigatório para confirmação');
+      }
+      
       logger.info('🔐 Confirmando PaymentIntent no backend:', {
         paymentIntentId,
+        paymentMethodId,
         hasPaymentMethod: !!paymentMethodId,
         timestamp: new Date().toISOString()
       });
@@ -712,31 +714,18 @@ class StripeService {
         throw new Error('PaymentIntent foi cancelado e não pode ser confirmado');
       }
 
-      // ✅ CONFIRMAR: PaymentIntent com método de pagamento se fornecido
-      let confirmedIntent;
+      // ✅ CONFIRMAR: PaymentIntent com método de pagamento (OBRIGATÓRIO)
+      const confirmedIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
+        payment_method: paymentMethodId,
+        return_url: `${process.env.APP_URL || 'http://localhost:5173'}/payment/return`
+      });
       
-      if (paymentMethodId) {
-        // Confirmar com método de pagamento específico
-        confirmedIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
-          payment_method: paymentMethodId
-        });
-        
-        logger.info('✅ PaymentIntent confirmado com método de pagamento:', {
-          id: confirmedIntent.id,
-          status: confirmedIntent.status,
-          paymentMethod: paymentMethodId,
-          timestamp: new Date().toISOString()
-        });
-      } else {
-        // Confirmar sem método de pagamento (usar o já anexado)
-        confirmedIntent = await stripe.paymentIntents.confirm(paymentIntentId);
-        
-        logger.info('✅ PaymentIntent confirmado sem método de pagamento:', {
-          id: confirmedIntent.id,
-          status: confirmedIntent.status,
-          timestamp: new Date().toISOString()
-        });
-      }
+      logger.info('✅ PaymentIntent confirmado com método de pagamento:', {
+        id: confirmedIntent.id,
+        status: confirmedIntent.status,
+        paymentMethod: paymentMethodId,
+        timestamp: new Date().toISOString()
+      });
 
       // ✅ PROCESSAR: Resultado da confirmação
       if (confirmedIntent.status === 'requires_action') {

@@ -553,6 +553,15 @@ router.post('/confirm-payment', async (req, res) => {
   try {
     const { paymentIntentId, paymentMethodId } = req.body;
     
+    // ✅ DEBUG: Log completo dos dados recebidos
+    logger.info('📥 Dados recebidos na confirmação:', {
+      body: req.body,
+      paymentIntentId,
+      paymentMethodId,
+      hasPaymentMethod: !!paymentMethodId,
+      timestamp: new Date().toISOString()
+    });
+    
     if (!paymentIntentId) {
       return res.status(400).json({
         success: false,
@@ -560,8 +569,16 @@ router.post('/confirm-payment', async (req, res) => {
       });
     }
     
+    if (!paymentMethodId) {
+      return res.status(400).json({
+        success: false,
+        message: 'paymentMethodId é obrigatório'
+      });
+    }
+    
     logger.info('🔐 Confirmando pagamento no backend:', {
       paymentIntentId,
+      paymentMethodId,
       hasPaymentMethod: !!paymentMethodId,
       timestamp: new Date().toISOString()
     });

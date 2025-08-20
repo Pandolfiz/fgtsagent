@@ -149,15 +149,51 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
         throw new Error(submitError.message);
       }
 
+      // ✅ CRIAR: PaymentMethod com os dados do cartão
+      console.log('💳 Criando PaymentMethod...');
+      const { paymentMethod, error: paymentMethodError } = await stripe.createPaymentMethod({
+        type: 'card',
+        card: elements.getElement(CardElement),
+        billing_details: {
+          name: `${userData.first_name} ${userData.last_name}`,
+          email: userData.email,
+        },
+      });
+
+      if (paymentMethodError) {
+        console.error('❌ Erro ao criar PaymentMethod:', paymentMethodError);
+        throw new Error(paymentMethodError.message);
+      }
+
+      console.log('✅ PaymentMethod criado:', paymentMethod.id);
+
       // ✅ MÉTODO SEGURO: Confirmar pagamento via backend (MAIS SEGURO)
       console.log('🔐 Confirmando pagamento via backend...');
       
       try {
         // ✅ BACKEND: Enviar dados para confirmação segura
-        const confirmResponse = await api.post('/stripe/confirm-payment', {
-          paymentIntentId: clientSecret.split('_secret_')[0], // Extrair ID do PaymentIntent
-          paymentMethodId: null // Será criado pelo backend
-        });
+        // ✅ MELHORAR: Extração mais robusta do PaymentIntent ID
+        const paymentIntentId = clientSecret.includes('_secret_') 
+          ? clientSecret.split('_secret_')[0] 
+          : clientSecret;
+          
+        console.log('🔍 PaymentIntent ID extraído:', paymentIntentId);
+        console.log('🔍 PaymentMethod ID:', paymentMethod.id);
+        console.log('🔍 Client Secret completo:', clientSecret);
+        
+        // ✅ VALIDAÇÃO: Verificar se os IDs estão corretos
+        if (!paymentIntentId || !paymentMethod.id) {
+          throw new Error('IDs inválidos para confirmação do pagamento');
+        }
+        
+        const confirmData = {
+          paymentIntentId: paymentIntentId,
+          paymentMethodId: paymentMethod.id
+        };
+        
+        console.log('📤 Dados enviados para confirmação:', confirmData);
+        
+        const confirmResponse = await api.post('/stripe/confirm-payment', confirmData);
 
         console.log('✅ Resposta da confirmação via backend:', confirmResponse.data);
 
