@@ -39,7 +39,7 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
     if (selectedPlan) {
       const loadPlanDetails = async () => {
         try {
-          const response = await api.get(`/api/stripe/plans/${selectedPlan}`);
+          const response = await api.get(`/stripe/plans/${selectedPlan}`);
           // ✅ CORRIGIR: A API retorna {data: {...}}, então precisamos acessar response.data.data
           const planData = response.data.data || response.data;
           
@@ -117,7 +117,7 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
       console.log('🧪 Iniciando checkout nativo...');
       
       // 1. Criar PaymentIntent no backend
-      const response = await api.post('/api/stripe/create-payment-intent', {
+      const response = await api.post('/stripe/create-payment-intent', {
         planType: selectedPlan,
         userEmail: userData.email,
         userName: `${userData.first_name} ${userData.last_name}`,

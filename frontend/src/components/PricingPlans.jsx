@@ -15,10 +15,24 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
   const fetchPlans = async () => {
     try {
       const response = await api.get('/stripe/plans');
-      setPlans(response.data.data);
+      console.log('🔍 Resposta da API plans:', response.data);
+      
+      // ✅ VERIFICAÇÃO DE SEGURANÇA: Garantir que temos dados válidos
+      const plansData = response.data?.data || response.data || [];
+      
+      if (!Array.isArray(plansData)) {
+        console.error('❌ Dados de planos não são um array:', plansData);
+        setError('Formato de dados inválido');
+        setPlans([]);
+        return;
+      }
+      
+      setPlans(plansData);
+      console.log('✅ Planos carregados:', plansData);
     } catch (err) {
+      console.error('❌ Erro ao buscar planos:', err);
       setError('Erro ao carregar planos');
-      console.error('Erro ao buscar planos:', err);
+      setPlans([]); // Garantir que plans seja sempre um array
     } finally {
       setLoading(false);
     }
@@ -86,6 +100,21 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
     return (
       <div className="text-center py-12">
         <p className="text-red-300 mb-4">{error}</p>
+        <button
+          onClick={fetchPlans}
+          className="bg-gradient-to-r from-cyan-500 to-emerald-500 text-white px-4 py-2 rounded-lg hover:from-cyan-600 hover:to-emerald-600 transition-all duration-300"
+        >
+          Tentar Novamente
+        </button>
+      </div>
+    );
+  }
+
+  // ✅ VERIFICAÇÃO DE SEGURANÇA: Garantir que plans seja sempre um array
+  if (!plans || !Array.isArray(plans) || plans.length === 0) {
+    return (
+      <div className="text-center py-12">
+        <p className="text-yellow-300 mb-4">Nenhum plano disponível no momento</p>
         <button
           onClick={fetchPlans}
           className="bg-gradient-to-r from-cyan-500 to-emerald-500 text-white px-4 py-2 rounded-lg hover:from-cyan-600 hover:to-emerald-600 transition-all duration-300"
