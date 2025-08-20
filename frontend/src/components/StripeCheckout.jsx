@@ -172,10 +172,28 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
       
       try {
         // ✅ BACKEND: Enviar dados para confirmação segura
-        const confirmResponse = await api.post('/stripe/confirm-payment', {
-          paymentIntentId: clientSecret.split('_secret_')[0], // Extrair ID do PaymentIntent
-          paymentMethodId: paymentMethod.id // ✅ AGORA: Enviar PaymentMethod ID
-        });
+        // ✅ MELHORAR: Extração mais robusta do PaymentIntent ID
+        const paymentIntentId = clientSecret.includes('_secret_') 
+          ? clientSecret.split('_secret_')[0] 
+          : clientSecret;
+          
+        console.log('🔍 PaymentIntent ID extraído:', paymentIntentId);
+        console.log('🔍 PaymentMethod ID:', paymentMethod.id);
+        console.log('🔍 Client Secret completo:', clientSecret);
+        
+        // ✅ VALIDAÇÃO: Verificar se os IDs estão corretos
+        if (!paymentIntentId || !paymentMethod.id) {
+          throw new Error('IDs inválidos para confirmação do pagamento');
+        }
+        
+        const confirmData = {
+          paymentIntentId: paymentIntentId,
+          paymentMethodId: paymentMethod.id
+        };
+        
+        console.log('📤 Dados enviados para confirmação:', confirmData);
+        
+        const confirmResponse = await api.post('/stripe/confirm-payment', confirmData);
 
         console.log('✅ Resposta da confirmação via backend:', confirmResponse.data);
 
