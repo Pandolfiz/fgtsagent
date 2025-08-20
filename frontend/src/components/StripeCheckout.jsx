@@ -116,33 +116,7 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
       // ✅ CHECKOUT NATIVO: Criar PaymentIntent em vez de sessão de checkout
       console.log('🧪 Iniciando checkout nativo...');
       
-      // 1. Criar PaymentIntent no backend
-      const response = await api.post('/stripe/create-payment-intent', {
-        planType: selectedPlan,
-        userEmail: userData.email,
-        userName: `${userData.first_name} ${userData.last_name}`,
-        interval: selectedInterval
-      });
-
-      // ✅ DEBUG: Verificar resposta da API
-      console.log('🔍 Resposta da API create-payment-intent:', {
-        response: response.data,
-        hasClientSecret: !!response.data?.data?.clientSecret,
-        clientSecret: response.data?.data?.clientSecret
-      });
-
-      // ✅ CORRIGIR: A API retorna {success: true, data: {clientSecret: ...}}
-      const { clientSecret } = response.data.data || {};
-      
-      // ✅ VERIFICAR SE TEM CLIENT SECRET
-      if (!clientSecret) {
-        console.error('❌ Client Secret não encontrado na resposta:', response.data);
-        throw new Error('Client Secret não retornado pela API');
-      }
-
-      console.log('✅ Client Secret obtido:', clientSecret);
-
-      // 2. ✅ FLUXO CORRETO: Primeiro criar PaymentMethod, depois confirmar
+      // 1. ✅ FLUXO CORRETO: Primeiro criar PaymentMethod, depois criar E confirmar PaymentIntent
       const { error: submitError } = await elements.submit();
       if (submitError) {
         console.error('❌ Erro ao submeter elementos:', submitError);
@@ -167,102 +141,73 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
 
       console.log('✅ PaymentMethod criado:', paymentMethod.id);
 
-      // ✅ MÉTODO SEGURO: Confirmar pagamento via backend (MAIS SEGURO)
-      console.log('🔐 Confirmando pagamento via backend...');
+      // 2. ✅ NOVA ROTA: Criar E confirmar PaymentIntent em uma operação
+      const response = await api.post('/stripe/create-and-confirm-payment', {
+        planType: selectedPlan,
+        userEmail: userData.email,
+        userName: `${userData.first_name} ${userData.last_name}`,
+        paymentMethodId: paymentMethod.id,
+        interval: selectedInterval
+      });
+
+      // ✅ DEBUG: Verificar resposta da API
+      console.log('🔍 Resposta da API create-payment-intent:', {
+        response: response.data,
+        hasClientSecret: !!response.data?.data?.clientSecret,
+        clientSecret: response.data?.data?.clientSecret
+      });
+
+      // ✅ CORRIGIR: A API retorna {success: true, data: {clientSecret: ...}}
+      const { clientSecret } = response.data.data || {};
       
-      try {
-        // ✅ BACKEND: Enviar dados para confirmação segura
-        // ✅ MELHORAR: Extração mais robusta do PaymentIntent ID
-        const paymentIntentId = clientSecret.includes('_secret_') 
-          ? clientSecret.split('_secret_')[0] 
-          : clientSecret;
-          
-        console.log('🔍 PaymentIntent ID extraído:', paymentIntentId);
-        console.log('🔍 PaymentMethod ID:', paymentMethod.id);
-        console.log('🔍 Client Secret completo:', clientSecret);
-        
-        // ✅ VALIDAÇÃO: Verificar se os IDs estão corretos
-        if (!paymentIntentId || !paymentMethod.id) {
-          throw new Error('IDs inválidos para confirmação do pagamento');
-        }
-        
-        const confirmData = {
-          paymentIntentId: paymentIntentId,
-          paymentMethodId: paymentMethod.id
-        };
-        
-        console.log('📤 Dados enviados para confirmação:', confirmData);
-        
-        const confirmResponse = await api.post('/stripe/confirm-payment', confirmData);
+      // ✅ VERIFICAR SE TEM CLIENT SECRET
+      if (!clientSecret) {
+        console.error('❌ Client Secret não encontrado na resposta:', response.data);
+        throw new Error('Client Secret não retornado pela API');
+      }
 
-        console.log('✅ Resposta da confirmação via backend:', confirmResponse.data);
+      console.log('✅ Client Secret obtido:', clientSecret);
 
-        if (confirmResponse.data.success) {
-          const paymentIntent = confirmResponse.data.data;
+
+
+      // ✅ PROCESSAR: Resultado da criação E confirmação
+      console.log('✅ Resposta da criação E confirmação:', response.data);
+
+      if (response.data.success) {
+        const paymentIntent = response.data.data;
+        
+        // ✅ VERIFICAR: Status do PaymentIntent
+        console.log('🔍 Status do PaymentIntent:', paymentIntent?.status);
+        
+        // ✅ FLUXO MELHORADO: Tratamento específico para produção
+        if (paymentIntent?.status === 'succeeded') {
+          console.log('✅ Pagamento criado E confirmado com sucesso:', paymentIntent);
+          setSuccess(true);
+          if (onSuccess) onSuccess(paymentIntent);
+        } else if (paymentIntent?.status === 'requires_action') {
+          console.log('⚠️ PaymentIntent requer ação adicional (3D Secure)');
+          console.log('ℹ️ Aguardando autenticação bancária...');
           
-          // ✅ VERIFICAR: Status do PaymentIntent
-          console.log('🔍 Status do PaymentIntent:', paymentIntent?.status);
-          
-          // ✅ FLUXO MELHORADO: Tratamento específico para produção
-          if (paymentIntent?.status === 'succeeded') {
-            console.log('✅ Pagamento confirmado via backend:', paymentIntent);
-            setSuccess(true);
-            if (onSuccess) onSuccess(paymentIntent);
-          } else if (paymentIntent?.status === 'requires_action') {
-            console.log('⚠️ PaymentIntent requer ação adicional (3D Secure)');
-            console.log('ℹ️ Aguardando autenticação bancária...');
-            
-            // ✅ PRODUÇÃO: Aguardar confirmação do 3D Secure
-            // O Stripe vai redirecionar automaticamente se necessário
-            return;
-          } else if (paymentIntent?.status === 'requires_payment_method') {
-            console.log('⚠️ PaymentIntent requer método de pagamento válido');
-            throw new Error('Método de pagamento inválido. Tente novamente.');
-          } else if (paymentIntent?.status === 'canceled') {
-            console.log('⚠️ PaymentIntent cancelado');
-            throw new Error('Pagamento cancelado. Tente novamente.');
-          } else if (paymentIntent?.status === 'processing') {
-            console.log('⏳ PaymentIntent em processamento...');
-            // ✅ PRODUÇÃO: Aguardar processamento
-            return;
-          } else {
-            console.log('⚠️ PaymentIntent com status inesperado:', paymentIntent?.status);
-            // ✅ PRODUÇÃO: Redirecionar para página de sucesso se necessário
-            window.location.href = `${window.location.origin}/signup-success`;
-          }
+          // ✅ PRODUÇÃO: Aguardar confirmação do 3D Secure
+          // O Stripe vai redirecionar automaticamente se necessário
+          return;
+        } else if (paymentIntent?.status === 'requires_payment_method') {
+          console.log('⚠️ PaymentIntent requer método de pagamento válido');
+          throw new Error('Método de pagamento inválido. Tente novamente.');
+        } else if (paymentIntent?.status === 'canceled') {
+          console.log('⚠️ PaymentIntent cancelado');
+          throw new Error('Pagamento cancelado. Tente novamente.');
+        } else if (paymentIntent?.status === 'processing') {
+          console.log('⏳ PaymentIntent em processamento...');
+          // ✅ PRODUÇÃO: Aguardar processamento
+          return;
         } else {
-          throw new Error(confirmResponse.data.message || 'Erro na confirmação do pagamento');
+          console.log('⚠️ PaymentIntent com status inesperado:', paymentIntent?.status);
+          // ✅ PRODUÇÃO: Redirecionar para página de sucesso se necessário
+          window.location.href = `${window.location.origin}/signup-success`;
         }
-
-      } catch (confirmError) {
-        console.error('❌ Erro na confirmação via backend:', confirmError);
-        
-        // ✅ TRATAMENTO: Erros específicos do backend
-        if (confirmError.response?.data?.error) {
-          const backendError = confirmError.response.data.error;
-          
-          if (backendError.code === 'payment_intent_authentication_failure') {
-            throw new Error('Verificação de segurança falhou. Tente novamente ou use outro cartão.');
-          } else if (backendError.code === 'card_declined') {
-            if (backendError.decline_code === 'fraudulent') {
-              throw new Error('Pagamento bloqueado por segurança. Use outro cartão ou entre em contato com seu banco.');
-            } else if (backendError.decline_code === 'insufficient_funds') {
-              throw new Error('Saldo insuficiente no cartão.');
-            } else if (backendError.decline_code === 'expired_card') {
-              throw new Error('Cartão expirado. Use um cartão válido.');
-            } else if (backendError.decline_code === 'incorrect_cvc') {
-              throw new Error('Código de segurança incorreto.');
-            } else if (backendError.decline_code === 'processing_error') {
-              throw new Error('Erro no processamento. Tente novamente em alguns instantes.');
-            } else {
-              throw new Error('Cartão recusado. Verifique os dados ou use outro método de pagamento.');
-            }
-          } else {
-            throw new Error(backendError.message || 'Erro no cartão de crédito');
-          }
-        } else {
-          throw new Error(confirmError.message || 'Erro na confirmação do pagamento');
-        }
+      } else {
+        throw new Error(response.data.message || 'Erro na criação E confirmação do pagamento');
       }
 
       // ✅ REMOVIDO: Código antigo que chamava Stripe diretamente
