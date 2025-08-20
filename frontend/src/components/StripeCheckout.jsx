@@ -1,29 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
-import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { CreditCard, Lock, CheckCircle, AlertCircle, Calendar, Percent } from 'lucide-react';
 import api from '../utils/api.js';
 
-// Configurar Stripe (usar variável de ambiente em produção)
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_...');
+// Configurar Stripe (usar configuração de produção)
+import { stripePromise, stripeConfig } from '../lib/stripe.js';
+import { STRIPE_CONFIG } from '../config/stripe.config.js';
 
-// Debug: Log das configurações
-console.log('🔍 StripeCheckout - Configurações:', {
-  stripeKey: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ? 'Configurada' : 'Não configurada',
-  stripeKeyLength: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY?.length || 0,
-  env: import.meta.env.MODE,
-  dev: import.meta.env.DEV
-});
+  // Debug: Log das configurações
+  console.log('🔍 StripeCheckout - Configurações:', {
+    stripeKey: 'PRODUÇÃO - Configurado via config',
+    stripeKeyLength: STRIPE_CONFIG.publishableKey.length,
+    stripeKeyValue: STRIPE_CONFIG.publishableKey,
+    env: 'production',
+    dev: false
+  });
 
-const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
+const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError, clientSecret, loading, error, setError, setLoading }) => {
   const stripe = useStripe();
   const elements = useElements();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   const [selectedInterval, setSelectedInterval] = useState('monthly');
   const [planDetails, setPlanDetails] = useState(null);
   const [debugInfo, setDebugInfo] = useState({});
+  const [elementsReady, setElementsReady] = useState(false);
 
   // Debug: Log do estado do componente
   useEffect(() => {
@@ -35,6 +36,27 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
       planDetails: planDetails ? 'Carregado' : 'Não carregado'
     });
   }, [selectedPlan, userData, stripe, elements, planDetails]);
+
+  // ✅ MONITORAR QUANDO O ELEMENTS ESTÁ PRONTO
+  useEffect(() => {
+    if (elements) {
+      // Aguardar mais tempo para garantir que o Elements esteja totalmente inicializado
+      const timer = setTimeout(() => {
+        console.log('✅ Elements detectado, marcando como pronto');
+        setElementsReady(true);
+        
+        // ✅ VERIFICAR SE O PAYMENTELEMENT ESTÁ NO DOM APÓS O DELAY
+        setTimeout(() => {
+          const paymentElement = document.querySelector('[data-elements-stable-field-name]');
+          console.log('🔍 PaymentElement após Elements Ready:', paymentElement);
+        }, 2000);
+      }, 2000); // ✅ AUMENTADO PARA 2 SEGUNDOS
+      
+      return () => clearTimeout(timer);
+    } else {
+      setElementsReady(false);
+    }
+  }, [elements]);
 
   useEffect(() => {
     // Carregar detalhes do plano selecionado
@@ -65,10 +87,12 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
       }
     };
 
-    if (selectedPlan) {
-      loadPlanDetails();
-    }
-  }, [selectedPlan, selectedInterval]);
+         if (selectedPlan) {
+       loadPlanDetails();
+     }
+   }, [selectedPlan, selectedInterval]);
+
+
 
   const handleIntervalChange = (newInterval) => {
     setSelectedInterval(newInterval);
@@ -84,30 +108,87 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
       return;
     }
 
+    // ✅ VERIFICAR SE O PAYMENTELEMENT ESTÁ MONTADO NO DOM (MULTIPLOS SELETORES)
+    const paymentElement = document.querySelector('[data-elements-stable-field-name]') || 
+                          document.querySelector('[data-elements-stable-field-name="cardNumber"]') ||
+                          document.querySelector('.ElementsApp') ||
+                          document.querySelector('[class*="ElementsApp"]') ||
+                          document.querySelector('[class*="Stripe"]') ||
+                          document.querySelector('[class*="Payment"]') ||
+                          document.querySelector('iframe[src*="stripe"]') ||
+                          document.querySelector('div[class*="stripe"]');
+                          
+    if (!paymentElement) {
+      console.error('❌ PaymentElement não encontrado no DOM');
+      console.log('🔍 Tentando encontrar elementos Stripe:', {
+        'data-elements-stable-field-name': document.querySelector('[data-elements-stable-field-name]'),
+        'data-elements-stable-field-name="cardNumber"': document.querySelector('[data-elements-stable-field-name="cardNumber"]'),
+        '.ElementsApp': document.querySelector('.ElementsApp'),
+        '[class*="ElementsApp"]': document.querySelector('[class*="ElementsApp"]'),
+        'Todos os elementos com data-*': document.querySelectorAll('[data-elements-stable-field-name]'),
+        'Elementos com class*="Elements"': document.querySelectorAll('[class*="Elements"]'),
+        'Elementos com class*="Stripe"': document.querySelectorAll('[class*="Stripe"]'),
+        'Elementos com class*="Payment"': document.querySelectorAll('[class*="Payment"]')
+      });
+      setError('Formulário de pagamento não carregado. Recarregue a página.');
+      return;
+    }
+    
+    console.log('✅ PaymentElement encontrado no DOM:', paymentElement);
+
     setLoading(true);
     setError(null);
 
     try {
-      // 1. Criar sessão de checkout no backend (rota pública para cadastro)
-      const response = await api.post('/api/stripe/create-signup-checkout-session', {
-        planType: selectedPlan,
-        userEmail: userData.email,
-        userName: `${userData.first_name} ${userData.last_name}`,
-        successUrl: `${window.location.origin}/signup-success`,
-        cancelUrl: `${window.location.origin}/signup`,
-        interval: selectedInterval
-      });
+             // 1. Criar Payment Intent no backend
+       const response = await api.post('/api/stripe/create-payment-intent', {
+         planType: selectedPlan,
+         userEmail: userData.email,
+         userName: `${userData.first_name} ${userData.last_name}`,
+         interval: selectedInterval
+       });
 
-      const { sessionId } = response.data;
+       const { clientSecret } = response.data.data;
 
-      // 2. Redirecionar para o Stripe Checkout
-      const { error } = await stripe.redirectToCheckout({
-        sessionId: sessionId
-      });
+       // 2. Debug do elements antes de submit
+       console.log('🔍 Elements antes do submit:', {
+         elements: !!elements,
+         elementsReady: elementsReady,
+         paymentElementInDOM: !!document.querySelector('[data-elements-stable-field-name]'),
+         elementsState: elements
+       });
 
-      if (error) {
-        throw new Error(error.message);
-      }
+       // 3. Confirmar pagamento com Stripe Elements
+       const { error: submitError } = await elements.submit();
+       if (submitError) {
+         throw new Error(submitError.message);
+       }
+
+       const { error: paymentError, paymentIntent } = await stripe.confirmPayment({
+         elements,
+         clientSecret,
+         confirmParams: {
+           return_url: `${window.location.origin}/signup-success`,
+           payment_method_data: {
+             billing_details: {
+               name: `${userData.first_name} ${userData.last_name}`,
+               email: userData.email,
+             },
+           },
+         },
+         redirect: 'if_required',
+       });
+
+       if (paymentError) {
+         throw new Error(paymentError.message);
+       }
+
+       // 3. Sucesso
+       if (paymentIntent && paymentIntent.status === 'succeeded') {
+         onSuccess(paymentIntent);
+       } else {
+         window.location.href = `${window.location.origin}/signup-success`;
+       }
 
     } catch (err) {
       console.error('❌ Erro no checkout:', err);
@@ -118,25 +199,7 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
     }
   };
 
-  const cardElementOptions = {
-    style: {
-      base: {
-        fontSize: '16px',
-        color: '#ffffff',
-        '::placeholder': {
-          color: '#a0d9e0',
-        },
-        fontFamily: '"Helvetica Neue", Helvetica, sans-serif',
-        backgroundColor: 'transparent',
-      },
-      invalid: {
-        color: '#ef4444',
-      },
-      complete: {
-        color: '#10b981',
-      },
-    },
-  };
+  
 
   const getSelectedPrice = () => {
     if (!planDetails || !planDetails.prices || !Array.isArray(planDetails.prices)) {
@@ -260,6 +323,7 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
           <p>Intervalo: {selectedInterval}</p>
           <p>Stripe: {stripe ? '✅ Carregado' : '❌ Não carregado'}</p>
           <p>Elements: {elements ? '✅ Carregado' : '❌ Não carregado'}</p>
+          <p>Elements Ready: {elementsReady ? '✅ Sim' : '❌ Não'}</p>
           <p>Plan Details: {planDetails ? '✅ Carregado' : '❌ Não carregado'}</p>
           <p>Prices: {planDetails?.prices ? `${planDetails.prices.length} preços` : '❌ Não disponível'}</p>
           <p>Selected Price: {selectedPrice ? '✅ Encontrado' : '❌ Não encontrado'}</p>
@@ -362,12 +426,137 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
           
           <div className="space-y-3">
             <div className="bg-white/5 p-3 rounded-lg border border-cyan-400/20">
-              {stripe && elements ? (
-                <CardElement options={cardElementOptions} />
+              {/* ✅ DEBUG: Status dos componentes */}
+              {import.meta.env.DEV && (
+                <div className="mb-3 p-2 bg-gray-800/50 rounded text-xs text-gray-300">
+                  <p><strong>PaymentElement Debug:</strong></p>
+                  <p>Stripe: {stripe ? '✅ Carregado' : '❌ Não carregado'}</p>
+                  <p>Elements: {elements ? '✅ Carregado' : '❌ Não carregado'}</p>
+                  <p>Elements Ready: {elementsReady ? '✅ Sim' : '❌ Não'}</p>
+                  <p>ClientSecret: {clientSecret ? '✅ Presente' : '❌ Ausente'}</p>
+                  <p>ClientSecret Length: {clientSecret ? clientSecret.length : 0}</p>
+                  <p>ClientSecret Start: {clientSecret ? clientSecret.substring(0, 20) + '...' : 'N/A'}</p>
+                </div>
+              )}
+              
+              {stripe && elements && elementsReady && clientSecret ? (
+                // ✅ DEBUG: Verificar estado antes de renderizar PaymentElement
+                (() => {
+                  console.log('🔍 Renderizando PaymentElement com:', {
+                    stripe: !!stripe,
+                    elements: !!elements,
+                    elementsReady,
+                    clientSecret: !!clientSecret,
+                    clientSecretLength: clientSecret ? clientSecret.length : 0,
+                    clientSecretStart: clientSecret ? clientSecret.substring(0, 20) + '...' : 'N/A',
+                    elementsState: elements,
+                    elementsReadyState: elementsReady
+                  });
+                  
+                  // ✅ VERIFICAR SE O CLIENT SECRET É VÁLIDO
+                  if (clientSecret && !clientSecret.startsWith('pi_')) {
+                    console.error('❌ Client Secret inválido:', clientSecret);
+                  }
+                  
+                  return true;
+                })() && (
+                <div>
+                  <PaymentElement 
+                    options={{
+                      layout: 'tabs',
+                      defaultValues: {
+                        billingDetails: {
+                          name: `${userData.first_name} ${userData.last_name}`,
+                          email: userData.email,
+                        },
+                      },
+                      // ✅ CONFIGURAÇÕES ESPECÍFICAS PARA DESENVOLVIMENTO
+                      ...(import.meta.env.DEV && {
+                        loader: 'always',
+                        appearance: {
+                          ...stripeConfig,
+                          variables: {
+                            ...stripeConfig.variables,
+                            colorDanger: '#ef4444',
+                          }
+                        },
+                        // ✅ DESABILITAR VERIFICAÇÕES DE SSL EM DESENVOLVIMENTO
+                        clientSecret: clientSecret,
+                        mode: 'payment'
+                      })
+                    }}
+                    onLoadError={(error) => {
+                      console.error('❌ Erro no PaymentElement:', error);
+                      setError(`Erro ao carregar formulário: ${error.message}`);
+                    }}
+                    onReady={() => {
+                      console.log('✅ PaymentElement carregado com sucesso!');
+                      // ✅ VERIFICAR SE O ELEMENTO ESTÁ REALMENTE NO DOM
+                      setTimeout(() => {
+                        const paymentElement = document.querySelector('[data-elements-stable-field-name]');
+                        console.log('🔍 PaymentElement DOM (delayed):', paymentElement);
+                        if (!paymentElement) {
+                          console.error('❌ PaymentElement ainda não está no DOM após onReady');
+                          // ✅ DEBUG: Verificar todos os elementos possíveis
+                          console.log('🔍 Debug DOM completo:', {
+                            'data-elements-stable-field-name': document.querySelector('[data-elements-stable-field-name]'),
+                            'data-elements-stable-field-name="cardNumber"': document.querySelector('[data-elements-stable-field-name="cardNumber"]'),
+                            '.ElementsApp': document.querySelector('.ElementsApp'),
+                            '[class*="ElementsApp"]': document.querySelector('[class*="ElementsApp"]'),
+                            '[class*="Stripe"]': document.querySelector('[class*="Stripe"]'),
+                            '[class*="Payment"]': document.querySelector('[class*="Payment"]'),
+                            'iframe[src*="stripe"]': document.querySelector('iframe[src*="stripe"]'),
+                            'div[class*="stripe"]': document.querySelector('div[class*="stripe"]'),
+                            'Todos os divs': document.querySelectorAll('div').length,
+                            'Todos os elementos com data-*': Array.from(document.querySelectorAll('[data-*]')).map(el => ({
+                              tagName: el.tagName,
+                              className: el.className,
+                              dataset: el.dataset
+                            }))
+                          });
+                        }
+                      }, 500);
+                    }}
+                    onChange={(event) => {
+                      console.log('🔄 PaymentElement onChange:', event);
+                    }}
+                  />
+                  {error && (
+                    <div className="mt-3 p-3 bg-red-500/20 border border-red-400/30 rounded-lg">
+                      <div className="flex items-center gap-2 text-red-400">
+                        <AlertCircle className="w-4 h-4" />
+                        <span className="text-sm">{error}</span>
+                      </div>
+                    </div>
+                  )}
+                  
+                  {/* ✅ BOTÃO DE TESTE PARA VERIFICAR PAYMENTELEMENT */}
+                  {import.meta.env.DEV && (
+                    <div className="mt-3 p-2 bg-blue-500/20 border border-blue-400/30 rounded-lg">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const paymentElement = document.querySelector('[data-elements-stable-field-name]');
+                          console.log('🔍 Teste PaymentElement:', {
+                            found: !!paymentElement,
+                            element: paymentElement,
+                            elementsReady,
+                            stripe: !!stripe,
+                            elements: !!elements
+                          });
+                        }}
+                        className="text-xs text-blue-300 hover:text-blue-200"
+                      >
+                        🔍 Testar PaymentElement
+                      </button>
+                    </div>
+                  )}
+                </div>
+                )
               ) : (
                 <div className="text-center py-4 text-cyan-300">
                   <div className="w-6 h-6 border-2 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                  Carregando formulário de pagamento...
+                  {!stripe ? 'Carregando Stripe...' : !elements ? 'Carregando Elements...' : !elementsReady ? 'Inicializando Elements...' : !clientSecret ? 'Configurando formulário de pagamento...' : 'Carregando formulário de pagamento...'}
                 </div>
               )}
             </div>
@@ -380,25 +569,27 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
         </div>
 
         {/* Botão de Pagamento */}
-        <button
-          type="submit"
-          disabled={!stripe || loading || !selectedPrice}
-          className={`w-full py-3 px-4 rounded-lg font-semibold transition-all ${
-            loading || !selectedPrice
-              ? 'bg-gray-500 cursor-not-allowed'
-              : 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 transform hover:scale-105'
-          } text-white`}
-        >
+                 <button
+           type="submit"
+           disabled={!stripe || loading || !selectedPrice || !clientSecret}
+           className={`w-full py-3 px-4 rounded-lg font-semibold transition-all ${
+             loading || !selectedPrice || !clientSecret
+               ? 'bg-gray-500 cursor-not-allowed'
+               : 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 transform hover:scale-105'
+           } text-white`}
+         >
           {loading ? (
             <div className="flex items-center justify-center gap-2">
               <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
               Processando...
             </div>
-          ) : !selectedPrice ? (
-            'Preço não disponível'
-          ) : (
-            `Pagar ${selectedPrice.amountFormatted || 'Valor não disponível'}`
-          )}
+                     ) : !selectedPrice ? (
+             'Preço não disponível'
+           ) : !clientSecret ? (
+             'Configurando pagamento...'
+           ) : (
+             `Pagar ${selectedPrice.amountFormatted || 'Valor não disponível'}`
+           )}
         </button>
 
         {/* Mensagem de Erro */}
@@ -416,6 +607,11 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
 };
 
 const StripeCheckout = ({ selectedPlan, userData, onSuccess, onError }) => {
+  // Estados do componente pai
+  const [clientSecret, setClientSecret] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
   // Debug: Log das props recebidas
   console.log('🔍 StripeCheckout - Props recebidas:', {
     selectedPlan,
@@ -424,29 +620,120 @@ const StripeCheckout = ({ selectedPlan, userData, onSuccess, onError }) => {
     onError: !!onError
   });
 
-  if (!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) {
+  // Carregar clientSecret quando o plano for selecionado
+  useEffect(() => {
+    const loadClientSecret = async () => {
+      if (!selectedPlan || !userData?.email || !userData?.first_name || !userData?.last_name) {
+        return;
+      }
+
+      try {
+        setLoading(true);
+        const response = await api.post('/api/stripe/create-payment-intent', {
+          planType: selectedPlan,
+          userEmail: userData.email,
+          userName: `${userData.first_name} ${userData.last_name}`,
+          interval: 'monthly' // Por enquanto fixo
+        });
+
+        const { clientSecret: secret } = response.data.data;
+        setClientSecret(secret);
+      } catch (err) {
+        console.error('❌ Erro ao criar Payment Intent:', err);
+        setError(err.message || 'Erro ao configurar pagamento');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadClientSecret();
+  }, [selectedPlan, userData?.email, userData?.first_name, userData?.last_name]);
+
+  // ✅ IMPORTANTE: Só renderizar Elements quando clientSecret estiver disponível
+  if (!clientSecret) {
     return (
       <div className="text-center py-8">
-        <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+        <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
         <h3 className="text-xl font-semibold text-white mb-2">
-          Configuração do Stripe Incompleta
+          Configurando Pagamento
         </h3>
         <p className="text-cyan-200">
-          A chave pública do Stripe não está configurada. Entre em contato com o suporte.
+          Aguarde enquanto preparamos seu checkout seguro
         </p>
       </div>
     );
   }
 
+     if (!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY) {
+     return (
+       <div className="text-center py-8">
+         <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+         <h3 className="text-xl font-semibold text-white mb-2">
+           Configuração do Stripe Incompleta
+         </h3>
+         <p className="text-cyan-200">
+           A chave pública do Stripe não está configurada. Entre em contato com o suporte.
+         </p>
+       </div>
+     );
+   }
+
+   if (loading) {
+     return (
+       <div className="text-center py-8">
+         <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+         <h3 className="text-xl font-semibold text-white mb-2">
+           Configurando Pagamento
+         </h3>
+         <p className="text-cyan-200">
+           Aguarde enquanto preparamos seu checkout seguro
+         </p>
+       </div>
+     );
+   }
+
+   if (error) {
+     return (
+       <div className="text-center py-8">
+         <div className="w-16 h-16 border-4 border-red-500 border-t-transparent rounded-full mx-auto mb-4"></div>
+         <h3 className="text-xl font-semibold text-red-400 mb-2">
+           Erro na Configuração
+         </h3>
+         <p className="text-red-300">{error}</p>
+       </div>
+     );
+   }
+
   return (
-    <Elements stripe={stripePromise}>
-      <CheckoutForm
-        selectedPlan={selectedPlan}
-        userData={userData}
-        onSuccess={onSuccess}
-        onError={onError}
-      />
-    </Elements>
+    <Elements 
+      key={`${clientSecret}-${Date.now()}`} // ✅ FORÇAR RE-RENDER A CADA MUDANÇA
+      stripe={stripePromise}
+      options={{
+        clientSecret: clientSecret,
+        appearance: stripeConfig,
+        loader: 'always'
+      }}
+      onLoadError={(error) => {
+        console.error('❌ Erro no Elements:', error);
+        setError(`Erro ao carregar Stripe: ${error.message}`);
+      }}
+      onReady={() => {
+        console.log('✅ Stripe Elements carregado com sucesso!');
+        console.log('🔍 Elements Options:', { clientSecret: clientSecret.substring(0, 20) + '...', stripeConfig });
+      }}
+    >
+       <CheckoutForm
+         selectedPlan={selectedPlan}
+         userData={userData}
+         onSuccess={onSuccess}
+         onError={onError}
+         clientSecret={clientSecret}
+         loading={loading}
+         error={error}
+         setError={setError}
+         setLoading={setLoading}
+       />
+     </Elements>
   );
 };
 
