@@ -110,7 +110,6 @@ $RECYCLE.BIN/
 # ==============================================
 
 # Arquivos de ambiente (.env) - CONTÉM CHAVES SENSÍVEIS!
-.env
 .env.local
 .env.development
 .env.production
@@ -118,11 +117,6 @@ $RECYCLE.BIN/
 .env.staging
 .env.*.local
 
-# Diretórios específicos
-src/.env
-frontend/.env
-*/.env
-**/.env
 
 # Chaves de API e credenciais
 *.pem
