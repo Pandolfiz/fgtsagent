@@ -680,6 +680,113 @@ class StripeService {
   }
 
   /**
+   * Confirma um PaymentIntent no backend (MAIS SEGURO)
+   * Usa a chave secreta para máxima segurança
+   */
+  async confirmPaymentIntent(paymentIntentId, paymentMethodId = null) {
+    try {
+      logger.info('🔐 Confirmando PaymentIntent no backend:', {
+        paymentIntentId,
+        hasPaymentMethod: !!paymentMethodId,
+        timestamp: new Date().toISOString()
+      });
+
+      // ✅ OBTER: PaymentIntent atual
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      
+      logger.info('📋 Status atual do PaymentIntent:', {
+        id: paymentIntent.id,
+        status: paymentIntent.status,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency,
+        timestamp: new Date().toISOString()
+      });
+
+      // ✅ VALIDAR: Status antes da confirmação
+      if (paymentIntent.status === 'succeeded') {
+        logger.info('✅ PaymentIntent já foi confirmado:', paymentIntent.id);
+        return paymentIntent;
+      }
+
+      if (paymentIntent.status === 'canceled') {
+        throw new Error('PaymentIntent foi cancelado e não pode ser confirmado');
+      }
+
+      // ✅ CONFIRMAR: PaymentIntent com método de pagamento se fornecido
+      let confirmedIntent;
+      
+      if (paymentMethodId) {
+        // Confirmar com método de pagamento específico
+        confirmedIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
+          payment_method: paymentMethodId
+        });
+        
+        logger.info('✅ PaymentIntent confirmado com método de pagamento:', {
+          id: confirmedIntent.id,
+          status: confirmedIntent.status,
+          paymentMethod: paymentMethodId,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        // Confirmar sem método de pagamento (usar o já anexado)
+        confirmedIntent = await stripe.paymentIntents.confirm(paymentIntentId);
+        
+        logger.info('✅ PaymentIntent confirmado sem método de pagamento:', {
+          id: confirmedIntent.id,
+          status: confirmedIntent.status,
+          timestamp: new Date().toISOString()
+        });
+      }
+
+      // ✅ PROCESSAR: Resultado da confirmação
+      if (confirmedIntent.status === 'requires_action') {
+        logger.info('⚠️ PaymentIntent requer ação adicional (3D Secure):', {
+          id: confirmedIntent.id,
+          nextAction: confirmedIntent.next_action?.type,
+          timestamp: new Date().toISOString()
+        });
+        
+        return {
+          ...confirmedIntent,
+          requiresAction: true,
+          nextAction: confirmedIntent.next_action
+        };
+      }
+
+      if (confirmedIntent.status === 'succeeded') {
+        logger.info('🎉 PaymentIntent confirmado com sucesso:', {
+          id: confirmedIntent.id,
+          amount: confirmedIntent.amount,
+          currency: confirmedIntent.currency,
+          timestamp: new Date().toISOString()
+        });
+        
+        // ✅ WEBHOOK: Processar eventos de sucesso
+        await this.processWebhook({
+          type: 'payment_intent.succeeded',
+          data: {
+            object: confirmedIntent
+          }
+        });
+      }
+
+      return confirmedIntent;
+
+    } catch (error) {
+      logger.error('❌ Erro ao confirmar PaymentIntent:', {
+        paymentIntentId,
+        error: error.message,
+        type: error.type,
+        code: error.code,
+        timestamp: new Date().toISOString()
+      });
+
+      // ✅ PROPAGAR: Erro específico do Stripe
+      throw error;
+    }
+  }
+
+  /**
    * Verifica se um cupom é válido
    */
   async validateCoupon(code) {

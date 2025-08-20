@@ -149,93 +149,96 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
         throw new Error(submitError.message);
       }
 
-      // ✅ MÉTODO CORRETO: confirmCardPayment com CardElement
-      const { error: paymentError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
-        payment_method: {
-          card: elements.getElement(CardElement),
-          billing_details: {
-            name: `${userData.first_name} ${userData.last_name}`,
-            email: userData.email,
-          },
-        }
-        // ✅ CORRIGIR: Remover parâmetro redirect inválido
-        // redirect: 'if_required' // ❌ REMOVIDO - parâmetro não existe na API
-      });
-
-      if (paymentError) {
-        console.error('❌ Erro na confirmação do pagamento:', paymentError);
-        
-        // ✅ MELHORAR: Tratamento específico para erros de produção
-        let userFriendlyError = paymentError.message;
-        
-        if (paymentError.code === 'payment_intent_authentication_failure') {
-          userFriendlyError = 'Verificação de segurança falhou. Tente novamente ou use outro cartão.';
-        } else if (paymentError.code === 'card_declined') {
-          // ✅ ANTI-FRAUDE: Tratamento específico para card decline
-          if (paymentError.decline_code === 'fraudulent') {
-            userFriendlyError = 'Pagamento bloqueado por segurança. Use outro cartão ou entre em contato com seu banco.';
-          } else if (paymentError.decline_code === 'insufficient_funds') {
-            userFriendlyError = 'Saldo insuficiente no cartão.';
-          } else if (paymentError.decline_code === 'expired_card') {
-            userFriendlyError = 'Cartão expirado. Use um cartão válido.';
-          } else if (paymentError.decline_code === 'incorrect_cvc') {
-            userFriendlyError = 'Código de segurança incorreto.';
-          } else if (paymentError.decline_code === 'processing_error') {
-            userFriendlyError = 'Erro no processamento. Tente novamente em alguns instantes.';
-          } else {
-            userFriendlyError = 'Cartão recusado. Verifique os dados ou use outro método de pagamento.';
-          }
-        } else if (paymentError.code === 'insufficient_funds') {
-          userFriendlyError = 'Saldo insuficiente no cartão.';
-        } else if (paymentError.code === 'expired_card') {
-          userFriendlyError = 'Cartão expirado. Use um cartão válido.';
-        } else if (paymentError.code === 'incorrect_cvc') {
-          userFriendlyError = 'Código de segurança incorreto.';
-        } else if (paymentError.code === 'processing_error') {
-          userFriendlyError = 'Erro no processamento. Tente novamente em alguns instantes.';
-        } else if (paymentError.code === 'payment_intent_unexpected_state') {
-          userFriendlyError = 'Estado inesperado do pagamento. Tente novamente.';
-        } else if (paymentError.code === 'payment_intent_payment_attempt_failed') {
-          userFriendlyError = 'Tentativa de pagamento falhou. Verifique os dados do cartão.';
-        } else if (paymentError.code === 'fraudulent') {
-          userFriendlyError = 'Pagamento bloqueado por sistema de segurança. Use outro cartão.';
-        } else if (paymentError.code === 'high_risk') {
-          userFriendlyError = 'Pagamento considerado de alto risco. Entre em contato com o suporte.';
-        }
-        
-        throw new Error(userFriendlyError);
-      }
-
-      // ✅ VERIFICAR: Status do PaymentIntent
-      console.log('🔍 Status do PaymentIntent:', paymentIntent?.status);
+      // ✅ MÉTODO SEGURO: Confirmar pagamento via backend (MAIS SEGURO)
+      console.log('🔐 Confirmando pagamento via backend...');
       
-      // ✅ FLUXO MELHORADO: Tratamento específico para produção
-      if (paymentIntent?.status === 'succeeded') {
-        console.log('✅ Pagamento confirmado:', paymentIntent);
-        setSuccess(true);
-        if (onSuccess) onSuccess(paymentIntent);
-      } else if (paymentIntent?.status === 'requires_action') {
-        console.log('⚠️ PaymentIntent requer ação adicional (3D Secure)');
-        console.log('ℹ️ Aguardando autenticação bancária...');
+      try {
+        // ✅ BACKEND: Enviar dados para confirmação segura
+        const confirmResponse = await api.post('/stripe/confirm-payment', {
+          paymentIntentId: clientSecret.split('_secret_')[0], // Extrair ID do PaymentIntent
+          paymentMethodId: null // Será criado pelo backend
+        });
+
+        console.log('✅ Resposta da confirmação via backend:', confirmResponse.data);
+
+        if (confirmResponse.data.success) {
+          const paymentIntent = confirmResponse.data.data;
+          
+          // ✅ VERIFICAR: Status do PaymentIntent
+          console.log('🔍 Status do PaymentIntent:', paymentIntent?.status);
+          
+          // ✅ FLUXO MELHORADO: Tratamento específico para produção
+          if (paymentIntent?.status === 'succeeded') {
+            console.log('✅ Pagamento confirmado via backend:', paymentIntent);
+            setSuccess(true);
+            if (onSuccess) onSuccess(paymentIntent);
+          } else if (paymentIntent?.status === 'requires_action') {
+            console.log('⚠️ PaymentIntent requer ação adicional (3D Secure)');
+            console.log('ℹ️ Aguardando autenticação bancária...');
+            
+            // ✅ PRODUÇÃO: Aguardar confirmação do 3D Secure
+            // O Stripe vai redirecionar automaticamente se necessário
+            return;
+          } else if (paymentIntent?.status === 'requires_payment_method') {
+            console.log('⚠️ PaymentIntent requer método de pagamento válido');
+            throw new Error('Método de pagamento inválido. Tente novamente.');
+          } else if (paymentIntent?.status === 'canceled') {
+            console.log('⚠️ PaymentIntent cancelado');
+            throw new Error('Pagamento cancelado. Tente novamente.');
+          } else if (paymentIntent?.status === 'processing') {
+            console.log('⏳ PaymentIntent em processamento...');
+            // ✅ PRODUÇÃO: Aguardar processamento
+            return;
+          } else {
+            console.log('⚠️ PaymentIntent com status inesperado:', paymentIntent?.status);
+            // ✅ PRODUÇÃO: Redirecionar para página de sucesso se necessário
+            window.location.href = `${window.location.origin}/signup-success`;
+          }
+        } else {
+          throw new Error(confirmResponse.data.message || 'Erro na confirmação do pagamento');
+        }
+
+      } catch (confirmError) {
+        console.error('❌ Erro na confirmação via backend:', confirmError);
         
-        // ✅ PRODUÇÃO: Aguardar confirmação do 3D Secure
-        // O Stripe vai redirecionar automaticamente se necessário
-        return;
-      } else if (paymentIntent?.status === 'requires_payment_method') {
-        console.log('⚠️ PaymentIntent requer método de pagamento válido');
-        throw new Error('Método de pagamento inválido. Tente novamente.');
-      } else if (paymentIntent?.status === 'canceled') {
-        console.log('⚠️ PaymentIntent cancelado');
-        throw new Error('Pagamento cancelado. Tente novamente.');
-      } else if (paymentIntent?.status === 'processing') {
-        console.log('⏳ PaymentIntent em processamento...');
-        // ✅ PRODUÇÃO: Aguardar processamento
-        return;
-      } else {
-        console.log('⚠️ PaymentIntent com status inesperado:', paymentIntent?.status);
-        // ✅ PRODUÇÃO: Redirecionar para página de sucesso se necessário
-        window.location.href = `${window.location.origin}/signup-success`;
+        // ✅ TRATAMENTO: Erros específicos do backend
+        if (confirmError.response?.data?.error) {
+          const backendError = confirmError.response.data.error;
+          
+          if (backendError.code === 'payment_intent_authentication_failure') {
+            throw new Error('Verificação de segurança falhou. Tente novamente ou use outro cartão.');
+          } else if (backendError.code === 'card_declined') {
+            if (backendError.decline_code === 'fraudulent') {
+              throw new Error('Pagamento bloqueado por segurança. Use outro cartão ou entre em contato com seu banco.');
+            } else if (backendError.decline_code === 'insufficient_funds') {
+              throw new Error('Saldo insuficiente no cartão.');
+            } else if (backendError.decline_code === 'expired_card') {
+              throw new Error('Cartão expirado. Use um cartão válido.');
+            } else if (backendError.decline_code === 'incorrect_cvc') {
+              throw new Error('Código de segurança incorreto.');
+            } else if (backendError.decline_code === 'processing_error') {
+              throw new Error('Erro no processamento. Tente novamente em alguns instantes.');
+            } else {
+              throw new Error('Cartão recusado. Verifique os dados ou use outro método de pagamento.');
+            }
+          } else {
+            throw new Error(backendError.message || 'Erro no cartão de crédito');
+          }
+        } else {
+          throw new Error(confirmError.message || 'Erro na confirmação do pagamento');
+        }
       }
+
+      // ✅ REMOVIDO: Código antigo que chamava Stripe diretamente
+      // const { error: paymentError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
+      //   payment_method: {
+      //     card: elements.getElement(CardElement),
+      //     billing_details: {
+      //       name: `${userData.first_name} ${userData.last_name}`,
+      //       email: userData.email,
+      //     },
+      //   }
+      // });
 
     } catch (err) {
       const errorMessage = err.message || 'Erro ao processar pagamento';
