@@ -342,6 +342,16 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
   try {
     const signature = req.headers['stripe-signature'];
     
+    // ✅ DEBUG: Log dos headers para debug
+    console.log('🔍 Webhook recebido:', {
+      hasSignature: !!signature,
+      signatureLength: signature?.length,
+      contentType: req.headers['content-type'],
+      userAgent: req.headers['user-agent'],
+      bodyLength: req.body?.length,
+      timestamp: new Date().toISOString()
+    });
+    
     if (!signature) {
       logger.error('Webhook sem assinatura');
       return res.status(400).json({
@@ -349,6 +359,20 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
         message: 'Assinatura do webhook ausente'
       });
     }
+    
+    // ✅ DEBUG: Verificar se STRIPE_WEBHOOK_SECRET está configurado
+    if (!process.env.STRIPE_WEBHOOK_SECRET) {
+      logger.error('STRIPE_WEBHOOK_SECRET não configurado');
+      return res.status(500).json({
+        success: false,
+        message: 'Configuração de webhook inválida'
+      });
+    }
+    
+    console.log('🔍 Processando webhook com secret:', {
+      secretLength: process.env.STRIPE_WEBHOOK_SECRET?.length,
+      secretStart: process.env.STRIPE_WEBHOOK_SECRET?.substring(0, 10) + '...'
+    });
     
     await stripeService.processWebhook(req.body, signature);
     
@@ -358,6 +382,16 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
     });
   } catch (error) {
     logger.error('Erro no webhook:', error);
+    
+    // ✅ DEBUG: Log detalhado do erro
+    console.log('❌ Erro detalhado do webhook:', {
+      type: error.type,
+      message: error.message,
+      code: error.code,
+      statusCode: error.statusCode,
+      timestamp: new Date().toISOString()
+    });
+    
     res.status(400).json({
       success: false,
       message: error.message || 'Erro ao processar webhook'
@@ -396,6 +430,117 @@ router.post('/create-customer', requireAuth, async (req, res) => {
     res.status(400).json({
       success: false,
       message: error.message || 'Erro ao criar cliente'
+    });
+  }
+});
+
+/**
+ * POST /api/stripe/capture-payment
+ * Captura um Payment Intent confirmado
+ */
+router.post('/capture-payment', async (req, res) => {
+  try {
+    const { paymentIntentId } = req.body;
+    
+    if (!paymentIntentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'paymentIntentId é obrigatório'
+      });
+    }
+    
+    const result = await stripeService.capturePaymentIntent(paymentIntentId);
+    
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    logger.error('Erro ao capturar pagamento:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Erro ao capturar pagamento'
+    });
+  }
+});
+
+/**
+ * GET /api/stripe/payment-intent/:id
+ * Obtém detalhes de um Payment Intent
+ */
+router.get('/payment-intent/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    
+    const result = await stripeService.getPaymentIntent(id);
+    
+    res.status(200).json({
+      success: true,
+      data: result
+    });
+  } catch (error) {
+    logger.error('Erro ao obter Payment Intent:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Erro ao obter pagamento'
+    });
+  }
+});
+
+/**
+ * POST /api/stripe/retry-payment
+ * Tenta novamente um Payment Intent que falhou
+ */
+router.post('/retry-payment', async (req, res) => {
+  try {
+    const { paymentIntentId } = req.body;
+    
+    if (!paymentIntentId) {
+      return res.status(400).json({
+        success: false,
+        message: 'paymentIntentId é obrigatório'
+      });
+    }
+    
+    // ✅ VERIFICAR: Status atual do PaymentIntent
+    const currentStatus = await stripeService.getPaymentIntent(paymentIntentId);
+    
+    if (currentStatus.status === 'succeeded') {
+      return res.status(200).json({
+        success: true,
+        message: 'Pagamento já foi confirmado',
+        data: currentStatus
+      });
+    }
+    
+    if (currentStatus.status === 'requires_payment_method') {
+      // ✅ RETRY: Criar novo PaymentIntent
+      const { planType, interval, customerEmail } = currentStatus.metadata;
+      
+      const newPaymentIntent = await stripeService.createPaymentIntent(
+        planType,
+        customerEmail,
+        { retry: true, originalId: paymentIntentId },
+        interval
+      );
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Novo PaymentIntent criado para retry',
+        data: newPaymentIntent
+      });
+    }
+    
+    res.status(400).json({
+      success: false,
+      message: `PaymentIntent não pode ser retry. Status: ${currentStatus.status}`
+    });
+    
+  } catch (error) {
+    logger.error('Erro ao tentar retry do pagamento:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Erro ao tentar novamente'
     });
   }
 });

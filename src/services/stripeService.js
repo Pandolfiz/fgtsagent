@@ -195,21 +195,95 @@ class StripeService {
         throw new Error(`Intervalo de pagamento '${interval}' não suportado para este plano`);
       }
 
-      // ✅ CRIAR PAYMENT INTENT ULTRA SIMPLES (apenas campos obrigatórios)
-      const paymentIntent = await stripe.paymentIntents.create({
+      // ✅ CONFIGURAÇÃO LIMPA: Apenas parâmetros válidos e necessários
+      const paymentIntentData = {
         amount: priceConfig.amount,
         currency: 'brl',
-        payment_method_types: ['card'],
-        // ✅ REMOVER METADATA COMPLEXA (pode estar causando erro)
-        description: `Assinatura ${plan.name}`,
-        // ✅ REMOVER CONFIGURAÇÕES EXTRAS
-      });
+        // ✅ CORRIGIR: Remover payment_method_types conflitante
+        // payment_method_types: ['card'], // ❌ REMOVIDO - conflita com automatic_payment_methods
+        // ✅ CONFIGURAÇÃO: Captura automática
+        capture_method: 'automatic',
+        // ✅ CONFIGURAÇÃO: Metadados para Radar
+        metadata: {
+          plan: planType,
+          interval: interval,
+          customerEmail,
+          source: 'web_checkout',
+          user_agent: 'fgtsagent_web',
+          ...metadata
+        },
+        // ✅ CONFIGURAÇÃO: Descrição clara
+        description: `Assinatura ${plan.name} - ${interval}`,
+        // ✅ CONFIGURAÇÃO: Email de recibo
+        receipt_email: customerEmail,
+        // ✅ CONFIGURAÇÃO: Configurações de 3D Secure (sem conflito)
+        automatic_payment_methods: {
+          enabled: true,
+          allow_redirects: 'always'
+        }
+      };
+
+      console.log('🔍 Criando PaymentIntent com configuração anti-fraude:', paymentIntentData);
+
+      const paymentIntent = await stripe.paymentIntents.create(paymentIntentData);
 
       logger.info(`Payment Intent criado: ${paymentIntent.id} para plano ${planType} (${interval})`);
-      return paymentIntent;
+      
+      return {
+        id: paymentIntent.id,
+        client_secret: paymentIntent.client_secret,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency,
+        status: paymentIntent.status
+      };
     } catch (error) {
       logger.error('Erro ao criar Payment Intent:', error);
       throw new Error(`Falha ao criar Payment Intent: ${error.message}`);
+    }
+  }
+
+  /**
+   * Captura um Payment Intent confirmado
+   */
+  async capturePaymentIntent(paymentIntentId) {
+    try {
+      const paymentIntent = await stripe.paymentIntents.capture(paymentIntentId);
+      
+      logger.info(`Payment Intent capturado: ${paymentIntent.id}`);
+      
+      return {
+        id: paymentIntent.id,
+        status: paymentIntent.status,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency,
+        customer_email: paymentIntent.customer_email,
+        metadata: paymentIntent.metadata
+      };
+    } catch (error) {
+      logger.error('Erro ao capturar Payment Intent:', error);
+      throw new Error(`Falha ao capturar pagamento: ${error.message}`);
+    }
+  }
+
+  /**
+   * Obtém detalhes de um Payment Intent
+   */
+  async getPaymentIntent(paymentIntentId) {
+    try {
+      const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
+      
+      return {
+        id: paymentIntent.id,
+        status: paymentIntent.status,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency,
+        customer_email: paymentIntent.customer_email,
+        metadata: paymentIntent.metadata,
+        client_secret: paymentIntent.client_secret
+      };
+    } catch (error) {
+      logger.error('Erro ao obter Payment Intent:', error);
+      throw new Error(`Falha ao obter pagamento: ${error.message}`);
     }
   }
 
@@ -304,6 +378,12 @@ class StripeService {
         case 'payment_intent.payment_failed':
           await this.handlePaymentFailed(event.data.object);
           break;
+        case 'payment_intent.requires_action':
+          await this.handlePaymentRequiresAction(event.data.object);
+          break;
+        case 'payment_intent.processing':
+          await this.handlePaymentProcessing(event.data.object);
+          break;
         case 'customer.subscription.created':
           await this.handleSubscriptionCreated(event.data.object);
           break;
@@ -374,6 +454,49 @@ class StripeService {
     } catch (error) {
       logger.error('Erro ao processar falha no pagamento:', error);
       throw error;
+    }
+  }
+
+  /**
+   * Trata PaymentIntent que requer ação (3D Secure)
+   */
+  async handlePaymentRequiresAction(paymentIntent) {
+    try {
+      logger.info(`PaymentIntent ${paymentIntent.id} requer ação (3D Secure)`);
+      
+      // ✅ PRODUÇÃO: Log detalhado para debugging
+      console.log('🔍 PaymentIntent requer ação:', {
+        id: paymentIntent.id,
+        status: paymentIntent.status,
+        amount: paymentIntent.amount,
+        customer_email: paymentIntent.customer_email,
+        metadata: paymentIntent.metadata
+      });
+      
+      // ✅ PRODUÇÃO: Aqui você pode implementar notificação ao usuário
+      // ou atualizar o status no banco de dados
+      
+    } catch (error) {
+      logger.error('Erro ao processar PaymentIntent que requer ação:', error);
+    }
+  }
+
+  /**
+   * Trata PaymentIntent em processamento
+   */
+  async handlePaymentProcessing(paymentIntent) {
+    try {
+      logger.info(`PaymentIntent ${paymentIntent.id} em processamento`);
+      
+      // ✅ PRODUÇÃO: Log para acompanhar pagamentos pendentes
+      console.log('⏳ PaymentIntent em processamento:', {
+        id: paymentIntent.id,
+        status: paymentIntent.status,
+        amount: paymentIntent.amount
+      });
+      
+    } catch (error) {
+      logger.error('Erro ao processar PaymentIntent em processamento:', error);
     }
   }
 
