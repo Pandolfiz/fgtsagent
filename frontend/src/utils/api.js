@@ -27,10 +27,8 @@ const api = axios.create({
 if (import.meta.env.DEV) {
   api.interceptors.request.use(
     (config) => {
-      // Corrigir URLs duplicadas
-      if (config.url && config.url.startsWith('/api/')) {
-        config.url = config.url.replace('/api/', '/');
-      }
+      // ✅ CORRIGIR: Não duplicar URLs - o proxy já faz o redirecionamento
+      // Remover a lógica que estava causando duplicação de /api
       
       console.log('🚀 API Request:', {
         method: config.method?.toUpperCase(),
