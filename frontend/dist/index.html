@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+          <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+      <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+      <!-- ✅ SEGURANÇA: Meta tag para token CSRF -->
+      <meta name="csrf-token" content="" />
+      <title>FgtsAgent - Antecipação de Saque-Aniversário</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css" />
+    <!-- Script para interceptar códigos de autenticação antes do carregamento do React -->
+    <script>
+      (function() {
+        // Verificar se estamos na raiz do site com um código de autenticação
+        if (window.location.pathname === '/' || window.location.pathname === '') {
+          const urlParams = new URLSearchParams(window.location.search);
+          const code = urlParams.get('code');
+          
+          if (code) {
+            console.log('[Auth Interceptor] Código detectado na raiz, redirecionando...');
+            // Redirecionar para o callback correto, mantendo todos os parâmetros
+            window.location.replace('/auth/callback' + window.location.search + window.location.hash);
+          }
+        }
+      })();
+    </script>
+    <script type="module" crossorigin src="/assets/index-DR4tb-qn.js"></script>
+    <link rel="modulepreload" crossorigin href="/js/react-vendor-BQK9_sJn.js">
+    <link rel="modulepreload" crossorigin href="/js/router-vendor-IemJXg5q.js">
+    <link rel="modulepreload" crossorigin href="/js/animations-vendor-CoeYBugD.js">
+    <link rel="modulepreload" crossorigin href="/js/ui-vendor-B4CVGc1l.js">
+    <link rel="modulepreload" crossorigin href="/js/supabase-vendor-CcyTBRoh.js">
+    <link rel="modulepreload" crossorigin href="/js/stripe-vendor-C-7Rb6Uv.js">
+    <link rel="modulepreload" crossorigin href="/js/utils-vendor-CCK-ii89.js">
+    <link rel="modulepreload" crossorigin href="/js/charts-vendor-CVstFU8c.js">
+    <link rel="stylesheet" crossorigin href="/css/index-YPQvlDvA.css">
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

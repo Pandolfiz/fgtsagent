@@ -1,0 +1,176 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color-scheme: light dark;
+  color: rgba(255, 255, 255, 0.87);
+  /* background-color: #242424; */
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  font-weight: 500;
+  color: #646cff;
+  text-decoration: inherit;
+}
+a:hover {
+  color: #535bf2;
+}
+
+body {
+  margin: 0;
+  /* Removido display: flex e place-items: center para não centralizar tudo e não limitar o gradiente */
+  min-width: 320px;
+  min-height: 100vh;
+  background: none;
+}
+
+h1 {
+  font-size: 3.2em;
+  line-height: 1.1;
+}
+
+button {
+  border-radius: 8px;
+  border: 1px solid transparent;
+  padding: 0.6em 1.2em;
+  font-size: 1em;
+  font-weight: 500;
+  font-family: inherit;
+  background-color: #1a1a1a00;
+  cursor: pointer;
+  transition: border-color 0.25s;
+}
+button:hover {
+  border-color: #646cff;
+}
+button:focus,
+button:focus-visible {
+  outline: 4px auto -webkit-focus-ring-color;
+}
+
+/* Removida media query prefers-color-scheme para manter consistência de cores */
+
+/* Garantir transparência consistente apenas para campos específicos da página de Leads */
+.leads-page input[type="text"], 
+.leads-page input[type="search"],
+.leads-page .bg-transparent {
+  background-color: transparent !important;
+}
+
+/* Reduzir intensidade do backdrop-blur no mobile para melhor performance e aparência */
+@media (max-width: 768px) {
+  .backdrop-blur,
+  .backdrop-blur-sm,
+  .backdrop-blur-md,
+  .backdrop-blur-lg {
+    backdrop-filter: blur(2px) !important;
+    -webkit-backdrop-filter: blur(2px) !important;
+  }
+  
+  /* Reduzir ainda mais para elementos específicos */
+  input,
+  button,
+  .bg-transparent {
+    backdrop-filter: blur(1px) !important;
+    -webkit-backdrop-filter: blur(1px) !important;
+  }
+  
+  /* Reduzir grayscale e outros filtros problemáticos no mobile */
+  .backdrop-grayscale,
+  .backdrop-grayscale-0,
+  .backdrop-grayscale-50,
+  .backdrop-grayscale-75,
+  .backdrop-grayscale-90,
+  .backdrop-grayscale-95,
+  .backdrop-grayscale-100 {
+    backdrop-filter: blur(1px) !important;
+    -webkit-backdrop-filter: blur(1px) !important;
+    filter: grayscale(0) !important;
+    -webkit-filter: grayscale(0) !important;
+  }
+}
+
+/* Glassmorphism e cards futuristas */
+.card-futuristic {
+  background: linear-gradient(135deg, rgba(20,30,48,0.92) 0%, rgba(36,43,66,0.96) 100%);
+  box-shadow: 0 4px 24px 0 rgba(0,0,0,0.18), 0 0 8px 0 #00bcd4;
+  backdrop-filter: blur(10px) saturate(160%);
+  border: 1.5px solid rgba(0,188,212,0.18);
+  transition: box-shadow 0.3s, border 0.3s;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border-radius: 1rem;
+}
+.card-futuristic:hover {
+  box-shadow: 0 8px 32px 0 rgba(0,188,212,0.18), 0 0 16px 0 #00bcd4;
+  border: 1.5px solid #00bcd4;
+}
+
+/* Animação de gradiente otimizada */
+.bg-animated-tech {
+  position: relative;
+  background: linear-gradient(120deg, #181f2a, #232946, #1a2a40, #232946 80%, #0e223a 100%);
+  background-size: 400% 400%;
+  animation: gradientMoveDark 24s ease-in-out infinite;
+  overflow: hidden;
+  will-change: background-position;
+}
+@keyframes gradientMoveDark {
+  0% {background-position: 0% 50%;}
+  50% {background-position: 100% 50%;}
+  100% {background-position: 0% 50%;}
+}
+
+/* Removida animação de partículas para reduzir carga de CPU */
+
+@keyframes gradientMove {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+.animate-gradient-move {
+  animation: gradientMove 20s ease-in-out infinite;
+  will-change: background-position;
+}
+
+/* Garantir bordas iguais para camada de destaque dos cards */
+.card-futuristic,
+.card-futuristic-glow {
+  border-radius: 1rem; /* 16px, igual ao rounded-2xl do Tailwind */
+}
+
+/* Efeito neon para textos */
+.drop-shadow-neon {
+  filter: drop-shadow(0 0 8px #00bcd4) drop-shadow(0 0 16px #00bcd4);
+}
+
+/* Estilos específicos para planos */
+.plan-card-popular {
+  background: linear-gradient(135deg, rgba(16,185,129,0.1) 0%, rgba(6,182,212,0.1) 100%);
+  border: 2px solid rgba(16,185,129,0.6);
+  box-shadow: 0 0 20px rgba(16,185,129,0.3), 0 4px 24px rgba(0,0,0,0.2);
+}
+
+.plan-card-popular::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  background: linear-gradient(45deg, #10b981, #06b6d4, #10b981);
+  border-radius: 1rem;
+  z-index: -1;
+  opacity: 0.3;
+}
+
+

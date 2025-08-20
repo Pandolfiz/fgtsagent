@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content="" />
+    <title>FgtsAgent - Antecipação de Saque-Aniversário</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.2.0/css/all.min.css" />
+    <!-- Script para interceptar códigos de autenticação antes do carregamento do React -->
+    <script>
+      (function() {
+        // Verificar se estamos na raiz do site com um código de autenticação
+        if (window.location.pathname === '/' || window.location.pathname === '') {
+          const urlParams = new URLSearchParams(window.location.search);
+          const code = urlParams.get('code');
+          
+          if (code) {
+            console.log('[Auth Interceptor] Código detectado na raiz, redirecionando...');
+            // Redirecionar para o callback correto, mantendo todos os parâmetros
+            window.location.replace('/auth/callback' + window.location.search + window.location.hash);
+          }
+        }
+        
+        // Carregar token CSRF automaticamente
+        (async function() {
+          let retries = 0;
+          const maxRetries = 3;
+          
+          const loadCSRFToken = async () => {
+            try {
+              console.log('[CSRF] Tentativa', retries + 1, 'de carregar token...');
+              const response = await fetch('/api/auth/csrf-token', {
+                method: 'GET',
+                credentials: 'include',
+                headers: {
+                  'Accept': 'application/json'
+                }
+              });
+              
+              if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.csrfToken) {
+                  const metaTag = document.querySelector('meta[name="csrf-token"]');
+                  if (metaTag) {
+                    metaTag.setAttribute('content', data.csrfToken);
+                    console.log('[CSRF] Token carregado com sucesso:', data.csrfToken.substring(0, 10) + '...');
+                    return true;
+                  }
+                }
+              }
+              return false;
+            } catch (error) {
+              console.warn('[CSRF] Erro ao carregar token:', error);
+              return false;
+            }
+          };
+          
+          // Tentar carregar o token com retry
+          while (retries < maxRetries) {
+            if (await loadCSRFToken()) {
+              break;
+            }
+            retries++;
+            if (retries < maxRetries) {
+              await new Promise(resolve => setTimeout(resolve, 1000)); // Esperar 1 segundo
+            }
+          }
+          
+          if (retries >= maxRetries) {
+            console.error('[CSRF] Falha ao carregar token após', maxRetries, 'tentativas');
+          }
+        })();
+      })();
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html> 

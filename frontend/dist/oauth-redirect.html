@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Redirecionando...</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      background: linear-gradient(to bottom right, #1a3b45, #1a3349, #1a2841);
+      color: white;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      background-color: rgba(30, 41, 59, 0.8);
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+      max-width: 500px;
+      backdrop-filter: blur(10px);
+    }
+    h1 {
+      color: #f87171;
+    }
+    .spinner {
+      display: inline-block;
+      width: 50px;
+      height: 50px;
+      border: 4px solid rgba(255, 255, 255, 0.3);
+      border-radius: 50%;
+      border-top-color: #3b82f6;
+      animation: spin 1s ease-in-out infinite;
+      margin: 1rem auto;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    #message {
+      margin-bottom: 1rem;
+    }
+    #debug {
+      text-align: left;
+      background-color: rgba(0, 0, 0, 0.2);
+      padding: 1rem;
+      border-radius: 4px;
+      margin-top: 1rem;
+      font-family: monospace;
+      font-size: 0.8rem;
+      overflow: auto;
+      max-height: 200px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Processando Autenticação</h1>
+    <div class="spinner"></div>
+    <p id="message">Redirecionando para o aplicativo...</p>
+    <div id="debug"></div>
+  </div>
+
+  <script>
+    (function() {
+      // Função para registrar mensagens de diagnóstico
+      function log(message, obj) {
+        const debug = document.getElementById('debug');
+        if (obj) {
+          debug.innerHTML += `<div>${message}: ${JSON.stringify(obj)}</div>`;
+        } else {
+          debug.innerHTML += `<div>${message}</div>`;
+        }
+      }
+
+      // Redirecionar para página correta
+      function redirectToApp() {
+        try {
+          const currentUrl = window.location.href;
+          log('URL atual', currentUrl);
+
+          // Análise da URL
+          const urlPath = window.location.pathname;
+          const urlHash = window.location.hash;
+          const urlSearch = window.location.search;
+
+          log('Partes da URL', { path: urlPath, hash: urlHash, search: urlSearch });
+
+          // Determinar a URL de destino - mantendo os parâmetros de query e hash
+          let targetPath = '/auth/callback';
+          
+          // Se for um callback OAuth2 específico
+          if (urlPath.includes('oauth2-credential')) {
+            targetPath = '/oauth2-credential/callback';
+          }
+
+          const targetUrl = `${window.location.origin}${targetPath}${urlSearch}${urlHash}`;
+          log('Redirecionando para', targetUrl);
+
+          // Atualizar a mensagem
+          document.getElementById('message').textContent = 'Processando autenticação...';
+          
+          // Redirecionar após breve atraso para garantir visibilidade
+          setTimeout(() => {
+            window.location.href = targetUrl;
+          }, 1500);
+        } catch (error) {
+          log('Erro ao redirecionar', error.message);
+          document.getElementById('message').textContent = 'Erro ao processar redirecionamento. Tente novamente.';
+        }
+      }
+
+      // Executar quando a página carregar
+      window.onload = redirectToApp;
+    })();
+  </script>
+</body>
+</html> 

@@ -1,0 +1,17 @@
+# Ignorar arquivos desnecessários no tar.gz
+
+node_modules/
+*.tar.gz
+.cache/
+.temp/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db 
+.cursor
+.git
+.github
+.tarignore
+nginx
+data
+docker-compose.override.yml
