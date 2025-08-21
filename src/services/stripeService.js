@@ -209,12 +209,7 @@ class StripeService {
           ...metadata
         },
         description: `Assinatura ${plan.name} - ${interval}`,
-        receipt_email: customerEmail,
-        // ✅ OBRIGATÓRIO: Configuração para 3D Secure e SCA
-        // NOTA: automatic_payment_methods está habilitado por padrão no Stripe
-        // Quando habilitado, return_url é OBRIGATÓRIO para métodos que podem redirecionar,
-        confirm: true,
-        return_url: `${process.env.APP_URL || 'https://fgtsagent.com.br'}/payment/return`
+        receipt_email: customerEmail
         // ✅ NOTA: confirm e return_url serão configurados na confirmação
         // quando o frontend enviar o PaymentMethod ID real
       };
@@ -676,8 +671,8 @@ class StripeService {
   }
 
   /**
-   * Cria E confirma um PaymentIntent em uma única operação
-   * Ideal para checkout nativo com 3D Secure
+   * Cria E confirma um PaymentIntent em uma operação
+   * ✅ FLUXO CORRETO: PaymentMethod criado no frontend, PaymentIntent criado E confirmado no backend
    */
   async createAndConfirmPaymentIntent(planType, customerEmail, paymentMethodId, metadata = {}, interval = 'monthly') {
     try {
@@ -690,28 +685,39 @@ class StripeService {
       if (!priceConfig) {
         throw new Error(`Intervalo de pagamento '${interval}' não suportado para este plano`);
       }
+      
+      // ✅ VALIDAÇÃO: Verificar se o preço está configurado corretamente
+      if (!priceConfig.amount || priceConfig.amount <= 0) {
+        throw new Error(`Valor do plano ${planType} (${interval}) não está configurado corretamente`);
+      }
+      
+      console.log('🔍 Configuração de preço validada:', {
+        planType,
+        interval,
+        amount: priceConfig.amount,
+        amountFormatted: `R$ ${(priceConfig.amount / 100).toFixed(2)}`,
+        priceId: priceConfig.priceId
+      });
 
-      // ✅ CONFIGURAÇÃO COMPLETA: Criar com payment_method + confirm + return_url
+      // ✅ CONFIGURAÇÃO CORRETA: Criar E confirmar em uma operação
       const paymentIntentData = {
         amount: priceConfig.amount,
         currency: 'brl',
         capture_method: 'automatic',
-        payment_method: paymentMethodId, // ✅ MÉTODO: ID do PaymentMethod
-        confirm: true, // ✅ CONFIRMAR: Imediatamente após criação
-        return_url: `${process.env.APP_URL || 'https://fgtsagent.com.br'}/payment/return`, // ✅ RETORNO: Para 3D Secure
+        confirm: "true", // ✅ CONFIRMAR: Imediatamente após criação (STRING)
+        description: `Assinatura ${plan.name} - ${interval}`,
         metadata: {
           plan: planType,
           interval: interval,
           customerEmail,
-          source: 'web_checkout',
+          source: 'signup',
+          userName: metadata.userName,
           user_agent: 'fgtsagent_web',
           ...metadata
         },
-        description: `Assinatura ${plan.name} - ${interval}`,
-        receipt_email: customerEmail
-        // ✅ OBRIGATÓRIO: Configuração para 3D Secure e SCA
-        // NOTA: automatic_payment_methods está habilitado por padrão no Stripe
-        // Quando habilitado, return_url é OBRIGATÓRIO para métodos que podem redirecionar
+        payment_method: paymentMethodId, // ✅ MÉTODO: PaymentMethod criado no frontend
+        receipt_email: customerEmail,
+        return_url: `${process.env.APP_URL || 'http://localhost:3000'}/payment/return` // ✅ RETURN URL: Para 3D Secure
       };
 
       console.log('🔍 Criando E confirmando PaymentIntent:', {
@@ -721,17 +727,38 @@ class StripeService {
         appUrl: process.env.APP_URL,
         timestamp: new Date().toISOString()
       });
+      
+      // ✅ DEBUG: Verificar payload exato sendo enviado para o Stripe
+      console.log('📤 PAYLOAD EXATO para Stripe:', JSON.stringify(paymentIntentData, null, 2));
+      
+      // ✅ DEBUG: Verificar configuração do plano
+      console.log('🔍 Configuração do plano:', {
+        planType,
+        interval,
+        planName: plan.name,
+        amount: priceConfig.amount,
+        amountFormatted: `R$ ${(priceConfig.amount / 100).toFixed(2)}`,
+        priceId: priceConfig.priceId
+      });
 
       const paymentIntent = await stripe.paymentIntents.create(paymentIntentData);
 
       logger.info(`PaymentIntent criado E confirmado: ${paymentIntent.id} para plano ${planType} (${interval})`);
       
-      // ✅ PROCESSAR: Resultado da confirmação
+      // ✅ PROCESSAR: Resultado da criação E confirmação
       if (paymentIntent.status === 'requires_action') {
         logger.info('⚠️ PaymentIntent requer ação adicional (3D Secure):', {
           id: paymentIntent.id,
           nextAction: paymentIntent.next_action?.type,
+          redirectUrl: paymentIntent.next_action?.redirect_to_url?.url,
           timestamp: new Date().toISOString()
+        });
+        
+        // ✅ DEBUG: Log detalhado para 3D Secure
+        console.log('🔍 3D Secure - Next Action completo:', {
+          type: paymentIntent.next_action?.type,
+          redirectUrl: paymentIntent.next_action?.redirect_to_url?.url,
+          returnUrl: paymentIntent.next_action?.redirect_to_url?.return_url
         });
         
         return {
@@ -811,7 +838,7 @@ class StripeService {
       // ✅ CONFIRMAR: PaymentIntent com método de pagamento + return_url
       const confirmedIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
         payment_method: paymentMethodId,
-        return_url: `${process.env.APP_URL || 'https://fgtsagent.com.br'}/payment/return`
+        return_url: `${process.env.APP_URL || 'http://localhost:3000'}/payment/return`
       });
       
       logger.info('✅ PaymentIntent confirmado com método de pagamento:', {

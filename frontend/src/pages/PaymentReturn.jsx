@@ -65,7 +65,11 @@ export default function PaymentReturn() {
             setTimeout(() => {
               navigate('/payment/success', { 
                 replace: true,
-                state: { paymentIntentId: paymentIntent.id }
+                state: { 
+                  paymentIntentId: paymentIntent.id,
+                  amount: paymentIntent.amount,
+                  currency: paymentIntent.currency
+                }
               });
             }, 2000);
             break;
@@ -77,6 +81,16 @@ export default function PaymentReturn() {
             // ✅ REDIRECIONAR: Para dashboard após delay
             setTimeout(() => {
               navigate('/dashboard', { replace: true });
+            }, 3000);
+            break;
+
+          case 'requires_action':
+            console.log('⚠️ PaymentReturn: Pagamento requer ação adicional (3D Secure)');
+            setError('Autenticação 3D Secure não foi completada. Tente novamente.');
+            
+            // ✅ REDIRECIONAR: Para checkout novamente
+            setTimeout(() => {
+              navigate('/signup-with-plans', { replace: true });
             }, 3000);
             break;
 
