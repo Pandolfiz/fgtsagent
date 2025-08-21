@@ -717,7 +717,7 @@ class StripeService {
         },
         payment_method: paymentMethodId, // ✅ MÉTODO: PaymentMethod criado no frontend
         receipt_email: customerEmail,
-        return_url: `${process.env.APP_URL || 'http://localhost:3000'}/payment/return` // ✅ RETURN URL: Para 3D Secure
+        return_url: `${process.env.APP_URL || 'http://localhost:5173'}/payment/return` // ✅ RETURN URL: Para 3D Secure
       };
 
       console.log('🔍 Criando E confirmando PaymentIntent:', {
@@ -838,7 +838,7 @@ class StripeService {
       // ✅ CONFIRMAR: PaymentIntent com método de pagamento + return_url
       const confirmedIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
         payment_method: paymentMethodId,
-        return_url: `${process.env.APP_URL || 'http://localhost:3000'}/payment/return`
+        return_url: `${process.env.APP_URL || 'http://localhost:5173'}/payment/return`
       });
       
       logger.info('✅ PaymentIntent confirmado com método de pagamento:', {
