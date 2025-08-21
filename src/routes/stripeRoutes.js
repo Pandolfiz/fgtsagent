@@ -115,16 +115,16 @@ router.post('/create-checkout-session', requireAuth, validate(checkoutSchema), a
 });
 
 /**
- * POST /api/stripe/create-and-confirm-payment
- * Cria E confirma um PaymentIntent em uma única operação
+ * POST /api/stripe/create-payment-intent
+ * Cria E confirma um PaymentIntent em uma operação
  * Ideal para checkout nativo com 3D Secure
  */
-router.post('/create-and-confirm-payment', async (req, res) => {
+router.post('/create-payment-intent', async (req, res) => {
   try {
     const { planType, userEmail, userName, paymentMethodId, interval = 'monthly' } = req.body;
     
     // ✅ DEBUG: Log dos dados recebidos
-    console.log('🔍 Dados recebidos na rota create-and-confirm-payment:', {
+    console.log('🔍 Dados recebidos na rota create-payment-intent:', {
       planType,
       userEmail,
       userName,
@@ -157,7 +157,7 @@ router.post('/create-and-confirm-payment', async (req, res) => {
     
     console.log('✅ Plano encontrado:', planInfo);
     
-    // ✅ NOVO MÉTODO: Criar E confirmar em uma operação
+    // ✅ NOVO MÉTODO: Criar E confirmar PaymentIntent em uma operação
     const paymentIntent = await stripeService.createAndConfirmPaymentIntent(
       planType,
       userEmail,
@@ -189,73 +189,6 @@ router.post('/create-and-confirm-payment', async (req, res) => {
   }
 });
 
-/**
- * POST /api/stripe/create-payment-intent
- * Cria um Payment Intent para checkout nativo (SEM AUTENTICAÇÃO)
- */
-router.post('/create-payment-intent', async (req, res) => {
-  try {
-    const { planType, userEmail, userName, interval = 'monthly' } = req.body;
-    
-    // ✅ DEBUG: Log dos dados recebidos
-    console.log('🔍 Dados recebidos na rota create-payment-intent:', {
-      planType,
-      userEmail,
-      userName,
-      interval,
-      body: req.body
-    });
-    
-    // Validações básicas
-    if (!planType || !userEmail || !userName) {
-      console.log('❌ Validação falhou:', { planType, userEmail, userName });
-      return res.status(400).json({
-        success: false,
-        message: 'planType, userEmail e userName são obrigatórios'
-      });
-    }
-    
-    // ✅ DEBUG: Log antes de chamar getPlanInfo
-    console.log('🔍 Chamando getPlanInfo com:', { planType, interval });
-    
-    // Validar se o plano existe
-    const planInfo = stripeService.getPlanInfo(planType, interval);
-    if (!planInfo) {
-      console.log('❌ Plano não encontrado:', { planType, interval });
-      return res.status(400).json({
-        success: false,
-        message: `Plano ${planType} com intervalo ${interval} não encontrado`
-      });
-    }
-    
-    console.log('✅ Plano encontrado:', planInfo);
-    
-    const paymentIntent = await stripeService.createPaymentIntent(
-      planType,
-      userEmail,
-      {
-        source: 'signup',
-        userName: userName.trim()
-      },
-      interval
-    );
-    
-    res.status(200).json({
-      success: true,
-      data: {
-        clientSecret: paymentIntent.client_secret,
-        paymentIntentId: paymentIntent.id,
-        plan: planInfo
-      }
-    });
-  } catch (error) {
-    console.error('❌ Erro ao criar Payment Intent para cadastro:', error);
-    res.status(400).json({
-      success: false,
-      message: error.message || 'Erro ao criar Payment Intent'
-    });
-  }
-});
 
 /**
  * POST /api/stripe/create-signup-checkout-session

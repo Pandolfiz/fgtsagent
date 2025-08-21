@@ -141,8 +141,8 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
 
       console.log('✅ PaymentMethod criado:', paymentMethod.id);
 
-      // 2. ✅ NOVA ROTA: Criar E confirmar PaymentIntent em uma operação
-      const response = await api.post('/stripe/create-and-confirm-payment', {
+      // 2. ✅ NOVA ROTA: Criar PaymentIntent para confirmação no frontend
+      const response = await api.post('/stripe/create-payment-intent', {
         planType: selectedPlan,
         userEmail: userData.email,
         userName: `${userData.first_name} ${userData.last_name}`,
@@ -170,7 +170,7 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
 
 
 
-      // ✅ PROCESSAR: Resultado da criação E confirmação
+      // ✅ PROCESSAR: Resultado da criação E confirmação do PaymentIntent
       console.log('✅ Resposta da criação E confirmação:', response.data);
 
       if (response.data.success) {
@@ -179,18 +179,26 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
         // ✅ VERIFICAR: Status do PaymentIntent
         console.log('🔍 Status do PaymentIntent:', paymentIntent?.status);
         
-        // ✅ FLUXO MELHORADO: Tratamento específico para produção
+        // ✅ FLUXO SIMPLIFICADO: Backend já criou E confirmou
         if (paymentIntent?.status === 'succeeded') {
           console.log('✅ Pagamento criado E confirmado com sucesso:', paymentIntent);
           setSuccess(true);
           if (onSuccess) onSuccess(paymentIntent);
         } else if (paymentIntent?.status === 'requires_action') {
           console.log('⚠️ PaymentIntent requer ação adicional (3D Secure)');
-          console.log('ℹ️ Aguardando autenticação bancária...');
+          console.log('🔍 Next Action:', paymentIntent.nextAction);
           
-          // ✅ PRODUÇÃO: Aguardar confirmação do 3D Secure
-          // O Stripe vai redirecionar automaticamente se necessário
-          return;
+          // ✅ PROCESSAR: 3D Secure automático
+          if (paymentIntent.nextAction?.type === 'redirect_to_url') {
+            console.log('🔄 Redirecionando para autenticação 3D Secure...');
+            
+            // ✅ REDIRECIONAR: Para 3D Secure
+            window.location.href = paymentIntent.nextAction.redirect_to_url.url;
+            return;
+          } else {
+            console.log('⚠️ Next Action não é redirect_to_url:', paymentIntent.nextAction);
+            throw new Error('Tipo de ação 3D Secure não suportado');
+          }
         } else if (paymentIntent?.status === 'requires_payment_method') {
           console.log('⚠️ PaymentIntent requer método de pagamento válido');
           throw new Error('Método de pagamento inválido. Tente novamente.');
@@ -199,12 +207,11 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
           throw new Error('Pagamento cancelado. Tente novamente.');
         } else if (paymentIntent?.status === 'processing') {
           console.log('⏳ PaymentIntent em processamento...');
-          // ✅ PRODUÇÃO: Aguardar processamento
+          // ✅ AGUARDAR: Processamento
           return;
         } else {
           console.log('⚠️ PaymentIntent com status inesperado:', paymentIntent?.status);
-          // ✅ PRODUÇÃO: Redirecionar para página de sucesso se necessário
-          window.location.href = `${window.location.origin}/signup-success`;
+          throw new Error(`Status inesperado: ${paymentIntent?.status}`);
         }
       } else {
         throw new Error(response.data.message || 'Erro na criação E confirmação do pagamento');
@@ -234,6 +241,10 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
         userFriendlyError = 'Falha na verificação de segurança. Tente novamente ou use outro método de pagamento.';
       } else if (err.message?.includes('payment_intent_authentication_failure')) {
         userFriendlyError = 'Verificação de segurança falhou. Complete o captcha e tente novamente.';
+      } else if (err.message?.includes('3D Secure')) {
+        userFriendlyError = 'Falha na autenticação 3D Secure. Tente novamente ou use outro cartão.';
+      } else if (err.message?.includes('redirect_to_url')) {
+        userFriendlyError = 'Erro no redirecionamento para autenticação bancária. Tente novamente.';
       }
       
       setError(userFriendlyError);
