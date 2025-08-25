@@ -510,8 +510,18 @@ router.get('/webhook/test', (req, res) => {
 });
 
 // ✅ WEBHOOK DO STRIPE: Para processar eventos de pagamento e assinatura
-router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
+router.post('/webhook', async (req, res) => {
   try {
+    // ✅ DEBUG: Verificar tipo do corpo da requisição
+    console.log('🔍 Webhook recebido:', {
+      contentType: req.headers['content-type'],
+      bodyType: typeof req.body,
+      bodyLength: req.body?.length || 0,
+      isBuffer: Buffer.isBuffer(req.body),
+      isString: typeof req.body === 'string',
+      timestamp: new Date().toISOString()
+    });
+
     const sig = req.headers['stripe-signature'];
     const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
     
