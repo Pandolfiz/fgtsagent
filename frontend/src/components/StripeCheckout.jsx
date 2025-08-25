@@ -4,89 +4,38 @@ import { CreditCard, Lock, CheckCircle, AlertCircle, Calendar } from 'lucide-rea
 import api from '../utils/api.js';
 import stripePromise from '../config/stripe.js';
 
-console.log('🔍 StripeCheckout importado, stripePromise:', stripePromise);
-
-const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
-  console.log('🔍 CheckoutForm renderizando com:', { selectedPlan, userData, onSuccess, onError });
-  
-  const stripe = useStripe();
-  const elements = useElements();
+const CheckoutForm = React.memo(({ selectedPlan, userData, onSuccess, onError }) => {
+  // ✅ Estados essenciais apenas
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(false);
   const [selectedInterval, setSelectedInterval] = useState('monthly');
   const [planDetails, setPlanDetails] = useState(null);
+  
+  const stripe = useStripe();
+  const elements = useElements();
 
-  console.log('🔍 Estados do CheckoutForm:', { stripe: !!stripe, elements: !!elements, loading, error, success, selectedInterval, planDetails });
-
-  // ✅ DEBUG: Monitorar carregamento do Stripe (SEMPRE EXECUTAR)
-  useEffect(() => {
-    console.log('🔄 useEffect CheckoutForm - Stripe status:', {
-      stripe: !!stripe,
-      elements: !!elements,
-      timestamp: new Date().toISOString()
-    });
-    
-    if (stripe && elements) {
-      console.log('✅ Stripe e Elements carregados com sucesso');
-    } else {
-      console.log('⏳ Aguardando carregamento do Stripe...');
-    }
-  }, [stripe, elements]);
-
-  // ✅ DEBUG: Carregar detalhes do plano (SEMPRE EXECUTAR)
+  // ✅ Carregar detalhes do plano
   useEffect(() => {
     if (selectedPlan) {
       const loadPlanDetails = async () => {
         try {
           const response = await api.get(`/stripe/plans/${selectedPlan}`);
-          // ✅ CORRIGIR: A API retorna {data: {...}}, então precisamos acessar response.data.data
           const planData = response.data.data || response.data;
-          
-          // ✅ DEBUG: Verificar estrutura dos dados
-          console.log('🔍 Dados da API:', {
-            responseData: response.data,
-            planData: planData,
-            hasPrices: !!planData?.prices,
-            pricesLength: planData?.prices?.length,
-            prices: planData?.prices
-          });
-          
           setPlanDetails(planData);
         } catch (err) {
-          const errorMessage = err.message || 'Erro desconhecido ao carregar plano';
-          setError(`Erro ao carregar plano: ${errorMessage}`);
-          if (onError) onError(errorMessage);
+          setError(`Erro ao carregar plano: ${err.message}`);
+          if (onError) onError(err.message);
         }
       };
       loadPlanDetails();
     }
   }, [selectedPlan, onError]);
 
-  // ✅ TESTE VISUAL: Garantir que o componente está sendo renderizado
-  console.log('🎨 Renderizando CheckoutForm...');
-
-  // ✅ DEBUG: Renderização de debug para identificar problemas
+  // ✅ Verificar se Stripe está disponível
   if (!stripe || !elements) {
-    console.log('⚠️ Stripe ou Elements não carregados:', { stripe: !!stripe, elements: !!elements });
     return (
-      <div 
-        className="text-center py-8 bg-gray-800/50 rounded-lg border border-yellow-400/30"
-        style={{
-          position: 'relative',
-          zIndex: 1000,
-          backgroundColor: 'rgba(31, 41, 55, 0.8)',
-          border: '2px solid rgba(250, 204, 21, 0.5)',
-          borderRadius: '12px',
-          padding: '32px',
-          margin: '16px 0',
-          minHeight: '200px',
-          display: 'flex',
-          flexDirection: 'column',
-          justifyContent: 'center',
-          alignItems: 'center'
-        }}
-      >
+      <div className="text-center py-8 bg-gray-800/50 rounded-lg border border-yellow-400/30">
         <AlertCircle className="w-16 h-16 text-yellow-400 mb-4" />
         <h3 className="text-xl font-semibold text-white mb-2">
           Carregando Stripe...
@@ -94,18 +43,30 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
         <p className="text-cyan-200 mb-4">
           Aguarde enquanto carregamos o sistema de pagamento
         </p>
-        <div className="p-3 bg-gray-900/80 rounded text-xs text-gray-300 border border-gray-600">
-          <p>Debug: stripe = {stripe ? 'Carregado' : 'Não carregado'}</p>
-          <p>Debug: elements = {elements ? 'Carregado' : 'Não carregado'}</p>
-          <p>Debug: stripePromise = {stripePromise ? 'Presente' : 'Ausente'}</p>
-        </div>
+      </div>
+    );
+  }
+
+  // ✅ Bloquear durante processamento
+  if (loading) {
+    return (
+      <div className="text-center py-8 bg-blue-900/50 rounded-lg border border-blue-400/30">
+        <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+        <h3 className="text-xl font-semibold text-white mb-2">
+          Processando Assinatura...
+        </h3>
+        <p className="text-blue-200">
+          Não feche esta página. Aguarde a confirmação.
+        </p>
       </div>
     );
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
     if (!stripe || !elements) {
+      setError('Sistema de pagamento não disponível');
       return;
     }
 
@@ -113,142 +74,72 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
       setLoading(true);
       setError(null);
 
-      // ✅ CHECKOUT NATIVO: Criar PaymentIntent em vez de sessão de checkout
-      console.log('🧪 Iniciando checkout nativo...');
+      console.log('🔄 Iniciando processo de checkout...');
+
+      // ✅ ARQUITETURA CORRETA: Frontend apenas coleta dados, não chama Stripe
+      console.log('🔄 Coletando dados do cartão...');
       
-      // 1. ✅ FLUXO CORRETO: Primeiro criar PaymentMethod, depois criar E confirmar PaymentIntent
-      const { error: submitError } = await elements.submit();
-      if (submitError) {
-        console.error('❌ Erro ao submeter elementos:', submitError);
-        throw new Error(submitError.message);
+      // ✅ CAPTURAR CARD ELEMENT: Para obter dados do cartão
+      const cardElement = elements.getElement(CardElement);
+      if (!cardElement) {
+        throw new Error('Elemento do cartão não está disponível. Tente novamente.');
       }
 
-      // ✅ CRIAR: PaymentMethod com os dados do cartão
-      console.log('💳 Criando PaymentMethod...');
-      const { paymentMethod, error: paymentMethodError } = await stripe.createPaymentMethod({
-        type: 'card',
-        card: elements.getElement(CardElement),
+      console.log('✅ CardElement capturado com sucesso');
+
+      // ✅ COLETAR DADOS DO CARTÃO: Sem chamar Stripe diretamente
+      console.log('🔄 Coletando dados do cartão para enviar ao backend...');
+      
+      // ✅ DADOS BÁSICOS: Informações que podemos obter
+      const cardData = {
+        // ✅ DADOS DO USUÁRIO: Que já temos
         billing_details: {
           name: `${userData.first_name} ${userData.last_name}`,
           email: userData.email,
         },
-      });
+        // ✅ METADADOS: Para identificação
+        metadata: {
+          source: 'signup_with_plans',
+          timestamp: new Date().toISOString()
+        }
+      };
 
-      if (paymentMethodError) {
-        console.error('❌ Erro ao criar PaymentMethod:', paymentMethodError);
-        throw new Error(paymentMethodError.message);
-      }
+      console.log('✅ Dados do cartão coletados:', cardData);
 
-      console.log('✅ PaymentMethod criado:', paymentMethod.id);
-
-      // 2. ✅ NOVA ROTA: Criar PaymentIntent para confirmação no frontend
-      const response = await api.post('/stripe/create-payment-intent', {
+      // ✅ ENVIAR PARA BACKEND: Backend processa tudo com Stripe
+      console.log('🔄 Enviando dados para backend processar com Stripe...');
+      
+      const response = await api.post('/stripe/process-payment', {
         planType: selectedPlan,
         userEmail: userData.email,
         userName: `${userData.first_name} ${userData.last_name}`,
-        paymentMethodId: paymentMethod.id,
-        interval: selectedInterval
-      });
-
-      // ✅ DEBUG: Verificar resposta da API
-      console.log('🔍 Resposta da API create-payment-intent:', {
-        response: response.data,
-        hasClientSecret: !!response.data?.data?.clientSecret,
-        clientSecret: response.data?.data?.clientSecret
-      });
-
-      // ✅ CORRIGIR: A API retorna {success: true, data: {clientSecret: ...}}
-      const { clientSecret } = response.data.data || {};
-      
-      // ✅ VERIFICAR SE TEM CLIENT SECRET
-      if (!clientSecret) {
-        console.error('❌ Client Secret não encontrado na resposta:', response.data);
-        throw new Error('Client Secret não retornado pela API');
-      }
-
-      console.log('✅ Client Secret obtido:', clientSecret);
-
-
-
-      // ✅ PROCESSAR: Resultado da criação E confirmação do PaymentIntent
-      console.log('✅ Resposta da criação E confirmação:', response.data);
-
-      if (response.data.success) {
-        const paymentIntent = response.data.data;
-        
-        // ✅ VERIFICAR: Status do PaymentIntent
-        console.log('🔍 Status do PaymentIntent:', paymentIntent?.status);
-        
-        // ✅ FLUXO SIMPLIFICADO: Backend já criou E confirmou
-        if (paymentIntent?.status === 'succeeded') {
-          console.log('✅ Pagamento criado E confirmado com sucesso:', paymentIntent);
-          setSuccess(true);
-          if (onSuccess) onSuccess(paymentIntent);
-        } else if (paymentIntent?.status === 'requires_action') {
-          console.log('⚠️ PaymentIntent requer ação adicional (3D Secure)');
-          console.log('🔍 Next Action:', paymentIntent.nextAction);
-          
-          // ✅ PROCESSAR: 3D Secure automático
-          if (paymentIntent.nextAction?.type === 'redirect_to_url') {
-            console.log('🔄 Redirecionando para autenticação 3D Secure...');
-            
-            // ✅ REDIRECIONAR: Para 3D Secure
-            window.location.href = paymentIntent.nextAction.redirect_to_url.url;
-            return;
-          } else {
-            console.log('⚠️ Next Action não é redirect_to_url:', paymentIntent.nextAction);
-            throw new Error('Tipo de ação 3D Secure não suportado');
-          }
-        } else if (paymentIntent?.status === 'requires_payment_method') {
-          console.log('⚠️ PaymentIntent requer método de pagamento válido');
-          throw new Error('Método de pagamento inválido. Tente novamente.');
-        } else if (paymentIntent?.status === 'canceled') {
-          console.log('⚠️ PaymentIntent cancelado');
-          throw new Error('Pagamento cancelado. Tente novamente.');
-        } else if (paymentIntent?.status === 'processing') {
-          console.log('⏳ PaymentIntent em processamento...');
-          // ✅ AGUARDAR: Processamento
-          return;
-        } else {
-          console.log('⚠️ PaymentIntent com status inesperado:', paymentIntent?.status);
-          throw new Error(`Status inesperado: ${paymentIntent?.status}`);
+        cardData, // ✅ Dados do cartão coletados
+        interval: selectedInterval,
+        userData: {
+          firstName: userData.first_name,
+          lastName: userData.last_name,
+          phone: userData.phone,
+          password: userData.password,
+          planType: selectedPlan,
+          source: 'signup_with_plans'
         }
-      } else {
-        throw new Error(response.data.message || 'Erro na criação E confirmação do pagamento');
+      });
+
+      if (!response.data.success) {
+        throw new Error(response.data.message || 'Erro ao processar pagamento');
       }
 
-      // ✅ REMOVIDO: Código antigo que chamava Stripe diretamente
-      // const { error: paymentError, paymentIntent } = await stripe.confirmCardPayment(clientSecret, {
-      //   payment_method: {
-      //     card: elements.getElement(CardElement),
-      //     billing_details: {
-      //       name: `${userData.first_name} ${userData.last_name}`,
-      //       email: userData.email,
-      //     },
-      //   }
-      // });
+      console.log('✅ Pagamento processado com sucesso pelo backend');
+      
+      // ✅ SUCESSO: Backend já processou tudo com Stripe
+      setSuccess(true);
+      if (onSuccess) onSuccess();
 
     } catch (err) {
-      const errorMessage = err.message || 'Erro ao processar pagamento';
-      console.error('❌ Erro no checkout nativo:', err);
+      console.error('❌ Erro no checkout:', err);
+      setError(err.message || 'Erro no processamento do pagamento');
       
-      // ✅ MELHORAR: Tratamento específico para erros de conectividade
-      let userFriendlyError = errorMessage;
-      
-      if (err.message?.includes('Failed to fetch') || err.message?.includes('network')) {
-        userFriendlyError = 'Erro de conectividade. Verifique sua conexão com a internet e tente novamente.';
-      } else if (err.message?.includes('authentication_failure')) {
-        userFriendlyError = 'Falha na verificação de segurança. Tente novamente ou use outro método de pagamento.';
-      } else if (err.message?.includes('payment_intent_authentication_failure')) {
-        userFriendlyError = 'Verificação de segurança falhou. Complete o captcha e tente novamente.';
-      } else if (err.message?.includes('3D Secure')) {
-        userFriendlyError = 'Falha na autenticação 3D Secure. Tente novamente ou use outro cartão.';
-      } else if (err.message?.includes('redirect_to_url')) {
-        userFriendlyError = 'Erro no redirecionamento para autenticação bancária. Tente novamente.';
-      }
-      
-      setError(userFriendlyError);
-      if (onError) onError(userFriendlyError);
+      if (onError) onError(err);
     } finally {
       setLoading(false);
     }
@@ -272,23 +163,14 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
         color: '#10b981',
       },
     },
+    hidePostalCode: false,
   };
 
   const getSelectedPrice = () => {
     if (!planDetails?.prices || !Array.isArray(planDetails.prices)) {
-      console.log('⚠️ getSelectedPrice falhou:', {
-        planDetails,
-        hasPrices: !!planDetails?.prices,
-        isArray: Array.isArray(planDetails?.prices)
-      });
       return null;
     }
-    
-    const price = planDetails.prices.find(p => p.interval === selectedInterval);
-    if (!price) {
-      console.log(`⚠️ Preço para intervalo ${selectedInterval} não encontrado. Preços disponíveis:`, planDetails.prices);
-    }
-    return price;
+    return planDetails.prices.find(p => p.interval === selectedInterval);
   };
 
   const selectedPrice = getSelectedPrice();
@@ -298,19 +180,20 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
       <div className="text-center py-8">
         <CheckCircle className="w-16 h-16 text-green-400 mx-auto mb-4" />
         <h3 className="text-xl font-semibold text-white mb-2">
-          Pagamento Processado!
+          Assinatura Ativada!
         </h3>
         <p className="text-cyan-200">
-          Sua conta foi criada e o plano foi ativado.
+          Sua conta foi criada e a assinatura foi ativada com sucesso.
+        </p>
+        <p className="text-sm text-cyan-300 mt-2">
+          Você será cobrado {selectedInterval === 'monthly' ? 'mensalmente' : 'anualmente'}.
         </p>
       </div>
     );
   }
 
-  // Se não há dados do plano, mostrar loading
+  // ✅ Se não há dados do plano, mostrar loading
   if (!planDetails) {
-    console.log('⚠️ PlanDetails não carregado:', { planDetails });
-    
     return (
       <div className="text-center py-8">
         <div className="w-16 h-16 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
@@ -320,27 +203,12 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
         <p className="text-cyan-200">
           Aguarde enquanto preparamos seu checkout
         </p>
-        {/* ✅ DEBUG: Mostrar dados em desenvolvimento */}
-        {import.meta.env.DEV && (
-          <div className="mt-4 p-3 bg-gray-800/50 rounded text-xs text-gray-300">
-            <p>Debug: selectedPlan = {selectedPlan}</p>
-            <p>Debug: userData = {userData ? 'Presente' : 'Ausente'}</p>
-            <p>Debug: planDetails = {JSON.stringify(planDetails, null, 2)}</p>
-          </div>
-        )}
       </div>
     );
   }
 
-  // Se não há dados do usuário, mostrar erro
+  // ✅ Se não há dados do usuário, mostrar erro
   if (!userData?.email || !userData?.first_name || !userData?.last_name) {
-    console.log('⚠️ Dados do usuário incompletos:', {
-      userData,
-      hasEmail: !!userData?.email,
-      hasFirstName: !!userData?.first_name,
-      hasLastName: !!userData?.last_name
-    });
-    
     return (
       <div className="text-center py-8">
         <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
@@ -350,27 +218,12 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
         <p className="text-cyan-200">
           Por favor, preencha todos os dados pessoais antes de continuar.
         </p>
-        {/* ✅ DEBUG: Mostrar dados em desenvolvimento */}
-        {import.meta.env.DEV && (
-          <div className="mt-4 p-3 bg-gray-800/50 rounded text-xs text-gray-300">
-            <p>Debug: userData = {JSON.stringify(userData, null, 2)}</p>
-          </div>
-        )}
       </div>
     );
   }
 
-  // Se não há preços disponíveis, mostrar erro
+  // ✅ Se não há preços disponíveis, mostrar erro
   if (!planDetails?.prices || !Array.isArray(planDetails.prices) || planDetails.prices.length === 0) {
-    // ✅ DEBUG: Verificar por que não há preços
-    console.log('⚠️ Validação de preços falhou:', {
-      planDetails,
-      hasPrices: !!planDetails?.prices,
-      isArray: Array.isArray(planDetails?.prices),
-      length: planDetails?.prices?.length,
-      prices: planDetails?.prices
-    });
-    
     return (
       <div className="text-center py-8">
         <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
@@ -380,45 +233,12 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
         <p className="text-cyan-200">
           Este plano não possui preços configurados. Entre em contato com o suporte.
         </p>
-        {/* ✅ DEBUG: Mostrar dados em desenvolvimento */}
-        {import.meta.env.DEV && (
-          <div className="mt-4 p-3 bg-gray-800/50 rounded text-xs text-gray-300">
-            <p>Debug: planDetails = {JSON.stringify(planDetails, null, 2)}</p>
-            <p>Debug: planDetails.prices = {JSON.stringify(planDetails?.prices, null, 2)}</p>
-            <p>Debug: planDetails.prices type = {typeof planDetails?.prices}</p>
-            <p>Debug: planDetails.prices isArray = {Array.isArray(planDetails?.prices)}</p>
-          </div>
-        )}
       </div>
     );
   }
 
   return (
     <div className="space-y-6">
-      {/* ✅ TESTE VISUAL: Garantir que o componente está sendo renderizado */}
-      <div 
-        className="bg-purple-900/20 border border-purple-400/30 rounded-lg p-4"
-        style={{
-          position: 'relative',
-          zIndex: 1000,
-          backgroundColor: 'rgba(88, 28, 135, 0.3)',
-          border: '2px solid rgba(168, 85, 247, 0.5)',
-          borderRadius: '12px',
-          padding: '20px',
-          margin: '16px 0',
-          minHeight: '120px'
-        }}
-      >
-        <h3 className="text-purple-200 text-lg font-semibold mb-2">🎨 CheckoutForm Renderizado com Sucesso</h3>
-        <p className="text-purple-300 text-sm mb-3">Stripe e Elements carregados corretamente</p>
-        <div className="grid grid-cols-2 gap-2 text-xs text-purple-400">
-          <p><strong>selectedPlan:</strong> {selectedPlan}</p>
-          <p><strong>userData:</strong> {userData ? 'Presente' : 'Ausente'}</p>
-          <p><strong>stripe:</strong> {stripe ? '✅ Carregado' : '❌ Não carregado'}</p>
-          <p><strong>elements:</strong> {elements ? '✅ Carregado' : '❌ Não carregado'}</p>
-        </div>
-      </div>
-
       {/* Seleção de Intervalo de Pagamento */}
       <div className="bg-white/10 p-4 rounded-lg border border-cyan-400/20">
         <h3 className="font-medium text-cyan-200 mb-3 text-sm">Escolha o Intervalo de Pagamento</h3>
@@ -489,10 +309,21 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
           
           <div className="space-y-4">
             <div className="bg-gray-800/50 p-4 rounded-lg">
-              <CardElement options={cardElementOptions} />
+              <label className="block text-cyan-200 text-sm mb-2 font-medium">
+                Dados do Cartão de Crédito
+              </label>
+              
+              <CardElement 
+                options={cardElementOptions} 
+                className="stripe-card-element"
+              />
+              
+              <p className="text-xs text-cyan-300 mt-2">
+                Digite os números do seu cartão, data de validade e código de segurança
+              </p>
             </div>
             
-            {/* ✅ INFORMAÇÃO: Sobre verificação de segurança */}
+            {/* Informação sobre verificação de segurança */}
             <div className="text-xs text-cyan-300 bg-cyan-400/10 p-3 rounded-lg border border-cyan-400/20">
               <div className="flex items-center gap-2 mb-1">
                 <Lock className="w-3 h-3" />
@@ -505,10 +336,18 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
             
             {error && (
               <div className="mt-3 p-3 bg-red-500/20 border border-red-400/30 rounded-lg">
-                <div className="flex items-center gap-2 text-red-400">
+                <div className="flex items-center gap-2 text-red-400 mb-2">
                   <AlertCircle className="w-4 h-4" />
                   <span className="text-sm">{error}</span>
                 </div>
+                
+                <button
+                  type="button"
+                  onClick={() => setError(null)}
+                  className="text-xs bg-red-500/20 hover:bg-red-500/30 text-red-300 px-3 py-1 rounded border border-red-400/30 transition-colors"
+                >
+                  🔄 Tentar Novamente
+                </button>
               </div>
             )}
           </div>
@@ -530,7 +369,7 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
               Processando...
             </div>
           ) : (
-            `Pagar ${selectedPrice ? selectedPrice.amountFormatted : ''}`
+            `Assinar ${selectedPrice ? selectedPrice.amountFormatted : ''} ${selectedInterval === 'monthly' ? '/mês' : '/ano'}`
           )}
         </button>
 
@@ -542,73 +381,34 @@ const CheckoutForm = ({ selectedPlan, userData, onSuccess, onError }) => {
       </form>
     </div>
   );
-};
+});
 
-// Componente principal que envolve o formulário
-const StripeCheckout = ({ selectedPlan, userData, onSuccess, onError }) => {
-  console.log('🔍 StripeCheckout renderizando com:', { selectedPlan, userData, onSuccess, onError });
-  
-  // ✅ TESTE VISUAL: Garantir que o componente está sendo renderizado
-  console.log('🎨 Renderizando StripeCheckout...');
-  
-  // ✅ DEBUG: Verificar se stripePromise está carregado
+// Componente principal
+const StripeCheckout = React.memo(({ selectedPlan, userData, onSuccess, onError }) => {
   if (!stripePromise) {
-    console.error('❌ stripePromise não está carregado');
     return (
       <div className="text-center py-8 bg-red-900/50 rounded-lg border border-red-400/30">
-        <AlertCircle className="w-16 h-16 text-red-400 mx-auto mb-4" />
+        <AlertCircle className="w-16 h-16 text-red-400 mb-4" />
         <h3 className="text-xl font-semibold text-white mb-2">
           Erro na Configuração do Stripe
         </h3>
         <p className="text-red-200">
           Não foi possível carregar o sistema de pagamento
         </p>
-        <div className="mt-4 p-3 bg-gray-800/50 rounded text-xs text-gray-300">
-          <p>Debug: stripePromise = {stripePromise ? 'Presente' : 'Ausente'}</p>
-          <p>Debug: VITE_STRIPE_PUBLISHABLE_KEY = {import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY ? 'Configurada' : 'Não configurada'}</p>
-        </div>
       </div>
     );
   }
-  
-  // ✅ SEMPRE renderizar algo visual
+
   return (
-    <div className="space-y-4">
-      {/* ✅ TESTE VISUAL: Garantir que o componente está sendo renderizado */}
-      <div 
-        className="bg-blue-900/20 border border-blue-400/30 rounded-lg p-4"
-        style={{
-          position: 'relative',
-          zIndex: 1000,
-          backgroundColor: 'rgba(30, 58, 138, 0.3)',
-          border: '2px solid rgba(96, 165, 250, 0.5)',
-          borderRadius: '12px',
-          padding: '20px',
-          margin: '16px 0',
-          minHeight: '120px'
-        }}
-      >
-        <h3 className="text-blue-200 text-lg font-semibold mb-2">🔍 Debug: StripeCheckout Renderizado</h3>
-        <p className="text-blue-300 text-sm mb-3">Componente carregado com sucesso</p>
-        <div className="grid grid-cols-2 gap-2 text-xs text-blue-400">
-          <p><strong>selectedPlan:</strong> {selectedPlan}</p>
-          <p><strong>userData:</strong> {userData ? 'Presente' : 'Ausente'}</p>
-          <p><strong>stripePromise:</strong> {stripePromise ? '✅ Carregado' : '❌ Não carregado'}</p>
-          <p><strong>timestamp:</strong> {new Date().toLocaleTimeString()}</p>
-        </div>
-      </div>
-      
-      {/* ✅ Renderizar Elements apenas se stripePromise estiver pronto */}
-      <Elements stripe={stripePromise}>
-        <CheckoutForm
-          selectedPlan={selectedPlan}
-          userData={userData}
-          onSuccess={onSuccess}
-          onError={onError}
-        />
-      </Elements>
-    </div>
+    <Elements stripe={stripePromise}>
+      <CheckoutForm
+        selectedPlan={selectedPlan}
+        userData={userData}
+        onSuccess={onSuccess}
+        onError={onError}
+      />
+    </Elements>
   );
-};
+});
 
 export default StripeCheckout;

@@ -129,7 +129,7 @@ async function verifyTableStructure() {
       console.log('❌ Erro ao verificar estrutura:', error.message);
       
       // Se o erro for sobre a coluna cpf_cnpj não existir, vamos criá-la manualmente
-      if (error.message.includes('cpf_cnpj')) {
+      if (error.message && typeof error.message === 'string' && error.message.includes('cpf_cnpj')) {
         console.log('🔄 Tentando criar coluna cpf_cnpj manualmente...');
         await createCpfCnpjColumnManually();
       }
@@ -151,7 +151,7 @@ async function createCpfCnpjColumnManually() {
       .update({ cpf_cnpj: null })
       .eq('id', '00000000-0000-0000-0000-000000000000'); // ID fictício para forçar criação da coluna
 
-    if (error && error.message.includes('column "cpf_cnpj" does not exist')) {
+    if (error && error.message && typeof error.message === 'string' && error.message.includes('column "cpf_cnpj" does not exist')) {
       console.log('❌ Coluna cpf_cnpj não existe e não pode ser criada automaticamente');
       console.log('💡 Execute manualmente no Supabase SQL Editor:');
       console.log('   ALTER TABLE user_profiles ADD COLUMN cpf_cnpj VARCHAR(14);');

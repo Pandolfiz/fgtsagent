@@ -1,6 +1,8 @@
 import Home from './pages/Home.jsx';
 import Login from './pages/Login.jsx';
 import { Routes, Route } from 'react-router-dom';
+import { useEffect } from 'react';
+import axios from 'axios';
 import AgentsConfigPage from './pages/AgentsConfigPage';
 import AgentView from './pages/AgentView.jsx';
 import SignUpWithPlans from './pages/SignUpWithPlans.jsx';
@@ -15,16 +17,24 @@ import EvolutionCredentialsRoute from './pages/whatsapp-credentials';
 import PartnerCredentialsRoute from './pages/partner-credentials';
 import AuthCallback from './pages/AuthCallback.jsx';
 import PaymentReturn from './pages/PaymentReturn.jsx';
+import PaymentCancel from './pages/PaymentCancel.jsx';
 import TermsOfUse from './pages/TermsOfUse.jsx';
 import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
+import AuthRecovery from './pages/AuthRecovery.jsx';
 
 import NotFound from './pages/NotFound.tsx';
 import ErrorPage from './components/ErrorPage.tsx';
 import SupabaseTest from './pages/SupabaseTest.jsx';
 import CookieConsent from './components/CookieConsent.jsx';
+import { setupAxiosAuthInterceptor } from './utils/authUtils';
 
 
 export default function App() {
+  // ✅ INICIALIZAR: Interceptor de autenticação quando o app carrega
+  useEffect(() => {
+    console.log('🚀 App: Configurando interceptor de autenticação...');
+    setupAxiosAuthInterceptor(axios);
+  }, []);
   return (
     <>
       <Routes>
@@ -53,8 +63,14 @@ export default function App() {
         {/* Rota de callback para compatibilidade (agora apenas redireciona para login) */}
         <Route path="/auth/callback" element={<AuthCallback />} />
         
+        {/* Rota de recuperação de autenticação */}
+        <Route path="/auth/recovery" element={<AuthRecovery />} />
+        
         {/* Rota de retorno do pagamento 3D Secure */}
         <Route path="/payment/return" element={<PaymentReturn />} />
+        
+        {/* Rota de cancelamento do pagamento */}
+        <Route path="/payment/cancel" element={<PaymentCancel />} />
 
         {/* Rotas de erro */}
         <Route path="/error" element={<ErrorPage />} />

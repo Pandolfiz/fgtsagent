@@ -15,7 +15,7 @@ function errorHandler(err, req, res, next) {
   }
   
   // Para erros do Supabase
-  if (err.message && (
+  if (err.message && typeof err.message === 'string' && (
     err.message.includes('Email') || 
     err.message.includes('password') ||
     err.message.includes('Authentication') ||

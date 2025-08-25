@@ -151,7 +151,7 @@ class WhatsappService {
       logger.error(`Erro ao enviar via Evolution API: ${error.message}`);
       
       // Verificar se é erro de conectividade
-      if (error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND')) {
+      if (error.message && typeof error.message === 'string' && (error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND'))) {
         logger.warn('Evolution API está offline. Mensagem será salva como pending para reenvio posterior.');
         return {
           success: false,
@@ -794,7 +794,7 @@ class WhatsappService {
           }
           
           // Erro específico para verified_name obrigatório
-          if (errorCode === 100 && errorMessage.includes('verified_name is required')) {
+          if (errorCode === 100 && errorMessage && typeof errorMessage === 'string' && errorMessage.includes('verified_name is required')) {
             return {
               success: false,
               error: errorUserMsg || 'Nome de verificação é obrigatório para registrar o número',
@@ -804,7 +804,7 @@ class WhatsappService {
           }
           
           // Erro específico para número não disponível
-          if (errorCode === 100 || errorMessage.includes('phone number')) {
+          if (errorCode === 100 || (errorMessage && typeof errorMessage === 'string' && errorMessage.includes('phone number'))) {
             return {
               success: false,
               error: errorUserMsg || 'Número de telefone não está disponível para registro',

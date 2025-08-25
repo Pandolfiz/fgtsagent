@@ -13,7 +13,60 @@ export default function Signup() {
   const [agree, setAgree] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [passwordStrength, setPasswordStrength] = useState({
+    length: false,
+    lowercase: false,
+    uppercase: false,
+    number: false,
+    special: false
+  });
   const navigate = useNavigate();
+
+  // ✅ FUNÇÃO: Calcular força da senha em tempo real
+  const calculatePasswordStrength = (password) => {
+    setPasswordStrength({
+      length: password.length >= 8 && password.length <= 128,
+      lowercase: /[a-z]/.test(password),
+      uppercase: /[A-Z]/.test(password),
+      number: /\d/.test(password),
+      special: /[@$!%*?&]/.test(password)
+    });
+  };
+
+  // ✅ FUNÇÃO: Validar senha forte
+  const validatePassword = (password) => {
+    if (password.length < 8) {
+      setError('A senha deve ter pelo menos 8 caracteres');
+      return false;
+    }
+    
+    if (password.length > 128) {
+      setError('A senha deve ter no máximo 128 caracteres');
+      return false;
+    }
+    
+    if (!/[a-z]/.test(password)) {
+      setError('A senha deve conter pelo menos 1 letra minúscula');
+      return false;
+    }
+    
+    if (!/[A-Z]/.test(password)) {
+      setError('A senha deve conter pelo menos 1 letra maiúscula');
+      return false;
+    }
+    
+    if (!/\d/.test(password)) {
+      setError('A senha deve conter pelo menos 1 número');
+      return false;
+    }
+    
+    if (!/[@$!%*?&]/.test(password)) {
+      setError('A senha deve conter pelo menos 1 caractere especial (@$!%*?&)');
+      return false;
+    }
+    
+    return true;
+  };
 
   // Função para formatar o telefone enquanto o usuário digita
   const formatPhone = (value) => {
@@ -48,8 +101,9 @@ export default function Signup() {
       setError('As senhas não coincidem');
       return;
     }
-    if (password.length < 8) {
-      setError('A senha deve ter pelo menos 8 caracteres');
+    
+    // ✅ VALIDAÇÃO DE SENHA FORTE
+    if (!validatePassword(password)) {
       return;
     }
 
@@ -61,6 +115,31 @@ export default function Signup() {
 
     setLoading(true);
     try {
+      // ✅ ARMAZENAR: Dados do usuário no localStorage para uso no login automático
+      try {
+        const userDataForStorage = {
+          firstName: name.split(' ')[0] || name,
+          lastName: name.split(' ').slice(1).join(' ') || '',
+          email: email,
+          fullName: name,
+          phone: phone,
+          password: password, // ✅ ARMAZENAR: Senha para auto-login
+          signupTimestamp: new Date().toISOString()
+        };
+        
+        localStorage.setItem('signup_user_data', JSON.stringify(userDataForStorage));
+        console.log('✅ Signup: Dados do usuário armazenados para login automático:', userDataForStorage);
+        
+        // ✅ LIMPAR: Dados sensíveis após armazenar (incluindo senha)
+        setTimeout(() => {
+          localStorage.removeItem('signup_user_data');
+          console.log('🔒 Signup: Dados sensíveis removidos do localStorage');
+        }, 300000); // 5 minutos
+        
+      } catch (error) {
+        console.error('❌ Signup: Erro ao armazenar dados do usuário:', error);
+      }
+      
       // Chamar API do backend para registro incluindo o telefone
       const resp = await fetch('/api/auth/register', {
         method: 'POST',
@@ -156,14 +235,41 @@ export default function Signup() {
               <span className="absolute left-3 text-cyan-400"><i className="fas fa-lock" /></span>
               <input
                 type="password"
-                placeholder="Mínimo 8 caracteres"
+                placeholder="Mínimo 8 caracteres com requisitos especiais"
                 className="pl-10 pr-3 py-1.5 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition w-full"
                 value={password}
-                onChange={e => setPassword(e.target.value)}
+                onChange={e => {
+                  setPassword(e.target.value);
+                  calculatePasswordStrength(e.target.value);
+                }}
                 minLength={8}
                 required
               />
             </div>
+            
+            {/* ✅ INDICADOR DE FORÇA DA SENHA */}
+            {password && (
+              <div className="mt-2 space-y-1">
+                <p className="text-xs text-cyan-200">Requisitos da senha:</p>
+                <div className="grid grid-cols-2 gap-1 text-xs">
+                  <div className={`flex items-center gap-1 ${passwordStrength.length ? 'text-green-400' : 'text-red-400'}`}>
+                    {passwordStrength.length ? '✓' : '✗'} 8-128 caracteres
+                  </div>
+                  <div className={`flex items-center gap-1 ${passwordStrength.lowercase ? 'text-green-400' : 'text-red-400'}`}>
+                    {passwordStrength.lowercase ? '✓' : '✗'} 1 minúscula
+                  </div>
+                  <div className={`flex items-center gap-1 ${passwordStrength.uppercase ? 'text-green-400' : 'text-red-400'}`}>
+                    {passwordStrength.uppercase ? '✓' : '✗'} 1 maiúscula
+                  </div>
+                  <div className={`flex items-center gap-1 ${passwordStrength.number ? 'text-green-400' : 'text-red-400'}`}>
+                    {passwordStrength.number ? '✓' : '✗'} 1 número
+                  </div>
+                  <div className={`flex items-center gap-1 ${passwordStrength.special ? 'text-green-400' : 'text-red-400'}`}>
+                    {passwordStrength.special ? '✓' : '✗'} 1 especial (@$!%*?&)
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
           <div>
             <label className="block text-cyan-200 mb-0.5 text-sm">Confirmar senha</label>
@@ -171,7 +277,7 @@ export default function Signup() {
               <span className="absolute left-3 text-cyan-400"><i className="fas fa-lock" /></span>
               <input
                 type="password"
-                placeholder="Confirmar senha"
+                placeholder="Confirme sua senha forte"
                 className="pl-10 pr-3 py-1.5 text-sm rounded-lg bg-white/10 text-white placeholder-cyan-200 border border-cyan-400/20 focus:outline-none focus:ring-2 focus:ring-cyan-400/40 transition w-full"
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}

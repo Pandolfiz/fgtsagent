@@ -3,6 +3,7 @@ const express = require('express');
 const router = express.Router();
 const { requireAuth, clientContext } = require('../middleware');
 const leadController = require('../controllers/leadController');
+const adminController = require('../controllers/adminController');
 
 // Autenticação e contexto de cliente
 router.use(requireAuth);
@@ -22,6 +23,9 @@ router.get('/:id', leadController.getById);
 
 // Obter histórico de propostas de um lead
 router.get('/:id/proposals', leadController.getProposals);
+
+// Buscar CPF de um lead (rota movida das rotas administrativas)
+router.get('/:lead_id/cpf', adminController.getLeadCpfByLeadId);
 
 // Criar novo lead
 router.post('/', leadController.create);

@@ -86,17 +86,17 @@ async function testSupabaseConnection(supabaseClient) {
     };
   } catch (error) {
     // Analisar o tipo de erro
-    if (error.message.includes('Invalid API key')) {
+    if (error.message && typeof error.message === 'string' && error.message.includes('Invalid API key')) {
       return {
         success: false,
         error: 'Chave de API inválida'
       };
-    } else if (error.message.includes('Project not found')) {
+    } else if (error.message && typeof error.message === 'string' && error.message.includes('Project not found')) {
       return {
         success: false,
         error: 'Projeto não encontrado - verifique a URL'
       };
-    } else if (error.message.includes('network') || error.message.includes('fetch')) {
+    } else if (error.message && typeof error.message === 'string' && (error.message.includes('network') || error.message.includes('fetch'))) {
       return {
         success: false,
         error: 'Erro de conexão de rede'

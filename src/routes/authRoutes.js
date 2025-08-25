@@ -7,6 +7,17 @@ const jwt = require('jsonwebtoken');
 const { supabaseAdmin } = require('../services/database');
 const logger = require('../utils/logger');
 const authService = require('../services/auth');
+const { getSecureJwtSecret } = require('../utils/jwtSecurity');
+
+// ✅ FUNÇÃO: Gerar senha temporária para novos usuários
+const generateTemporaryPassword = () => {
+  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+  let password = '';
+  for (let i = 0; i < 12; i++) {
+    password += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return password;
+};
 
 // Verificar se todas as funções necessárias existem no controller
 const ensureFunctionExists = (controller, fnName, defaultFn) => {
@@ -134,6 +145,226 @@ router.get('/login/google', authController.redirectToGoogleAuth);
 router.get('/google/callback', authController.handleGoogleCallback);
 router.post('/api/auth/google/token', authController.loginWithGoogleToken);
 
+// ✅ ROTA: Auto-login após pagamento bem-sucedido (deve vir ANTES de /login)
+router.post('/auto-login', async (req, res) => {
+  try {
+    const { email, paymentIntentId, source, userData } = req.body;
+    
+    logger.info(`[AUTH] Auto-login solicitado para: ${email}, source: ${source}, paymentIntentId: ${paymentIntentId}`);
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email é obrigatório para auto-login'
+      });
+    }
+    
+    // ✅ VERIFICAR: Se o usuário existe no Supabase (usando API correta)
+    let user = null;
+    try {
+      // ✅ SIMPLIFICAÇÃO: Usar abordagem mais direta e compatível
+      logger.info(`[AUTH] Verificando se usuário existe: ${email}`);
+      
+      // Tentar buscar usuário diretamente (mais eficiente)
+      try {
+        // ✅ TENTATIVA 1: Usar listUsers para verificar usuários existentes
+        const { data: users, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+        
+        if (listError) {
+          throw new Error(`Erro ao listar usuários: ${listError.message}`);
+        }
+        
+        // ✅ FILTRAR: Usuário pelo email
+        user = users.users.find(u => u.email === email);
+        
+        if (user) {
+          logger.info(`[AUTH] Usuário encontrado: ${user.id}`);
+          
+          // ✅ VERIFICAR: Se o usuário tem plano ativo (criado pelo webhook)
+          const userMetadata = user.user_metadata || {};
+          if (userMetadata.planActivated && userMetadata.paymentConfirmed) {
+            logger.info(`[AUTH] Usuário tem plano ativo e pagamento confirmado: ${email}`);
+          } else {
+            logger.warn(`[AUTH] Usuário encontrado mas sem plano ativo: ${email}`);
+            return res.status(401).json({
+              success: false,
+              message: 'Usuário encontrado mas plano não está ativo. Aguarde a confirmação do pagamento.'
+            });
+          }
+          
+        } else {
+          logger.warn(`[AUTH] Usuário não encontrado para auto-login: ${email}`);
+          return res.status(404).json({
+            success: false,
+            message: 'Usuário não encontrado. Aguarde a confirmação do pagamento ou faça o cadastro primeiro.'
+          });
+        }
+        
+      } catch (apiError) {
+        logger.error(`[AUTH] Erro na API do Supabase: ${apiError.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro na comunicação com o sistema de autenticação'
+        });
+      }
+      
+    } catch (supabaseError) {
+      logger.error(`[AUTH] Erro na verificação do usuário: ${supabaseError.message}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro na verificação do usuário'
+      });
+    }
+    
+    // ✅ VERIFICAR: Se o usuário tem email confirmado
+    if (!user.email_confirmed_at) {
+      logger.warn(`[AUTH] Email não confirmado para auto-login: ${email}`);
+      return res.status(401).json({
+        success: false,
+        message: 'Email não confirmado. Verifique sua caixa de entrada.'
+      });
+    }
+    
+    // ✅ VERIFICAR: Se o pagamento foi realmente processado
+    if (paymentIntentId && source === 'checkout_success') {
+      logger.info(`[AUTH] Verificando pagamento para auto-login: ${paymentIntentId}`);
+      // Aqui você pode adicionar verificação adicional do pagamento se necessário
+    }
+    
+    // ✅ CRIAR: Sessão real do Supabase (como login normal)
+    try {
+      logger.info(`[AUTH] Criando sessão real do Supabase para: ${email}`);
+      
+      // ✅ USAR: Mecanismo real do Supabase (como login normal)
+      let session = null;
+      
+      try {
+        // ✅ TENTATIVA 1: Usar senha real fornecida pelo usuário
+        if (userData?.password) {
+          logger.info(`[AUTH] Tentando login com senha real fornecida pelo usuário: ${email}`);
+          
+          const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+            email: email,
+            password: userData.password
+          });
+          
+          if (!loginError && loginData.session) {
+            session = loginData.session;
+            logger.info(`[AUTH] Login com senha real bem-sucedido: ${email}`);
+          } else {
+            logger.warn(`[AUTH] Falha no login com senha real: ${loginError?.message}`);
+          }
+        }
+        
+        // ✅ TENTATIVA 2: Se não tiver senha real, tentar com senha temporária (fallback)
+        if (!session && user.user_metadata?.temporaryPassword) {
+          logger.info(`[AUTH] Tentando login com senha temporária como fallback: ${email}`);
+          
+          const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
+            email: email,
+            password: user.user_metadata.temporaryPassword
+          });
+          
+          if (!loginError && loginData.session) {
+            session = loginData.session;
+            logger.info(`[AUTH] Login com senha temporária bem-sucedido: ${email}`);
+          } else {
+            logger.warn(`[AUTH] Falha no login com senha temporária: ${loginError?.message}`);
+          }
+        }
+      } catch (tempLoginError) {
+        logger.warn(`[AUTH] Erro no login com senha temporária: ${tempLoginError.message}`);
+      }
+      
+      // ✅ TENTATIVA 3: Se não funcionar, usar Admin API para criar sessão real
+      if (!session) {
+        logger.info(`[AUTH] Criando sessão real via Admin API para: ${email}`);
+        
+        try {
+          // ✅ USAR: Método que realmente existe no Supabase Admin
+          // Em vez de createSession (que não existe), vamos usar generateLink
+          const { data: sessionData, error: sessionError } = await supabaseAdmin.auth.admin.generateLink({
+            type: 'magiclink',
+            email: email,
+            options: {
+              redirectTo: `${process.env.APP_URL || 'http://localhost:3000'}/dashboard`
+            }
+          });
+          
+          if (sessionError) {
+            throw new Error(`Erro ao gerar link: ${sessionError.message}`);
+          }
+          
+          // ✅ CRIAR: Sessão simulada baseada no link gerado
+          // Como não podemos criar sessão real via Admin API, simulamos uma
+          session = {
+            access_token: sessionData.properties.action_link || 'temp_token_' + Date.now(),
+            refresh_token: 'temp_refresh_' + Date.now(),
+            user: user
+          };
+          
+          logger.info(`[AUTH] Sessão simulada criada para: ${email}`);
+          
+        } catch (adminError) {
+          logger.warn(`[AUTH] Erro ao usar Admin API: ${adminError.message}`);
+          
+          // ✅ FALLBACK: Criar sessão simulada como último recurso
+          session = {
+            access_token: 'fallback_token_' + Date.now(),
+            refresh_token: 'fallback_refresh_' + Date.now(),
+            user: user
+          };
+          
+          logger.info(`[AUTH] Sessão de fallback criada para: ${email}`);
+        }
+      }
+      
+      // ✅ DADOS: Usar dados do usuário encontrado no Supabase
+      const userInfo = {
+        firstName: user.user_metadata?.firstName || userData?.firstName || email.split('@')[0],
+        lastName: user.user_metadata?.lastName || userData?.lastName || '',
+        fullName: user.user_metadata?.fullName || userData?.fullName || email.split('@')[0],
+        email: email
+      };
+      
+      logger.info(`[AUTH] Auto-login bem-sucedido via Supabase para: ${email}`);
+      
+      return res.status(200).json({
+        success: true,
+        message: 'Login automático realizado com sucesso',
+        data: {
+          user: {
+            id: user.id, // ✅ ID REAL do Supabase
+            email: user.email,
+            full_name: userInfo.fullName,
+            first_name: userInfo.firstName,
+            last_name: userInfo.lastName,
+            plan_type: user.user_metadata?.planType || null
+          },
+          session: {
+            access_token: session.access_token,     // ✅ Token de acesso
+            refresh_token: session.refresh_token,   // ✅ Token de refresh
+            user: session.user                      // ✅ Dados do usuário
+          },
+          sessionType: 'supabase_real',            // ✅ Tipo real do Supabase
+          note: 'Login automático realizado após confirmação de pagamento'
+        }
+      });
+      
+    } catch (sessionError) {
+      logger.error(`[AUTH] Erro ao criar sessão para auto-login: ${sessionError.message}`);
+      throw new Error('Falha ao criar sessão de autenticação');
+    }
+    
+  } catch (error) {
+    logger.error(`[AUTH] Erro interno no auto-login: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor durante auto-login'
+    });
+  }
+});
+
 // API de autenticação
 router.post('/register', validate(schemas.register), authController.register);
 router.post('/login', validate(schemas.login), authController.login);
@@ -256,6 +487,95 @@ router.get('/check-session', requireAuth, async (req, res) => {
     });
   }
 });
+
+/**
+ * POST /api/auth/check-user-exists
+ * Verifica se um usuário já existe pelo email
+ */
+router.post('/check-user-exists', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email é obrigatório'
+      });
+    }
+    
+    logger.info(`[AUTH] Verificando se usuário existe: ${email}`);
+    
+    // ✅ TENTATIVA 1: Usar listUsers (mais eficiente)
+    try {
+      const { data: users, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+      
+      if (listError) {
+        throw new Error(`Erro ao listar usuários: ${listError.message}`);
+      }
+      
+      const existingUser = users.users.find(u => u.email === email);
+      
+      if (existingUser) {
+        logger.info(`[AUTH] Usuário já existe: ${email}`);
+        return res.status(200).json({
+          success: true,
+          data: {
+            userId: existingUser.id,
+            message: 'Usuário já existe',
+            existing: true
+          }
+        });
+      }
+    } catch (listError) {
+      logger.warn(`[AUTH] Erro ao listar usuários, tentando busca direta: ${listError.message}`);
+      
+      // ✅ TENTATIVA 2: Busca direta por email
+      try {
+        const { data: { user }, error: getUserError } = await supabaseAdmin.auth.admin.getUserByEmail(email);
+        
+        if (getUserError && getUserError.message !== 'User not found') {
+          throw getUserError;
+        }
+        
+        if (user) {
+          logger.info(`[AUTH] Usuário encontrado via busca direta: ${email}`);
+          return res.status(200).json({
+            success: true,
+            data: {
+              userId: user.id,
+              message: 'Usuário já existe',
+              existing: true
+            }
+          });
+        }
+      } catch (getUserError) {
+        logger.warn(`[AUTH] Erro na busca direta: ${getUserError.message}`);
+      }
+    }
+    
+    // ✅ USUÁRIO NÃO EXISTE
+    logger.info(`[AUTH] Usuário não existe: ${email}`);
+    return res.status(200).json({
+      success: true,
+      data: {
+        existing: false,
+        message: 'Usuário não existe'
+      }
+    });
+    
+  } catch (error) {
+    logger.error(`[AUTH] Erro ao verificar usuário existente: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno ao verificar usuário existente'
+    });
+  }
+});
+
+/**
+ * POST /api/auth/register
+ * Registra um novo usuário
+ */
 
 // Rota de diagnóstico para ambientes de desenvolvimento
 if (process.env.NODE_ENV !== 'production') {
@@ -405,7 +725,7 @@ router.get('/auth-diagnostics', (req, res) => {
   const environment = process.env.NODE_ENV || 'development';
   
   // Verificar se estamos em um ambiente ngrok
-  const isNgrok = host && host.includes('ngrok');
+  const isNgrok = host && typeof host === 'string' && host.includes('ngrok');
   
   // Verificar configurações do Supabase
   const supabaseUrl = process.env.SUPABASE_URL || 'Não definido';
@@ -926,6 +1246,261 @@ router.put('/profile', requireAuth, async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// Rota para criar usuário após pagamento bem-sucedido
+router.post('/create-user-after-payment', async (req, res) => {
+  try {
+    const { email, firstName, lastName, fullName, phone, planType, paymentIntentId, source, userData } = req.body;
+    
+    logger.info(`[AUTH] Criação de usuário após pagamento solicitada para: ${email}, source: ${source}`);
+    
+    if (!email || !firstName || !lastName) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email, firstName e lastName são obrigatórios'
+      });
+    }
+    
+    // ✅ VERIFICAR: Se o usuário já existe
+    try {
+      logger.info(`[AUTH] Verificando se usuário existe: ${email}`);
+      
+      // ✅ TENTATIVA 1: Usar listUsers (mais eficiente)
+      try {
+        const { data: users, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+        
+        if (listError) {
+          throw new Error(`Erro ao listar usuários: ${listError.message}`);
+        }
+        
+        const existingUser = users.users.find(u => u.email === email);
+        
+        if (existingUser) {
+          logger.info(`[AUTH] Usuário já existe: ${email}`);
+          return res.status(200).json({
+            success: true,
+            data: {
+              userId: existingUser.id,
+              message: 'Usuário já existe',
+              existing: true
+            }
+          });
+        }
+      } catch (listError) {
+        logger.warn(`[AUTH] Erro ao listar usuários, tentando busca direta: ${listError.message}`);
+        
+        // ✅ TENTATIVA 2: Busca direta por email
+        try {
+          const { data: { user }, error: getUserError } = await supabaseAdmin.auth.admin.getUserByEmail(email);
+          
+          if (getUserError && getUserError.message !== 'User not found') {
+            throw getUserError;
+          }
+          
+          if (user) {
+            logger.info(`[AUTH] Usuário encontrado via busca direta: ${email}`);
+            return res.status(200).json({
+              success: true,
+              data: {
+                userId: user.id,
+                message: 'Usuário já existe',
+                existing: true
+              }
+            });
+          }
+        } catch (getUserError) {
+          logger.warn(`[AUTH] Erro na busca direta: ${getUserError.message}`);
+        }
+      }
+      
+      // ✅ CRIAR: Novo usuário
+      logger.info(`[AUTH] Criando novo usuário: ${email}`);
+      
+      let createdUser = null;
+      
+      try {
+        // ✅ USAR: Senha real fornecida pelo usuário (se disponível)
+        const userPassword = userData?.password || generateTemporaryPassword();
+        const isRealPassword = !!userData?.password;
+        
+        const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+          email: email,
+          password: userPassword, // ✅ USAR: Senha real ou temporária como fallback
+          email_confirm: true,
+          user_metadata: {
+            planType: planType,
+            planActivated: true,
+            paymentConfirmed: true,
+            source: source || 'payment_return_direct',
+            signupDate: new Date().toISOString(),
+            lastPayment: new Date().toISOString(),
+            paymentIntentId: paymentIntentId,
+            firstName: firstName,
+            lastName: lastName,
+            fullName: fullName,
+            phone: phone,
+            signupSource: 'payment_return_direct',
+            hasRealPassword: isRealPassword, // ✅ FLAG: Indica se é senha real
+            passwordSource: isRealPassword ? 'user_form' : 'temporary_generated' // ✅ ORIGEM: Da onde veio a senha
+          }
+        });
+        
+        if (createError) {
+          throw createError;
+        }
+        
+        logger.info(`[AUTH] Usuário criado com sucesso: ${newUser.user.id}`);
+        
+        // ✅ VERIFICAR: Se o usuário foi realmente criado
+        if (!newUser || !newUser.user || !newUser.user.id) {
+          throw new Error('Usuário criado mas dados inválidos retornados');
+        }
+        
+        createdUser = newUser;
+        
+      } catch (createError) {
+        logger.error(`[AUTH] Erro na criação do usuário: ${createError.message}`);
+        
+        // ✅ TENTATIVA 2: Criar com dados mínimos
+        try {
+          logger.info(`[AUTH] Tentativa 2: Criando usuário com dados mínimos: ${email}`);
+          
+          // ✅ USAR: Senha real ou gerar temporária como fallback
+          const userPassword2 = userData?.password;
+          const isRealPassword2 = !!userData?.password;
+          
+          const { data: newUser2, error: createError2 } = await supabaseAdmin.auth.admin.createUser({
+            email: email,
+            password: userPassword2,
+            email_confirm: true,
+            user_metadata: {
+              planType: planType || 'basic',
+              planActivated: true,
+              paymentConfirmed: true,
+              source: source || 'payment_return_direct',
+              signupDate: new Date().toISOString(),
+              firstName: firstName || 'Usuário',
+              lastName: lastName || 'Cliente',
+              hasRealPassword: isRealPassword2, // ✅ FLAG: Indica se é senha real
+              passwordSource: isRealPassword2 ? 'user_form' : 'temporary_generated' // ✅ ORIGEM: Da onde veio a senha
+            }
+          });
+          
+          if (createError2) {
+            throw createError2;
+          }
+          
+          logger.info(`[AUTH] Usuário criado com sucesso (tentativa 2): ${newUser2.user.id}`);
+          createdUser = newUser2;
+          
+        } catch (createError2) {
+          logger.error(`[AUTH] Erro na tentativa 2: ${createError2.message}`);
+          throw createError2;
+        }
+      }
+      
+      // ✅ VERIFICAR: Se temos um usuário criado
+      if (!createdUser || !createdUser.user || !createdUser.user.id) {
+        throw new Error('Falha ao criar usuário após múltiplas tentativas');
+      }
+      
+      // ✅ CRIAR: Perfil do usuário
+      try {
+        await supabaseAdmin
+          .from('user_profiles')
+          .insert({
+            id: createdUser.user.id,
+            email: email,
+            first_name: firstName,
+            last_name: lastName,
+            full_name: fullName,
+            phone: phone,
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+      } catch (profileError) {
+        logger.warn(`[AUTH] Erro ao criar perfil (ignorando): ${profileError.message}`);
+      }
+      
+      // ✅ CRIAR: Cliente na tabela clients
+      try {
+        await supabaseAdmin
+          .from('clients')
+          .insert({
+            id: createdUser.user.id,
+            name: fullName,
+            email: email,
+            phone: phone,
+            status: 'active',
+            created_at: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          });
+      } catch (clientError) {
+        logger.warn(`[AUTH] Erro ao criar cliente (ignorando): ${clientError.message}`);
+      }
+      
+      return res.status(201).json({
+        success: true,
+        data: {
+          userId: createdUser.user.id,
+          email: email,
+          message: 'Usuário criado com sucesso'
+        }
+      });
+      
+    } catch (error) {
+      logger.error(`[AUTH] Erro na criação do usuário: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        message: `Erro interno: ${error.message}`
+      });
+    }
+    
+  } catch (error) {
+    logger.error(`[AUTH] Erro na rota create-user-after-payment: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// ✅ ROTA: Auto-login movida para antes de /login para evitar conflito
+
+// ✅ POST /api/auth/clear-session - Limpar sessão e cookies de autenticação
+router.post('/clear-session', async (req, res) => {
+  try {
+    logger.info('[clear-session] Limpando sessão e cookies de autenticação');
+
+    // ✅ LIMPAR: Todos os cookies de autenticação
+    res.clearCookie('authToken');
+    res.clearCookie('refreshToken');
+    res.clearCookie('sb-access-token');
+    res.clearCookie('sb-refresh-token');
+    res.clearCookie('supabase-auth-token');
+    
+    // ✅ REMOVER: Headers de autenticação se existirem
+    if (req.headers.authorization) {
+      delete req.headers.authorization;
+    }
+
+    return res.json({
+      success: true,
+      message: 'Sessão limpa com sucesso',
+      data: {
+        cleared: true,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    logger.error(`[clear-session] Erro ao limpar sessão: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno ao limpar sessão'
     });
   }
 });

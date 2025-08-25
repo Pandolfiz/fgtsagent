@@ -1,14 +1,24 @@
-import React, { useEffect, useState } from 'react'
-import { FaGlobe, FaRobot, FaComments, FaWhatsapp, FaKey, FaUser, FaCog, FaSignOutAlt, FaBars, FaTimes, FaUsers } from 'react-icons/fa'
-import { Menu } from '@headlessui/react'
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
+import { Menu, Transition } from '@headlessui/react';
+import { FaBars, FaTimes, FaUser, FaCog, FaSignOutAlt, FaBell, FaGlobe, FaUsers, FaRobot, FaComments, FaWhatsapp, FaKey } from 'react-icons/fa';
+import supabase from '../lib/supabaseClient';
+import { useSessionPersistence } from '../hooks/useSessionPersistence';
 import { ChevronUpDownIcon } from '@heroicons/react/24/solid'
 import { cachedFetch } from '../utils/authCache'
-import supabase from '../lib/supabaseClient'
-import { useNavigate } from 'react-router-dom'
 
 export default function Navbar({ fullWidth }) {
-  const navigate = useNavigate()
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [auth, setAuth] = useState(false);
+  const [displayName, setDisplayName] = useState('');
+  const [responsiveName, setResponsiveName] = useState('');
+  
+  // ✅ NOVO: Hook de persistência de sessão
+  const { forceClearSession } = useSessionPersistence();
+
   const brand = { label: 'FgtsAgent', icon: <FaRobot /> }
   const links = [
     { label: 'Dashboard', icon: <FaGlobe />, href: '/dashboard' },
@@ -21,12 +31,7 @@ export default function Navbar({ fullWidth }) {
 
   const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
 
-  const [displayName, setDisplayName] = useState('Usuário')
-  const [isLoading, setIsLoading] = useState(true)
-  const [auth, setAuth] = useState(false)
-  const [responsiveName, setResponsiveName] = useState('Usuário')
-
-  // Hook para detectar o tamanho da tela
+  // ✅ CORRIGIDO: Hook para detectar o tamanho da tela (apenas uma declaração)
   const [screenSize, setScreenSize] = useState(() => {
     if (typeof window !== 'undefined') {
       return window.innerWidth;
@@ -189,34 +194,73 @@ export default function Navbar({ fullWidth }) {
     try {
       setIsLoading(true);
 
-      // Fazer logout via Supabase
+      console.log('🔄 Iniciando logout completo...');
+
+      // ✅ PASSO 1: Fazer logout via Supabase
+      console.log('🔄 Fazendo logout via Supabase...');
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('Erro ao fazer logout via Supabase:', error);
       }
 
-      // Limpar tokens e cookies independentemente da resposta do Supabase
-      localStorage.removeItem('authToken');
-      localStorage.removeItem('supabase.auth.token');
+      // ✅ PASSO 2: LIMPEZA COMPLETA E FORÇADA
+      console.log('🔄 Limpando todos os dados locais...');
+      
+      // ✅ NOVO: Usar função do hook para limpeza forçada
+      forceClearSession();
+      
+      // Limpar localStorage completamente
+      localStorage.clear();
+      
+      // Limpar sessionStorage completamente
+      sessionStorage.clear();
+      
+      // Limpar cookies específicos
       document.cookie = 'supabase-auth-token=; path=/; max-age=0; SameSite=Lax';
       document.cookie = 'js-auth-token=; path=/; max-age=0; SameSite=Lax';
       document.cookie = 'sb-refresh-token=; path=/; max-age=0; SameSite=Lax';
       document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax';
+      document.cookie = 'authToken=; path=/; max-age=0; SameSite=Lax';
+      document.cookie = 'refreshToken=; path=/; max-age=0; SameSite=Lax';
+      
+      // ✅ PASSO 3: Forçar limpeza de todos os cookies
+      const cookies = document.cookie.split(';');
+      cookies.forEach(cookie => {
+        const eqPos = cookie.indexOf('=');
+        const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
+        document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
+        document.cookie = `${name}=; path=/; domain=${window.location.hostname}; max-age=0; SameSite=Lax`;
+        document.cookie = `${name}=; path=/; domain=.${window.location.hostname}; max-age=0; SameSite=Lax`;
+      });
 
-      // Fazer logout via API do backend como fallback
+      // ✅ PASSO 4: Fazer logout via API do backend como fallback
+      console.log('🔄 Fazendo logout via API do backend...');
       await fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include',
       }).catch(e => console.error('Erro ao fazer logout via API:', e));
 
-      // Redirecionar para a página de login
-      navigate('/login?success=true&message=Logout realizado com sucesso');
+      // ✅ PASSO 5: Forçar reload da página para limpar estado React
+      console.log('✅ Logout completo realizado, recarregando página...');
+      
+      // Aguardar um momento para garantir que tudo foi limpo
+      setTimeout(() => {
+        // Forçar reload completo da página
+        window.location.href = '/login?success=true&message=Logout realizado com sucesso';
+      }, 100);
+
     } catch (error) {
       console.error('Erro durante o logout:', error);
 
-      // Mesmo com erro, forçar o redirecionamento para garantir que
-      // o usuário não fique preso em páginas protegidas
-      navigate('/login');
+      // ✅ MESMO COM ERRO: Forçar limpeza e redirecionamento
+      console.log('⚠️ Erro no logout, forçando limpeza...');
+      
+      // Limpeza de emergência
+      localStorage.clear();
+      sessionStorage.clear();
+      
+      // Forçar reload da página
+      window.location.href = '/login?error=logout_error&message=Erro no logout, mas sessão foi limpa';
     } finally {
       setIsLoading(false);
     }

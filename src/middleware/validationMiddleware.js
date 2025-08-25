@@ -261,27 +261,35 @@ const schemas = {
   register: Joi.object({
     email: commonSchemas.email,
     password: commonSchemas.password,
-    confirmPassword: Joi.string().valid(Joi.ref('password')).required().messages({
-      'any.only': 'Confirmação de senha deve ser igual à senha'
+    confirmPassword: Joi.string().required().messages({
+      'any.required': 'Confirmação de senha é obrigatória'
     }),
-    name: commonSchemas.text(100).required(),
+    name: Joi.string().min(1).max(100).required(),
     phone: commonSchemas.phone.optional(),
     acceptTerms: Joi.boolean().valid(true).required().messages({
       'any.only': 'Você deve aceitar os termos de uso'
     })
-  }),
+  }).custom((value, helpers) => {
+    // ✅ VALIDAÇÃO CUSTOMIZADA: Verificar se as senhas são iguais
+    if (value.password !== value.confirmPassword) {
+      return helpers.error('any.invalid', { 
+        message: 'Confirmação de senha deve ser igual à senha' 
+      });
+    }
+    return value;
+  }, 'password-confirmation'),
 
   // Perfil do usuário
   updateProfile: Joi.object({
-    name: commonSchemas.text(100).optional(),
+    name: Joi.string().min(1).max(100).optional(),
     phone: commonSchemas.phone.optional(),
-    bio: commonSchemas.text(500).optional(),
+    bio: Joi.string().min(1).max(500).optional(),
     avatar: commonSchemas.url.optional()
   }),
 
   // Chat e mensagens
   sendChatMessage: Joi.object({
-    content: commonSchemas.text(4000).required(),
+    content: Joi.string().min(1).max(4000).required(),
     recipientId: commonSchemas.id,
     type: Joi.string().valid('text', 'image', 'file', 'audio').default('text'),
     metadata: Joi.object().optional()
@@ -330,24 +338,32 @@ const schemas = {
   confirmResetPassword: Joi.object({
     token: Joi.string().min(1).required(),
     password: commonSchemas.password,
-    confirmPassword: Joi.string().valid(Joi.ref('password')).required()
-  }),
+    confirmPassword: Joi.string().required()
+  }).custom((value, helpers) => {
+    // ✅ VALIDAÇÃO CUSTOMIZADA: Verificar se as senhas são iguais
+    if (value.password !== value.confirmPassword) {
+      return helpers.error('any.invalid', { 
+        message: 'Confirmação de senha deve ser igual à senha' 
+      });
+    }
+    return value;
+  }, 'password-confirmation-reset'),
 
   // Contatos
   createContact: Joi.object({
-    name: commonSchemas.text(100).required(),
+    name: Joi.string().min(1).max(100).required(),
     phone: commonSchemas.phone.required(),
     email: commonSchemas.email.optional(),
     tags: Joi.array().items(Joi.string().max(50)).max(10).optional(),
-    notes: commonSchemas.text(1000).optional()
+    notes: Joi.string().min(1).max(1000).optional()
   }),
 
   updateContact: Joi.object({
-    name: commonSchemas.text(100).optional(),
+    name: Joi.string().min(1).max(100).optional(),
     phone: commonSchemas.phone.optional(),
     email: commonSchemas.email.optional(),
     tags: Joi.array().items(Joi.string().max(50)).max(10).optional(),
-    notes: commonSchemas.text(1000).optional()
+    notes: Joi.string().min(1).max(1000).optional()
   })
 };
 

@@ -19,7 +19,7 @@ async function checkDatabaseSetup() {
     
     // Mesmo se não tivermos uma sessão válida, o importante é que conseguimos nos conectar
     // ao servidor sem erros de conexão
-    if (error && (error.message.includes('network') || error.message.includes('connect'))) {
+    if (error && error.message && typeof error.message === 'string' && (error.message.includes('network') || error.message.includes('connect'))) {
       logger.error(`Erro ao conectar ao Supabase: ${error.message}`);
       return false;
     }

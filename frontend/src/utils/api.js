@@ -17,7 +17,7 @@ const getApiBaseUrl = () => {
 // Criar instância do axios com configuração
 const api = axios.create({
   baseURL: getApiBaseUrl(),
-  timeout: 10000, // 10 segundos
+  timeout: 30000, // ✅ AUMENTADO: 30 segundos para evitar timeouts prematuros
   headers: {
     'Content-Type': 'application/json',
   }
@@ -54,12 +54,32 @@ if (import.meta.env.DEV) {
       return response;
     },
     (error) => {
-      console.error('❌ API Response Error:', {
-        status: error.response?.status,
-        url: error.config?.url,
-        message: error.message,
-        data: error.response?.data
-      });
+      // ✅ MELHORADO: Tratamento específico para diferentes tipos de erro
+      if (error.code === 'ECONNABORTED') {
+        console.error('❌ API Timeout Error:', {
+          url: error.config?.url,
+          timeout: error.config?.timeout,
+          message: 'Request timeout - servidor pode estar sobrecarregado'
+        });
+      } else if (error.response) {
+        console.error('❌ API Response Error:', {
+          status: error.response.status,
+          url: error.config?.url,
+          message: error.message,
+          data: error.response?.data
+        });
+      } else if (error.request) {
+        console.error('❌ API Network Error:', {
+          url: error.config?.url,
+          message: 'Sem resposta do servidor - verificar conectividade'
+        });
+      } else {
+        console.error('❌ API Unknown Error:', {
+          url: error.config?.url,
+          message: error.message
+        });
+      }
+      
       return Promise.reject(error);
     }
   );

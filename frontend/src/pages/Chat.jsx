@@ -5,6 +5,7 @@ import { IoSend } from 'react-icons/io5'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../utilities/apiFetch';
 import { cachedFetch } from '../utils/authCache'
+import { useClipboard } from '../hooks/useClipboard'
 
 // ✅ SEGURANÇA: Logger condicional para produção
 const secureLog = {
@@ -33,7 +34,7 @@ const SECURITY_CONFIG = {
   MAX_REQUESTS_PER_MINUTE: 60, // Máximo de requisições por minuto
   BACKOFF_MULTIPLIER: 2, // Multiplicador para backoff exponencial
   SESSION_CHECK_INTERVAL: 5 * 60 * 1000, // 5 minutos
-  DANGEROUS_PATTERNS: /[<>\"'&]|javascript:|data:|vbscript:|on\w+\s*=|expression\s*\(|eval\s*\(/gi
+  DANGEROUS_PATTERNS: /javascript:|data:|vbscript:|on\w+\s*=|expression\s*\(|eval\s*\(/gi
 };
 
 // ✅ SEGURANÇA: Sanitização robusta de conteúdo
@@ -43,16 +44,13 @@ const sanitizeContent = (content) => {
   // Remover caracteres de controle perigosos
   let sanitized = content.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
   
-  // Remover padrões perigosos
+  // Remover padrões perigosos (mantendo URLs seguras)
   sanitized = sanitized.replace(SECURITY_CONFIG.DANGEROUS_PATTERNS, '');
   
-  // Escapar HTML
+  // Escapar HTML básico para segurança
   sanitized = sanitized
-    .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#x27;');
+    .replace(/>/g, '&gt;');
   
   return sanitized.trim();
 };
@@ -92,10 +90,8 @@ const validateUserInput = (input, type = 'message') => {
         return { valid: false, error: 'Conteúdo não permitido' };
       }
       
-      // ✅ VALIDAÇÃO: Verificar URLs suspeitas
-      if (/https?:\/\/[^\s]+/.test(trimmed)) {
-        return { valid: false, error: 'URLs não são permitidas em mensagens' };
-      }
+      // ✅ VALIDAÇÃO: URLs são permitidas nas mensagens
+      // Removida restrição de URLs para permitir compartilhamento de links
       
       return { valid: true, value: sanitizeContent(trimmed) };
       
@@ -400,6 +396,10 @@ export default function Chat() {
   const [currentUser, setCurrentUser] = useState(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768)
+  const [clipboardFeedback, setClipboardFeedback] = useState('') // Feedback do clipboard
+  
+  // ✅ Hook para operações de clipboard
+  const { copyToClipboard, readFromClipboard, isClipboardSupported } = useClipboard()
   const [screenWidth, setScreenWidth] = useState(window.innerWidth)
   const [error, setError] = useState(null)
   const [isRefreshing, setIsRefreshing] = useState(false)
@@ -968,45 +968,45 @@ export default function Chat() {
   // Função para buscar instâncias dos contatos (SIMPLIFICADA - usar instance_id direto da tabela contacts)
   const fetchContactInstances = async (contacts) => {
     try {
-  
+      console.log('[CONTACT-INSTANCES] 🔍 Processando instâncias dos contatos...');
+      
       const instanceMap = {};
       
       // Usar diretamente o instance_id da tabela contacts
       contacts.forEach((contact) => {
         if (contact.instance_id) {
           instanceMap[contact.remote_jid] = contact.instance_id;
-  
-        } else {
-          
+          console.log(`[CONTACT-INSTANCES] Contato ${contact.name || contact.push_name} -> Instância ${contact.instance_id}`);
         }
       });
 
-      
+      console.log(`[CONTACT-INSTANCES] Mapa de instâncias criado:`, Object.keys(instanceMap).length, 'contatos com instância');
       
       // Verificar se há instâncias diferentes
       const uniqueInstances = [...new Set(Object.values(instanceMap))];
       
       if (uniqueInstances.length > 1) {
-
+        console.log('[CONTACT-INSTANCES] Múltiplas instâncias detectadas, mudando para "todas as instâncias"');
         // Se ainda não estava em "all", mudar automaticamente
         if (selectedInstanceId !== 'all') {
           setSelectedInstanceId('all');
         }
+      } else if (uniqueInstances.length === 1) {
+        console.log('[CONTACT-INSTANCES] Uma única instância detectada');
       } else {
-
+        console.log('[CONTACT-INSTANCES] Nenhuma instância detectada nos contatos');
       }
       
       setContactInstances(instanceMap);
       
     } catch (error) {
-
+      console.warn('[CONTACT-INSTANCES] Erro ao processar instâncias dos contatos (não crítico):', error.message);
+      setContactInstances({});
     }
   };
 
   // Função para buscar instâncias do usuário
   const fetchInstances = async () => {
-
-    
     try {
       setLoading('instances', true);
       
@@ -1021,44 +1021,48 @@ export default function Chat() {
       if (!response?.ok) {
         if (response?.status === 401) {
           navigate('/login?error=session_expired&message=Sua sessão expirou. Por favor, faça login novamente.');
-      return;
+          return;
         }
-        throw new Error(`Erro ${response?.status || 'desconhecido'} ao buscar instâncias`);
+        
+        // Se não há credenciais (404) ou outro erro, não é crítico
+        if (response?.status === 404) {
+          console.log('[INSTANCES] Nenhuma credencial WhatsApp encontrada - usuário pode não ter configurado ainda');
+          setInstances([]);
+          return;
+        }
+        
+        // Para outros erros, apenas logar sem quebrar a aplicação
+        console.warn(`[INSTANCES] Aviso: ${response?.status || 'desconhecido'} ao buscar instâncias - continuando sem instâncias`);
+        setInstances([]);
+        return;
       }
       
       const data = await response.json();
       
-
-      
       if (data.success && data.data) {
-
-        
         // ✅ Filtrar instâncias ativas (incluindo mais status válidos)
         const activeInstances = data.data.filter(instance => {
           // Considerar instâncias com status válidos para uso
           const validStatuses = ['connected', 'open', 'pending', 'ready'];
           const isActive = validStatuses.includes(instance.status);
           
-
-          
           return isActive;
         });
         
-
         setInstances(activeInstances);
-        
-
         
         if (activeInstances.length > 0) {
           console.log(`✅ ${activeInstances.length} instância(s) WhatsApp encontrada(s)`);
         } else {
+          console.log('[INSTANCES] Nenhuma instância ativa encontrada');
           setInstances([]);
         }
       } else {
+        console.log('[INSTANCES] Resposta da API sem dados de instâncias');
         setInstances([]);
       }
     } catch (error) {
-
+      console.warn('[INSTANCES] Erro ao buscar instâncias (não crítico):', error.message);
       setInstances([]);
       // Não mostrar erro para não interferir na UX se não houver instâncias
     } finally {
@@ -1100,6 +1104,15 @@ export default function Chat() {
         if (!response.ok) {
           if (response.status === 401) {
             navigate('/login?error=session_expired&message=Sua sessão expirou. Por favor, faça login novamente.');
+            return;
+          }
+          
+          // Se não há contatos (404) ou outro erro, não é crítico
+          if (response.status === 404) {
+            console.log('[CONTACTS] Nenhum contato encontrado - pode ser primeiro acesso');
+            setContacts([]);
+            setDisplayContacts([]);
+            setPagination('hasMoreContacts', false);
             return;
           }
           
@@ -1163,9 +1176,11 @@ export default function Chat() {
           setDisplayContacts(sortedContacts);
           
           // Buscar instâncias apenas da primeira página
-
           if (instances.length > 0) {
+            console.log('[CONTACTS] 🔍 Buscando instâncias dos contatos carregados...');
             fetchContactInstances(sortedContacts);
+          } else {
+            console.log('[CONTACTS] ⏸️ Nenhuma instância disponível - primeiro acesso');
           }
           
           // ✅ PROTEÇÃO CRÍTICA: Não sobrescrever contato durante carregamento inicial
@@ -1186,6 +1201,8 @@ export default function Chat() {
             console.log('[CONTACTS] ⚠️ Bloqueada auto-seleção durante carregamento inicial');
           } else if (currentContact) {
             console.log('[CONTACTS] ⚠️ Bloqueada auto-seleção - contato já selecionado:', currentContact.push_name || currentContact.name);
+          } else if (sortedContacts.length === 0) {
+            console.log('[CONTACTS] ⏸️ Nenhum contato encontrado - primeiro acesso');
           }
         } else {
           // Carregamento adicional - anexar à lista existente (backend já ordena)
@@ -1207,7 +1224,10 @@ export default function Chat() {
           
           // Buscar instâncias dos novos contatos
           if (instances.length > 0) {
+            console.log('[CONTACTS] 🔍 Buscando instâncias dos novos contatos...');
             fetchContactInstances(sortedContacts);
+          } else {
+            console.log('[CONTACTS] ⏸️ Nenhuma instância disponível - primeiro acesso');
           }
         }
         
@@ -1225,7 +1245,7 @@ export default function Chat() {
           setContacts([]);
           setDisplayContacts([]);
         }
-        setHasMoreContacts(false);
+        setPagination('hasMoreContacts', false);
         }
       } catch (error) {
       console.error('[CONTACTS] Erro ao buscar contatos:', error);
@@ -1249,7 +1269,13 @@ export default function Chat() {
     if (currentUser) {
       // ✅ PROTEÇÃO: Não interferir durante carregamento inicial
       if (isInitialLoad) {
-    
+        console.log('[INSTANCE-CHANGE] ⏸️ Adiando mudança de instância - carregamento inicial em andamento');
+        return;
+      }
+      
+      // ✅ UX: Não recarregar se não há instâncias (primeiro acesso)
+      if (instances.length === 0) {
+        console.log('[INSTANCE-CHANGE] ⏸️ Nenhuma instância disponível - primeiro acesso');
         return;
       }
       
@@ -1267,27 +1293,32 @@ export default function Chat() {
       }, 200); // 200ms de delay
       timeoutsRef.current.push(delayedFetchTimeoutId);
     }
-  }, [selectedInstanceId, currentUser]);
+  }, [selectedInstanceId, currentUser, instances.length]);
 
   // Buscar instâncias dos contatos quando as instâncias forem carregadas
   useEffect(() => {
     if (instances.length > 0 && contacts.length > 0 && Object.keys(contactInstances).length === 0) {
-  
+      console.log('[CONTACT-INSTANCES] 🔍 Buscando instâncias dos contatos (primeira vez)...');
       fetchContactInstances(contacts);
+    } else if (instances.length === 0 && contacts.length > 0) {
+      console.log('[CONTACT-INSTANCES] ⏸️ Nenhuma instância disponível - primeiro acesso');
     }
-  }, [instances, contacts]);
+  }, [instances, contacts, contactInstances]);
 
 
 
   // Buscar instâncias dos contatos quando as instâncias do usuário forem carregadas
   useEffect(() => {
     if (instances.length > 0 && contacts.length > 0) {
+      console.log('[CONTACT-INSTANCES] 🔍 Buscando instâncias dos contatos...');
       
       // ✅ Delay para evitar conflito com ancoragem
       const delayedInstancesFetchTimeoutId = setTimeout(() => {
         fetchContactInstances(contacts);
       }, 300); // 300ms de delay
       timeoutsRef.current.push(delayedInstancesFetchTimeoutId);
+    } else if (instances.length === 0 && contacts.length > 0) {
+      console.log('[CONTACT-INSTANCES] ⏸️ Nenhuma instância disponível - primeiro acesso');
     }
   }, [instances, contacts]);
 
@@ -1458,17 +1489,23 @@ export default function Chat() {
       return;
     }
     
+    // ✅ UX: Não mostrar erros para casos onde não há credenciais (primeiro acesso)
+    if (error.message?.includes('404') && (context.includes('contatos') || context.includes('instâncias'))) {
+      console.log(`[NETWORK] ${context} - 404 (primeiro acesso, não é erro)`);
+      return; // Não mostrar erro para primeiro acesso
+    }
+    
     if (!navigator.onLine) {
       setError('Sem conexão com a internet. Verifique sua conexão.');
       return;
     }
     
-    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+    if (error.name === 'TypeError' && error.message?.includes('fetch')) {
       setError('Erro de conexão com o servidor. Tente novamente.');
       return;
     }
     
-    if (error.message.includes('JSON')) {
+    if (error.message?.includes('JSON')) {
       setError('Resposta inválida do servidor. Tente atualizar a página.');
       return;
     }
@@ -1693,6 +1730,8 @@ export default function Chat() {
       return;
     }
     
+    // ✅ UX: Tentar buscar contatos mesmo sem instâncias (primeiro acesso)
+    console.log('[CONTACTS] Iniciando busca de contatos...');
     fetchContacts(selectedInstanceId === 'all' ? null : selectedInstanceId, 1, true);
   }, [currentUser, isMobileView, navigate, isInitialLoad]); // ✅ Adicionada dependência isInitialLoad para re-execução quando necessário
 
@@ -2097,6 +2136,8 @@ export default function Chat() {
         if (instances.length > 0 && updatedContacts.length > 0) {
           console.log('[SYNC] 🔍 Buscando instâncias dos contatos atualizados...');
           fetchContactInstances(updatedContacts);
+        } else if (instances.length === 0) {
+          console.log('[SYNC] ⏸️ Nenhuma instância disponível - primeiro acesso');
         }
         
       // ✅ UX: Atualizar metadados do contato atual silenciosamente (sem reset)
@@ -2274,6 +2315,8 @@ export default function Chat() {
           }
         } else if (isInitialLoad) {
           console.log('[REFRESH] ⚠️ Bloqueada auto-seleção durante carregamento inicial');
+        } else if (contactsList.length === 0) {
+          console.log('[REFRESH] ⏸️ Nenhum contato encontrado - primeiro acesso');
         }
       }
       
@@ -3144,7 +3187,7 @@ export default function Chat() {
             // Buscar CPF do lead se houver lead_id
             if (currentContact.lead_id) {
               try {
-                const resp = await fetch(`/api/admin/leads/${currentContact.lead_id}/cpf`, { credentials: 'include' });
+                const resp = await fetch(`/api/leads/${currentContact.lead_id}/cpf`, { credentials: 'include' });
                 if (resp.ok) {
                   const data = await resp.json();
                   if (data.success && data.cpf) {
@@ -3152,7 +3195,7 @@ export default function Chat() {
                   }
                 }
               } catch (err) {
-                console.error('Erro ao buscar CPF do lead (admin):', err);
+                console.error('Erro ao buscar CPF do lead:', err);
               }
             }
             
@@ -4054,21 +4097,143 @@ export default function Chat() {
                       </button>
                           </>
                         ) : null}
-                        <div className={`flex-1 mx-1 py-2`}>
-                      <input
-                        type="text"
-                        placeholder="Digite uma mensagem"
+                        <div className={`flex-1 mx-1 py-2 relative`}>
+                          <input
+                            type="text"
+                            placeholder="Digite uma mensagem ou cole URLs (Ctrl+V para colar, Ctrl+C para copiar)"
                             className="w-full py-2 px-3 bg-white/10 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 border border-cyan-800/50 placeholder-cyan-300/70"
-                        value={newMessage}
-                        onChange={(e) => {
-                          // ✅ SEGURANÇA: Validar entrada de mensagem
-                          const validation = validateUserInput(e.target.value, 'message');
-                          if (validation.valid || e.target.value === '') {
-                            setNewMessage(e.target.value);
-                          }
-                        }}
-                        maxLength={SECURITY_CONFIG.MAX_MESSAGE_LENGTH}
-                      />
+                            value={newMessage}
+                            onChange={(e) => {
+                              // ✅ SEGURANÇA: Validar entrada de mensagem
+                              const validation = validateUserInput(e.target.value, 'message');
+                              if (validation.valid || e.target.value === '') {
+                                setNewMessage(e.target.value);
+                              }
+                            }}
+                            onPaste={(e) => {
+                              // ✅ Permitir colar texto - incluindo URLs
+                              e.preventDefault();
+                              const pastedText = e.clipboardData.getData('text/plain');
+                              console.log('Texto colado:', pastedText); // Debug
+                              
+                              if (pastedText && pastedText.length <= SECURITY_CONFIG.MAX_MESSAGE_LENGTH) {
+                                // Apenas verificar comprimento e caracteres básicos
+                                const cleanText = pastedText
+                                  .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove caracteres de controle
+                                  .trim();
+                                
+                                console.log('Texto limpo:', cleanText); // Debug
+                                
+                                if (cleanText && cleanText.length > 0) {
+                                  setNewMessage(cleanText);
+                                  console.log('Mensagem definida:', cleanText); // Debug
+                                }
+                              }
+                            }}
+                            onKeyDown={(e) => {
+                              // ✅ Suporte a atalhos de teclado para copiar/colar
+                              if (e.ctrlKey || e.metaKey) {
+                                switch (e.key) {
+                                  case 'c':
+                                    // Ctrl+C - Copiar texto selecionado
+                                    if (e.target.selectionStart !== e.target.selectionEnd) {
+                                      const selectedText = newMessage.substring(e.target.selectionStart, e.target.selectionEnd);
+                                      copyToClipboard(selectedText);
+                                    }
+                                    break;
+                                  case 'v':
+                                    // Ctrl+V - Colar texto (incluindo URLs)
+                                    e.preventDefault();
+                                    readFromClipboard().then(text => {
+                                      if (text && text.length <= SECURITY_CONFIG.MAX_MESSAGE_LENGTH) {
+                                        // Apenas verificar comprimento e caracteres básicos
+                                        const cleanText = text
+                                          .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove caracteres de controle
+                                          .trim();
+                                        
+                                        if (cleanText && cleanText.length > 0) {
+                                          setNewMessage(cleanText);
+                                        }
+                                      }
+                                    });
+                                    break;
+                                  case 'x':
+                                    // Ctrl+X - Cortar texto selecionado
+                                    if (e.target.selectionStart !== e.target.selectionEnd) {
+                                      const selectedText = newMessage.substring(e.target.selectionStart, e.target.selectionEnd);
+                                      copyToClipboard(selectedText);
+                                      const newValue = newMessage.substring(0, e.target.selectionStart) + newMessage.substring(e.target.selectionEnd);
+                                      setNewMessage(newValue);
+                                    }
+                                    break;
+                                }
+                              }
+                            }}
+                            maxLength={SECURITY_CONFIG.MAX_MESSAGE_LENGTH}
+                            autoComplete="off"
+                            spellCheck="false"
+                            data-testid="message-input"
+                            style={{ 
+                              userSelect: 'text',
+                              WebkitUserSelect: 'text',
+                              MozUserSelect: 'text',
+                              msUserSelect: 'text'
+                            }}
+                          />
+                          
+                          {/* ✅ Botões de clipboard para melhor UX */}
+                          <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex gap-1">
+                            {/* Botão de colar */}
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                try {
+                                  const text = await readFromClipboard();
+                                  if (text && text.length <= SECURITY_CONFIG.MAX_MESSAGE_LENGTH) {
+                                    const cleanText = text
+                                      .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
+                                      .trim();
+                                    
+                                    if (cleanText && cleanText.length > 0) {
+                                      setNewMessage(cleanText);
+                                      setClipboardFeedback('Colado!');
+                                      setTimeout(() => setClipboardFeedback(''), 2000);
+                                    }
+                                  }
+                                } catch (error) {
+                                  setClipboardFeedback('Erro ao colar');
+                                  setTimeout(() => setClipboardFeedback(''), 2000);
+                                }
+                              }}
+                              className="p-1 text-cyan-300 hover:text-cyan-100 text-xs transition-colors"
+                              title="Colar texto (Ctrl+V)"
+                              aria-label="Colar texto"
+                            >
+                              <FaRegCopy className="w-3 h-3 rotate-180" />
+                            </button>
+                            
+                            {/* Botão de copiar - apenas quando há texto */}
+                            {newMessage && (
+                              <button
+                                type="button"
+                                onClick={async () => {
+                                  const success = await copyToClipboard(newMessage);
+                                  if (success) {
+                                    setClipboardFeedback('Copiado!');
+                                    setTimeout(() => setClipboardFeedback(''), 2000);
+                                  } else {
+                                    setClipboardFeedback('Erro ao copiar');
+                                    setTimeout(() => setClipboardFeedback(''), 2000);
+                                  }
+                                }}
+                                className="p-1 text-cyan-300 hover:text-cyan-100 text-xs transition-colors"
+                                title="Copiar mensagem (Ctrl+C)"
+                                aria-label="Copiar mensagem"
+                              >
+                                <FaRegCopy className="w-3 h-3" />
+                              </button>
+                            )}
+                          </div>
                         </div>
                       
                       {newMessage.trim() ? (

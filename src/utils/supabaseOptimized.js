@@ -36,7 +36,7 @@ async function withTimeout(supabaseOperation, timeoutMs = 5000, operationName = 
     const result = await Promise.race([supabaseOperation, timeoutPromise]);
     return result;
   } catch (error) {
-    if (error.message.includes('timed out')) {
+    if (error.message && typeof error.message === 'string' && error.message.includes('timed out')) {
       logger.error(`[TIMEOUT] ${operationName} excedeu o timeout de ${timeoutMs}ms`);
     } else {
       logger.error(`[ERROR] ${operationName} falhou: ${error.message}`);

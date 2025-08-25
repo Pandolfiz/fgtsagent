@@ -1,0 +1,84 @@
+{
+  "testConfig": {
+    "baseUrl": "http://localhost:3000",
+    "headless": true,
+    "timeout": 30000,
+    "screenshotDir": "./test-screenshots",
+    "testUsers": {
+      "valid": {
+        "email": "test@example.com",
+        "password": "testpassword123"
+      },
+      "invalid": {
+        "email": "invalid@example.com",
+        "password": "wrongpassword"
+      }
+    },
+    "testRoutes": {
+      "login": "/login",
+      "dashboard": "/dashboard",
+      "chat": "/chat",
+      "profile": "/profile"
+    },
+    "selectors": {
+      "emailInput": "input[name='email']",
+      "passwordInput": "input[name='password']",
+      "submitButton": "button[type='submit']",
+      "logoutButton": "button[data-testid='logout'], .logout-btn, [href*='logout']",
+      "errorMessage": ".error-message, .alert-error, [data-testid='error']",
+      "successMessage": ".success-message, .alert-success, [data-testid='success']"
+    },
+    "waitTimes": {
+      "pageLoad": 3000,
+      "formSubmit": 2000,
+      "redirect": 3000,
+      "betweenTests": 1000
+    }
+  },
+  "testScenarios": {
+    "sessionPersistence": {
+      "description": "Testa se a sessão persiste entre navegações",
+      "steps": [
+        "Fazer login",
+        "Navegar para dashboard",
+        "Verificar se ainda está autenticado",
+        "Navegar para chat",
+        "Verificar se ainda está autenticado"
+      ]
+    },
+    "tokenStorage": {
+      "description": "Testa se o token é armazenado corretamente",
+      "checks": [
+        "localStorage contém authToken",
+        "Cookies contêm tokens de autenticação",
+        "Supabase storage está sincronizado"
+      ]
+    },
+    "logoutCleanup": {
+      "description": "Testa se o logout limpa corretamente os dados",
+      "checks": [
+        "Token removido do localStorage",
+        "Cookies de autenticação limpos",
+        "Redirecionamento para página de login"
+      ]
+    }
+  },
+  "expectedResults": {
+    "loginSuccess": {
+      "redirect": true,
+      "tokenStored": true,
+      "cookiesSet": true
+    },
+    "sessionPersistence": {
+      "tokenRemains": true,
+      "authenticationValid": true,
+      "navigationWorks": true
+    },
+    "logoutSuccess": {
+      "tokensCleared": true,
+      "redirectToLogin": true,
+      "noAuthData": true
+    }
+  }
+}
+
