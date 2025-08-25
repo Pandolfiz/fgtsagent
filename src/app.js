@@ -280,8 +280,20 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json({ limit: '20mb' }));
+// ✅ CONFIGURAÇÃO ESPECIAL: Middleware condicional para webhooks
+// Aplicar express.json() apenas para rotas que NÃO são webhooks
+app.use((req, res, next) => {
+  // Se for webhook do Stripe, pular o parsing JSON
+  if (req.path === '/api/stripe/webhook') {
+    return next();
+  }
+  
+  // Para outras rotas, aplicar express.json()
+  express.json({ limit: '20mb' })(req, res, next);
+});
+
 app.use(express.urlencoded({ extended: true }));
+
 // app.use(morgan('dev'));
 app.use(cookieParser());
 
