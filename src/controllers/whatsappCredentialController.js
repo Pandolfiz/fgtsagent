@@ -1247,17 +1247,17 @@ class WhatsappCredentialController {
         if (addResult.code === 'NUMBER_ALREADY_REGISTERED') {
           shouldSaveToSupabase = false;
           logger.info(`[CREATE_WHATSAPP_ACCOUNT] Número já registrado, não salvando no Supabase`);
-        } else if (addResult.error.includes('access token') || addResult.error.includes('Token de acesso')) {
+        } else if (addResult.error && typeof addResult.error === 'string' && (addResult.error.includes('access token') || addResult.error.includes('Token de acesso'))) {
           shouldSaveToSupabase = false;
           logger.info(`[CREATE_WHATSAPP_ACCOUNT] Token de acesso inválido, não salvando no Supabase`);
-        } else if (addResult.error.includes('business') || addResult.error.includes('Business Account')) {
+        } else if (addResult.error && typeof addResult.error === 'string' && (addResult.error.includes('business') || addResult.error.includes('Business Account'))) {
           shouldSaveToSupabase = false;
           logger.info(`[CREATE_WHATSAPP_ACCOUNT] Business ID inválido, não salvando no Supabase`);
         } else {
           // Casos que DEVEM salvar no Supabase:
           if (addResult.code === 'VERIFIED_NAME_REQUIRED') {
             errorStatus = 'pending_verification';
-          } else if (addResult.error.includes('verificação de nome já está em andamento')) {
+          } else if (addResult.error && typeof addResult.error === 'string' && addResult.error.includes('verificação de nome já está em andamento')) {
             errorStatus = 'name_verification_in_progress';
           } else {
             // Para qualquer outro erro, salvar com status de erro
@@ -1458,9 +1458,9 @@ class WhatsappCredentialController {
           let errorMessage = 'Erro ao criar conta WhatsApp.';
           if (addResult.code === 'NUMBER_ALREADY_REGISTERED') {
             errorMessage = 'Este número já está registrado em outra conta WhatsApp.';
-          } else if (addResult.error.includes('access token') || addResult.error.includes('Token de acesso')) {
+          } else if (addResult.error && typeof addResult.error === 'string' && (addResult.error.includes('access token') || addResult.error.includes('Token de acesso'))) {
             errorMessage = 'Token de acesso inválido ou expirado. Verifique suas credenciais.';
-          } else if (addResult.error.includes('business') || addResult.error.includes('Business Account')) {
+          } else if (addResult.error && typeof addResult.error === 'string' && (addResult.error.includes('business') || addResult.error.includes('Business Account'))) {
             errorMessage = 'Business Account ID inválido. Verifique suas credenciais.';
           }
 

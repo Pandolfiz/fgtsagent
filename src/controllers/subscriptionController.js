@@ -162,6 +162,9 @@ class SubscriptionController {
       );
 
       // 4. Criar sessão de checkout
+      // ✅ POPUP: Verificar se deve usar popup ou redirect
+      const usePopup = req.query.popup === 'true';
+      
       const checkoutSession = await stripeService.createCheckoutSession(
         planType,
         email,
@@ -170,8 +173,11 @@ class SubscriptionController {
         {
           userId: user.id,
           stripeCustomerId: stripeCustomer.id,
-          isSignup: 'true'
-        }
+          isSignup: 'true',
+          usePopup: usePopup
+        },
+        'monthly', // interval padrão
+        usePopup
       );
 
       // 5. Criar assinatura inicial com status pending

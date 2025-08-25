@@ -3,6 +3,7 @@ import { Link, useNavigate, useLocation } from 'react-router-dom';
 import NeuralNetworkBackground from '../NeuralNetworkBackground.jsx';
 import LandingNavbar from '../components/LandingNavbar.jsx';
 import supabase from '../lib/supabaseClient';
+import tokenManager from '../utils/tokenManager';
 
 export default function Login() {
   const [email, setEmail] = useState('');
@@ -66,7 +67,7 @@ export default function Login() {
     }
   }, [location]);
 
-  // Novo login handler: delegar ao backend
+  // Login handler simplificado: usar apenas Supabase
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError('');
@@ -74,97 +75,61 @@ export default function Login() {
     setSuccess('');
     setShowConfirmation(false);
     setLoading(true);
+    
     try {
-      // Primeiro tentar o login com Supabase diretamente
-      const { data: supabaseData, error: supabaseError } = await supabase.auth.signInWithPassword({
+      // ✅ UNIFICADO: Usar apenas Supabase Auth
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
-      if (!supabaseError && supabaseData.session) {
-        // Login com Supabase bem-sucedido
-        console.log('Login com Supabase bem-sucedido!');
-
-        // Armazenar o token em localStorage para maior consistência
-        localStorage.setItem('authToken', supabaseData.session.access_token);
-
-        // Definir o token em cookies para que o backend tenha acesso
-                  document.cookie = `supabase-auth-token=${supabaseData.session.access_token}; path=/; max-age=86400; SameSite=Strict; Secure`;
-          document.cookie = `js-auth-token=${supabaseData.session.access_token}; path=/; max-age=86400; SameSite=Strict; Secure`;
-
-        // Verificar se a sessão está funcionando fazendo uma requisição de teste
-        try {
-          const testResponse = await fetch('/api/auth/me', {
-            method: 'GET',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${supabaseData.session.access_token}`
-            },
-            credentials: 'include'
-          });
-
-          if (!testResponse.ok) {
-            console.warn('Verificação de autenticação falhou após login com Supabase');
-            // Continuar mesmo se falhar, tentaremos o método de fallback abaixo
-          } else {
-            console.log('Verificação de autenticação bem-sucedida após login com Supabase');
-            setSuccess('Login bem-sucedido! Redirecionando...');
-            setInfo('');
-            const timeoutId = setTimeout(() => {
-              clearTimeout(timeoutId);
-              navigate(getRedirect());
-            }, 1200);
-            return;
-          }
-        } catch (testError) {
-          console.error('Erro ao verificar autenticação após login com Supabase:', testError);
-          // Continuar mesmo se falhar, tentaremos o método de fallback abaixo
-        }
-      }
-
-      // Fallback: usar o endpoint de API do backend
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify({ email, password })
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        const msg = data.message || 'Falha ao realizar login';
-        if (msg.toLowerCase().includes('confirm')) {
+      if (error) {
+        console.error('Erro no login:', error);
+        
+        // Tratar erros específicos
+        if (error.message.includes('Email not confirmed')) {
           setShowConfirmation(true);
           setInfo('');
           setLoading(false);
           return;
         }
-        setError(msg);
+        
+        if (error.message.includes('Invalid login credentials')) {
+          setError('Email ou senha inválidos. Verifique e tente novamente.');
+        } else {
+          setError(error.message || 'Falha ao realizar login');
+        }
+        
         setInfo('');
         setLoading(false);
         return;
       }
 
-      // Se o login via API foi bem-sucedido, armazenar o token retornado
-      if (data.data?.token) {
-        localStorage.setItem('authToken', data.data.token);
-                  document.cookie = `supabase-auth-token=${data.data.token}; path=/; max-age=86400; SameSite=Strict; Secure`;
-          document.cookie = `js-auth-token=${data.data.token}; path=/; max-age=86400; SameSite=Strict; Secure`;
+      // ✅ LOGIN BEM-SUCEDIDO: Usar TokenManager unificado
+      if (data.session) {
+        console.log('✅ Login com Supabase bem-sucedido!');
+        
+        // Armazenar token de forma consistente via TokenManager
+        tokenManager.setToken(data.session.access_token);
+        
+        setSuccess('Login bem-sucedido! Redirecionando...');
+        setInfo('');
+        
+        // Redirecionar após delay
+        const timeoutId = setTimeout(() => {
+          clearTimeout(timeoutId);
+          navigate(getRedirect());
+        }, 1200);
+        
+      } else {
+        throw new Error('Sessão não retornada pelo Supabase');
       }
-
-      setSuccess('Login bem-sucedido! Redirecionando...');
-      setInfo('');
-      const timeoutId = setTimeout(() => {
-        clearTimeout(timeoutId);
-        navigate(getRedirect());
-      }, 1200);
+      
     } catch (error) {
-      console.error('Erro no login:', error);
+      console.error('Erro inesperado no login:', error);
       setError('Erro de conexão. Tente novamente.');
       setInfo('');
+    } finally {
       setLoading(false);
     }
   };

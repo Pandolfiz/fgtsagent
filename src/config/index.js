@@ -18,6 +18,7 @@ if (missingEnvVars.length > 0) {
 
 module.exports = {
   port: process.env.PORT || 3000,
+  // ✅ CORRIGIDO: Usar HTTP para desenvolvimento local
   appUrl: process.env.APP_URL || `http://localhost:${process.env.PORT || 3000}`,
   nodeEnv: process.env.NODE_ENV || 'development',
   

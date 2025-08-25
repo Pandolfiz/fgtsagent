@@ -48,6 +48,9 @@ import ReactDOM from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import supabase from '../lib/supabaseClient'
 import { cachedFetch } from '../utils/authCache'
+import api from '../utils/api' // ✅ IMPORTAR: Instância api configurada
+import { useSessionPersistence } from '../hooks/useSessionPersistence'
+
 
 ChartJS.register(
   CategoryScale,
@@ -166,6 +169,8 @@ export default function Dashboard() {
   const navigate = useNavigate()
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [userData, setUserData] = useState(null)
+  const [authError, setAuthError] = useState('')
   const calendarPositionRef = useRef({ right: '0px', width: '650px' })
 
   // Estados para modais de leads
@@ -214,7 +219,7 @@ export default function Dashboard() {
   };
 
   // ✅ LOG DE INICIALIZAÇÃO para depuração
-  console.log(`[INIT-DEBUG] Estado inicial - Period: ${period}, DateRange:`, dateRange);
+  
 
   // Função para calcular a posição do calendário
   const updateCalendarPosition = () => {
@@ -343,130 +348,117 @@ export default function Dashboard() {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  // ✅ NOVO: Hook de persistência de sessão
+  const { session, loading: sessionLoading, error: sessionError, getToken, isAuthenticated: sessionIsAuthenticated, refreshSession } = useSessionPersistence();
+
+  // ✅ CONTROLE: Evitar múltiplas chamadas simultâneas
+  const [isLoadingUserData, setIsLoadingUserData] = useState(false);
+  const [lastUserDataFetch, setLastUserDataFetch] = useState(0);
+  const [lastSessionToken, setLastSessionToken] = useState(null);
+  const [userDataLoaded, setUserDataLoaded] = useState(false);
+
+  // ✅ VERIFICAR: Autenticação e carregar dados do usuário
   useEffect(() => {
-    const checkAuth = async () => {
+    // ✅ AGUARDAR: Hook de sessão terminar de carregar
+    if (sessionLoading) {
+      return;
+    }
+
+    // ✅ VERIFICAR: Se está autenticado
+    if (!session || !session.access_token) {
+      navigate('/login?error=not_authenticated&message=Faça login para continuar.');
+      return;
+    }
+
+    // ✅ RESETAR: Estado quando a sessão mudar
+    if (lastSessionToken !== null && session?.access_token !== lastSessionToken) {
+      console.log('[DASHBOARD] 🔄 Sessão mudou - resetando estado');
+      setUserDataLoaded(false);
+      setUserData(null);
+      setLastUserDataFetch(0); // ✅ RESETAR: Permitir nova tentativa
+      setLastSessionToken(null); // ✅ RESETAR: Token da sessão anterior
+    }
+
+    // ✅ CONTROLE: Evitar múltiplas chamadas simultâneas
+    if (isLoadingUserData) {
+      return;
+    }
+
+    // ✅ CONTROLE: Debounce - aguardar 2 segundos entre chamadas
+    const now = Date.now();
+    if (lastUserDataFetch > 0 && now - lastUserDataFetch < 2000) {
+      console.log('[DASHBOARD] ⏸️ Debounce ativo - aguardando 2 segundos');
+      return;
+    }
+
+    // ✅ CONTROLE ADICIONAL: Evitar execução múltipla durante o mesmo ciclo
+    if (lastSessionToken !== null && session?.access_token === lastSessionToken) {
+      console.log('[DASHBOARD] ⏸️ Mesmo token de sessão - evitando execução');
+      return;
+    }
+
+    // ✅ CONTROLE ADICIONAL: Evitar recarregar se os dados já foram carregados
+    if (lastSessionToken !== null && userDataLoaded && userData && !isLoadingUserData) {
+      console.log('[DASHBOARD] ⏸️ Dados já carregados - evitando recarregamento');
+      return;
+    }
+
+    // ✅ CARREGAR: Dados do usuário via API (COM CONTROLE)
+    const loadUserData = async () => {
       try {
+        console.log('[DASHBOARD] 🚀 Iniciando carregamento de dados do usuário...');
+        setIsLoadingUserData(true);
         setIsLoading(true);
+        setAuthError('');
+        setLastUserDataFetch(now);
 
-        // Obter o token de autenticação de forma consistente
-        let authToken = localStorage.getItem('authToken');
-
-        // Se não encontrar no localStorage, tentar obter de outras fontes
-        if (!authToken) {
-          // 1. Verificar tokens do Supabase no localStorage
-          const storedTokens = localStorage.getItem('supabase.auth.token');
-          if (storedTokens) {
-            try {
-              const tokens = JSON.parse(storedTokens);
-              if (tokens?.currentSession?.access_token) {
-                authToken = tokens.currentSession.access_token;
-                console.log('Token encontrado no localStorage (supabase.auth.token)');
-                // Armazenar de forma consistente
-                localStorage.setItem('authToken', authToken);
-              }
-            } catch (e) {
-              console.error('Erro ao ler tokens do localStorage:', e);
-            }
+        const response = await api.get('/auth/me', {
+          headers: {
+            'Authorization': `Bearer ${session.access_token}`
           }
-
-          // 2. Verificar cookies
-          if (!authToken) {
-            const getCookie = (name) => {
-              const value = `; ${document.cookie}`;
-              const parts = value.split(`; ${name}=`);
-              if (parts.length === 2) return parts.pop().split(';').shift();
-            };
-
-            authToken = getCookie('supabase-auth-token') || getCookie('js-auth-token');
-
-            if (authToken) {
-              console.log('Token encontrado nos cookies');
-              // Armazenar de forma consistente
-              localStorage.setItem('authToken', authToken);
-            }
-          }
-        }
-
-        // Se ainda não temos token, tentar obter via Supabase SDK
-        if (!authToken) {
-          try {
-            const { data } = await supabase.auth.getSession();
-            if (data?.session?.access_token) {
-              authToken = data.session.access_token;
-              console.log('Token obtido via Supabase SDK');
-              // Armazenar de forma consistente
-              localStorage.setItem('authToken', authToken);
-              // Definir também nos cookies para consistência
-              document.cookie = `supabase-auth-token=${authToken}; path=/; max-age=86400; SameSite=Lax`;
-              document.cookie = `js-auth-token=${authToken}; path=/; max-age=86400; SameSite=Lax`;
-            }
-          } catch (supabaseError) {
-            console.error('Erro ao obter sessão do Supabase:', supabaseError);
-          }
-        }
-
-        // Preparar headers para a requisição
-        const headers = {
-          'Content-Type': 'application/json',
-        };
-
-        if (authToken) {
-          headers['Authorization'] = `Bearer ${authToken}`;
-        }
-
-        // Fazer a requisição de verificação usando cache
-        const data = await cachedFetch('/api/auth/me', {
-          method: 'GET',
-          credentials: 'include',
-          headers
         });
 
-        if (!data || !data.success) {
-          console.error('Erro de autenticação:', data);
-          console.log('Detalhes da resposta:', data);
-
-          // Se o erro for de autenticação, limpar tokens e redirecionar para login
-          if (data && data.status === 401) {
-            // Limpar tokens armazenados
-            localStorage.removeItem('authToken');
-            document.cookie = `supabase-auth-token=; path=/; max-age=0`;
-            document.cookie = `js-auth-token=; path=/; max-age=0`;
-
-            // Tentar fazer logout via Supabase para garantir
-            try {
-              await supabase.auth.signOut();
-            } catch (e) {
-              console.error('Erro ao fazer logout via Supabase:', e);
-            }
-
-            localStorage.setItem('redirectAfterLogin', '/dashboard');
-            navigate('/login?error=auth_required&message=Você precisa estar autenticado para acessar o dashboard.');
-            return;
-          }
-
-          // Se falhar por outro motivo, tentar recarregar a página uma vez
-          if (!window.sessionStorage.getItem('auth_retry')) {
-            window.sessionStorage.setItem('auth_retry', 'true');
-            window.location.reload();
-            return;
-          }
-
-          window.sessionStorage.removeItem('auth_retry');
-          navigate('/login?error=auth_error&message=Erro ao verificar autenticação. Por favor, faça login novamente.');
-          return;
+        if (response.data.success) {
+          console.log('[DASHBOARD] ✅ Dados do usuário carregados com sucesso');
+          setUserData(response.data.user);
+          setIsAuthenticated(true);
+          setAuthError('');
+          setLastSessionToken(session.access_token); // ✅ ATUALIZAR: Token da sessão atual
+          setUserDataLoaded(true); // ✅ MARCAR: Dados carregados com sucesso
+        } else {
+          setAuthError(response.data.message || 'Erro ao carregar dados do usuário');
         }
-
-        setIsAuthenticated(true);
+        
       } catch (error) {
-        console.error('Erro ao verificar autenticação:', error);
-        navigate('/login?error=auth_error&message=Erro ao verificar autenticação. Por favor, faça login novamente.');
-      } finally {
-        setIsLoading(false);
-      }
+        console.error('❌ Dashboard: Erro ao carregar dados do usuário:', error);
+        
+        if (error.response?.status === 401) {
+          setAuthError('Sua sessão expirou. Faça login novamente.');
+          setTimeout(() => {
+            navigate('/login?error=session_expired&message=Sua sessão expirou. Faça login novamente.');
+          }, 2000);
+        } else if (error.response?.status === 429) {
+          // ✅ TRATAR: Rate limit - aguardar mais tempo e bloquear novas tentativas
+          console.log('[DASHBOARD] ⚠️ Rate limit atingido - bloqueando por 10 segundos');
+          setAuthError('Muitas requisições. Aguarde um momento...');
+          setLastUserDataFetch(Date.now() + 10000); // Bloquear por 10 segundos
+          setUserDataLoaded(false); // ✅ RESETAR: Permitir nova tentativa após bloqueio
+          setTimeout(() => {
+            setAuthError('');
+          }, 10000);
+        } else {
+          setAuthError('Erro ao carregar dados do usuário. Tente novamente.');
+        }
+              } finally {
+          console.log('[DASHBOARD] 🏁 Finalizando carregamento de dados do usuário');
+          setIsLoading(false);
+          setIsLoadingUserData(false);
+        }
     };
 
-    checkAuth();
-  }, [navigate]);
+    loadUserData();
+    
+  }, [sessionLoading, session?.access_token, navigate, isLoadingUserData, userDataLoaded, userData]);
 
   useEffect(() => {
     if (period === 'custom' && (!dateRange[0].startDate || !dateRange[0].endDate)) return
@@ -480,15 +472,11 @@ export default function Dashboard() {
       const currentPeriod = period;
       const currentDateRange = dateRange;
       
-      console.log(`[FETCH-DEBUG] Estado atual - Period: ${currentPeriod}, DateRange:`, currentDateRange);
-      
       const isRange = (currentPeriod === 'custom');
       const apiPeriod = isRange ? 'range' : currentPeriod;
-      
-      console.log(`[FETCH-DEBUG] isRange: ${isRange}, apiPeriod: ${apiPeriod}`);
 
-      // Formatar datas explicitamente para garantir que não haja problemas de timezone
-      let url = `/api/dashboard/stats?period=${apiPeriod}`;
+      // ✅ URL: Sem /api (o proxy do Vite adiciona automaticamente)
+      let url = `/dashboard/stats?period=${apiPeriod}`;
       if (isRange) {
         // ✅ USAR: Função global formatDateToYYYYMMDD
         const start = formatDateToYYYYMMDD(currentDateRange[0].startDate);
@@ -496,11 +484,7 @@ export default function Dashboard() {
 
         url += `&startDate=${start}&endDate=${end}`;
 
-        // Logs para depuração
-        console.log(`[API-DEBUG] Period: ${currentPeriod}, Data início objeto: ${currentDateRange[0].startDate}`);
-        console.log(`[API-DEBUG] Data início formatada: ${start}`);
-        console.log(`[API-DEBUG] Data fim objeto: ${currentDateRange[0].endDate}`);
-        console.log(`[API-DEBUG] Data fim formatada: ${end}`);
+
       }
 
       console.log(`[DASHBOARD] Buscando dados com: ${url} (period: ${currentPeriod})`);
@@ -528,9 +512,10 @@ export default function Dashboard() {
           if (authToken) {
             headers['Authorization'] = `Bearer ${authToken}`;
           }
-          const res = await fetch(url, { credentials: 'include', headers });
+          // ✅ USAR: Instância api configurada (com proxy correto)
+          const res = await api.get(url.replace('/api', ''), { headers });
 
-          // Verificar se o token expirou (status 401)
+          // ✅ VERIFICAR: Status da resposta do axios
           if (res.status === 401) {
             console.error('Erro de autenticação: Token expirado ou inválido');
 
@@ -545,18 +530,18 @@ export default function Dashboard() {
             return;
           }
 
-          if (!res.ok) {
+          if (res.status !== 200) {
             throw new Error(`Erro ao buscar dados: ${res.status} ${res.statusText}`);
           }
 
-          const data = await res.json();
+          // ✅ DADOS: Axios já retorna os dados parseados
+          const data = res.data;
           if (isMounted) {
             console.log(`[DASHBOARD] Dados recebidos:`, data.data);
             setStats(data.data);
             console.log(`[DASHBOARD] Dados atualizados para período: ${currentPeriod}`);
 
-            // Log específico para depuração das métricas de leads
-            console.log(`[DASHBOARD-LEADS-DEBUG] Leads Novos: ${data.data.newLeadsCount}, Leads Antigos Ativos: ${data.data.returningLeadsCount}, Total de Leads: ${data.data.totalLeads}`);
+
           }
         } catch (error) {
           console.error('Erro ao buscar dados do dashboard:', error);
@@ -593,10 +578,8 @@ export default function Dashboard() {
     const intervalId = setInterval(() => {
       // Verificar novamente se o filtro ainda inclui "hoje" (pode ter mudado)
       if (doesCurrentFilterIncludeToday(period, dateRange)) {
-        console.log(`[SYNC-DEBUG] Executando sincronização recorrente automática...`);
         reloadDashboardData();
       } else {
-        console.log(`[SYNC-DEBUG] Filtro não inclui mais hoje - parando sincronização recorrente`);
         setIsRecurringSyncActive(false);
         clearInterval(intervalId);
       }
@@ -604,7 +587,6 @@ export default function Dashboard() {
 
     // Cleanup function
     return () => {
-      console.log(`[SYNC-DEBUG] Limpando sincronização recorrente`);
       setIsRecurringSyncActive(false);
       clearInterval(intervalId);
     };
@@ -637,27 +619,21 @@ export default function Dashboard() {
       }
 
       // ✅ CORREÇÃO: Usar a mesma lógica de construção de URL que fetchData
-      console.log(`[RELOAD-DEBUG] Estado atual - Period: ${period}, DateRange:`, dateRange);
-      
       const isRange = (period === 'custom');
       const apiPeriod = isRange ? 'range' : period;
-      
-      console.log(`[RELOAD-DEBUG] isRange: ${isRange}, apiPeriod: ${apiPeriod}`);
 
-      // Construir URL com parâmetros atuais
-      let url = `/api/dashboard/stats?period=${apiPeriod}`;
+      // ✅ URL: Sem /api (o proxy do Vite adiciona automaticamente)
+      let url = `/dashboard/stats?period=${apiPeriod}`;
       if (isRange) {
         const start = formatDateToYYYYMMDD(dateRange[0].startDate);
         const end = formatDateToYYYYMMDD(dateRange[0].endDate);
         url += `&startDate=${start}&endDate=${end}`;
-        
-        // Log para depuração
-        console.log(`[RELOAD-DEBUG] Period: ${period}, Data início: ${start}, Data fim: ${end}`);
       }
 
       console.log(`[DASHBOARD] Recarregando dados com: ${url} (period: ${period})`);
 
-      const res = await fetch(url, { credentials: 'include', headers });
+      // ✅ USAR: Instância api configurada (com proxy correto)
+      const res = await api.get(url, { headers });
 
       // Verificar se o token expirou (status 401)
       if (res.status === 401) {
@@ -668,11 +644,12 @@ export default function Dashboard() {
         return;
       }
 
-      if (!res.ok) {
+      if (res.status !== 200) {
         throw new Error(`Erro ao buscar dados: ${res.status} ${res.statusText}`);
       }
 
-      const data = await res.json();
+      // ✅ DADOS: Axios já retorna os dados parseados
+      const data = res.data;
       console.log(`[DASHBOARD] Dados recarregados:`, data.data);
       setStats(data.data);
 
@@ -1358,16 +1335,10 @@ export default function Dashboard() {
       });
 
       // Recarregar dados do dashboard apenas se o filtro atual incluir a data de hoje
-      console.log(`[REPEAT-QUERY-DEBUG] Period atual: ${period}, DateRange atual:`, dateRange);
       const shouldReload = doesCurrentFilterIncludeToday(period, dateRange);
-      console.log(`[REPEAT-QUERY-DEBUG] Deve recarregar? ${shouldReload}`);
       
       if (shouldReload) {
-        console.log(`[REPEAT-QUERY-DEBUG] Iniciando recarregamento...`);
         await reloadDashboardData();
-        console.log(`[REPEAT-QUERY-DEBUG] Recarregamento concluído`);
-      } else {
-        console.log(`[REPEAT-QUERY-DEBUG] Recarregamento não necessário - filtro não inclui hoje`);
       }
 
     } catch (err) {
@@ -1539,14 +1510,9 @@ export default function Dashboard() {
         // Recarregar dados do dashboard apenas se o filtro atual incluir a data de hoje
         console.log(`[SAVE-PROPOSAL-DEBUG] Period atual: ${period}, DateRange atual:`, dateRange);
         const shouldReload = doesCurrentFilterIncludeToday(period, dateRange);
-        console.log(`[SAVE-PROPOSAL-DEBUG] Deve recarregar? ${shouldReload}`);
         
         if (shouldReload) {
-          console.log(`[SAVE-PROPOSAL-DEBUG] Iniciando recarregamento...`);
           await reloadDashboardData();
-          console.log(`[SAVE-PROPOSAL-DEBUG] Recarregamento concluído`);
-        } else {
-          console.log(`[SAVE-PROPOSAL-DEBUG] Recarregamento não necessário - filtro não inclui hoje`);
         }
       } else {
         throw new Error(data.message || 'Erro ao editar proposta')
@@ -1779,6 +1745,7 @@ export default function Dashboard() {
   return (
     <>
       <Navbar />
+
       <div className="p-6 bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 min-h-screen">
         {/* Cabeçalho */}
         <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6">
@@ -2161,7 +2128,8 @@ export default function Dashboard() {
                   <th className="px-4 py-3 font-medium text-white">Valor</th>
                   <th className="px-4 py-3 font-medium text-white">Status</th>
                   <th className="px-4 py-3 font-medium text-white">Data</th>
-                  <th className="px-4 py-3 font-medium text-white">Ações</th>                </tr>
+                  <th className="px-4 py-3 font-medium text-white">Ações</th>
+                </tr>
               </thead>
               <tbody>
                 {filteredProposals.map((prop, index) => (

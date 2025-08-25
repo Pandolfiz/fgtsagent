@@ -153,7 +153,7 @@ class AuthService {
       
       if (profileError) {
         // Se não encontrar um perfil, criar um básico
-        if (profileError.message && profileError.message.includes('No rows found')) {
+        if (profileError.message && typeof profileError.message === 'string' && profileError.message.includes('No rows found')) {
           const { data: newProfile, error: createError } = await supabaseAdmin
             .from('user_profiles')
             .insert({

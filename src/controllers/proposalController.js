@@ -265,9 +265,9 @@ exports.deleteProposal = async (req, res) => {
         code: v8Err.code,
         status: v8Err.response?.status
       });
-      if (v8Err.message.includes('Credenciais do parceiro não encontradas')) {
+      if (v8Err.message && typeof v8Err.message === 'string' && v8Err.message.includes('Credenciais do parceiro não encontradas')) {
         logger.warn(`Credenciais não encontradas para usuário ${req.user.id}, continuando com cancelamento local apenas`);
-      } else if (!v8Err.message.includes('Operation does not allow cancelation')) {
+      } else if (v8Err.message && typeof v8Err.message === 'string' && !v8Err.message.includes('Operation does not allow cancelation')) {
         logger.warn(`Falha ao cancelar na V8 para proposta ${proposal_id}, continuando apenas com cancelamento local: ${v8Err.message}`);
         // Não retornar erro 400, apenas continuar com cancelamento local
       }

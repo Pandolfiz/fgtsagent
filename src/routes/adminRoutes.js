@@ -11,7 +11,4 @@ router.use(requireAdmin);
 router.get('/health', adminController.getSystemHealth);
 router.post('/fix-policies', adminController.fixDatabasePolicies);
 
-// Rota de debug/admin para buscar CPF do lead
-router.get('/leads/:lead_id/cpf', adminController.getLeadCpfByLeadId);
-
 module.exports = router; 

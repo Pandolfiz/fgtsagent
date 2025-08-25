@@ -25,7 +25,7 @@ async function fixUserMetadata(userId) {
       .eq('id', userId)
       .single();
       
-    if (profileError && !profileError.message.includes('No rows found')) {
+    if (profileError && profileError.message && typeof profileError.message === 'string' && !profileError.message.includes('No rows found')) {
       logger.error(`Erro ao buscar perfil do usuário ${userId}: ${profileError.message}`);
       return false;
     }

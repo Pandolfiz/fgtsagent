@@ -349,109 +349,85 @@ const requireAuth = async (req, res, next) => {
       // Continuar com a verificação padrão do Supabase
     }
     
+    // ✅ DEBUG: Log do token recebido
+    logger.info(`[AUTH] Verificando token: ${token ? token.substring(0, 20) + '...' : 'NENHUM'} para ${req.originalUrl}`);
+    
     // Verificar token com o Supabase
     const { data, error } = await supabase.auth.getUser(token);
     
     let user = data?.user;
 
-    // Se houver erro de autenticação, tentar abordagem alternativa
+    // ✅ DEBUG: Log detalhado da verificação
+    logger.info(`[AUTH] Resultado da verificação:`, {
+      hasData: !!data,
+      hasUser: !!user,
+      hasError: !!error,
+      errorMessage: error?.message,
+      errorCode: error?.code,
+      url: req.originalUrl
+    });
+
+    // Se houver erro de autenticação, analisar antes de limpar cookies
     if (error || !user) {
-      logger.warn(`Erro de autenticação: ${error ? error.message : 'Usuário não encontrado'}`);
+      logger.warn(`[AUTH] Erro de autenticação: ${error ? error.message : 'Usuário não encontrado'}`);
       
-      // Tentar extrair informações do token mesmo se inválido
-      try {
-        const [headerEncoded, payloadEncoded] = token.split('.');
-        if (headerEncoded && payloadEncoded) {
-          const payload = JSON.parse(Buffer.from(payloadEncoded, 'base64').toString('utf8'));
-          if (payload && payload.sub) {
-            const userId = payload.sub;
-            // logger.info(`Tentando recuperar usuário pelo ID: ${userId}`);
-            
-            // Obter informações do usuário diretamente pelo ID
-            const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
-            
-            if (!userError && userData && userData.user) {
-              // logger.info(`Usuário recuperado com sucesso: ${userData.user.email}`);
-              user = userData.user;
-              
-              // Seguindo a melhor prática: não tentar criar sessão administrativa
-              // Se o token expirou, o usuário deve fazer login novamente
-              logger.warn(`Token expirado para usuário ${userId}. Usuário deve fazer login novamente.`);
-              throw new Error('Token expirado. Faça login novamente.');
-            } else {
-              logger.error(`Erro ao recuperar usuário por ID: ${userError?.message || 'Usuário não encontrado'}`);
-              throw new Error('Usuário não encontrado');
-            }
-          } else {
-            logger.error('Token inválido: não contém ID do usuário');
-            throw new Error('Token inválido');
-          }
+      // ✅ VERIFICAR: Se é um token recém-criado (pode levar alguns segundos para sincronizar)
+      const isRecentLogin = req.headers['x-recent-login'] === 'true';
+      
+      if (isRecentLogin && error?.message && typeof error.message === 'string' && error.message.includes('invalid')) {
+        logger.info(`[AUTH] Token recém-criado detectado, aguardando sincronização...`);
+        
+        // ✅ AGUARDAR: 2 segundos para sincronização do Supabase
+        await new Promise(resolve => setTimeout(resolve, 2000));
+        
+        // ✅ TENTAR NOVAMENTE: Verificar o token após aguardar
+        const { data: retryData, error: retryError } = await supabase.auth.getUser(token);
+        
+        if (!retryError && retryData?.user) {
+          logger.info(`[AUTH] Token validado após aguardar sincronização`);
+          user = retryData.user;
         } else {
-          logger.error('Formato de token inválido');
-          throw new Error('Formato de token inválido');
+          logger.warn(`[AUTH] Token ainda inválido após aguardar: ${retryError?.message}`);
         }
-      } catch (recoveryError) {
-        logger.error(`Falha na recuperação de usuário: ${recoveryError.message}`);
-        
-        // Limpar cookies inválidos
+      }
+      
+      // ✅ SE AINDA HÁ ERRO: Proceder com limpeza
+      if (!user) {
+        // ✅ NOVA ESTRATÉGIA: Limpar imediatamente todos os cookies de autenticação
         res.clearCookie('authToken');
+        res.clearCookie('refreshToken');
+        res.clearCookie('sb-access-token');
+        res.clearCookie('sb-refresh-token');
         
+        // ✅ LOG: Registrar o tipo específico de erro para debug
+        if (error) {
+          logger.error(`[AUTH] Detalhes do erro de autenticação: ${error.message}`, {
+            errorCode: error.code || 'unknown',
+            errorStatus: error.status || 'unknown',
+            tokenPrefix: token ? token.substring(0, 20) + '...' : 'no-token',
+            url: req.originalUrl
+          });
+        }
+      
+        // ✅ FORÇAR LOGIN: Não tentar recuperar usuário, apenas redirecionar
         if (req.originalUrl.startsWith('/api/')) {
           return res.status(401).json({
             success: false,
-            message: 'Token inválido ou expirado. Faça login novamente.'
+            message: 'Sessão inválida. Faça login novamente.',
+            code: 'SESSION_INVALID'
           });
         }
         
-        // Para acesso web, redirecionar para o login com parâmetro redirect
-        const redirectUrl2 = encodeURIComponent(req.originalUrl);
-        // logger.info(`Redirecionando para o login após falha de recuperação: redirect=${redirectUrl2}`);
-        
-        // Verificar se é cliente React
+        // Para acesso web, redirecionar para o login
+        const redirectUrl = encodeURIComponent(req.originalUrl);
         const isReactClient = !req.headers['accept'] || req.headers['accept'].includes('text/html');
         
         if (isReactClient) {
-          // Aplicativo React - redirecionar para a rota base
           const loginPath = getReactLoginUrl(req, req.originalUrl, 'Sua sessão expirou. Faça login novamente.');
-          
-          // logger.info(`Redirecionando cliente React para: ${loginPath}`);
           return res.redirect(loginPath);
         } else {
-          // Cliente tradicional
-          return res.redirect(`/login?redirect=${redirectUrl2}&message=Sua sessão expirou. Faça login novamente.`);
+          return res.redirect(`/login?redirect=${redirectUrl}&message=Sua sessão expirou. Faça login novamente.`);
         }
-      }
-    }
-    
-    if (!user) {
-      logger.error('Usuário não encontrado após todas as tentativas de recuperação');
-      
-      // Limpar cookies inválidos
-      res.clearCookie('authToken');
-      
-      if (req.originalUrl.startsWith('/api/')) {
-        return res.status(401).json({
-          success: false,
-          message: 'Usuário não encontrado. Faça login novamente.'
-        });
-      }
-      
-      // Para acesso web, redirecionar para o login com parâmetro redirect
-      const redirectUrl3 = encodeURIComponent(req.originalUrl);
-      // logger.info(`Redirecionando para o login após usuário não encontrado: redirect=${redirectUrl3}`);
-      
-      // Verificar se é cliente React
-      const isReactClient = !req.headers['accept'] || req.headers['accept'].includes('text/html');
-      
-      if (isReactClient) {
-        // Aplicativo React - redirecionar para a rota base
-        const loginPath = getReactLoginUrl(req, req.originalUrl, 'Sua sessão expirou. Faça login novamente.');
-        
-        // logger.info(`Redirecionando cliente React para: ${loginPath}`);
-        return res.redirect(loginPath);
-      } else {
-        // Cliente tradicional
-        return res.redirect(`/login?redirect=${redirectUrl3}&message=Sua sessão expirou. Faça login novamente.`);
       }
     }
     
@@ -541,7 +517,7 @@ const requireAuth = async (req, res, next) => {
               
               if (insertError) {
                 // Se ainda houver erro de duplicação, tente buscar o perfil novamente
-                if (insertError.message && insertError.message.includes('duplicate key value')) {
+                if (insertError.message && typeof insertError.message === 'string' && insertError.message.includes('duplicate key value')) {
                   // logger.info(`Ocorreu conflito ao inserir perfil. Buscando perfil existente para ${user.id}...`);
                   
                   const { data: existingProfileRetry, error: retryError } = await supabaseAdmin
@@ -806,7 +782,7 @@ async function checkAndCreateTables() {
           .limit(1);
         
         // Se não há erro ou é apenas "relation does not exist", sabemos o status da tabela
-        if (directCheckError && directCheckError.message.includes('relation "user_profiles" does not exist')) {
+        if (directCheckError && directCheckError.message && typeof directCheckError.message === 'string' && directCheckError.message.includes('relation "user_profiles" does not exist')) {
           tableExists = false;
           // logger.info(`Verificação direta: tabela user_profiles não existe`);
         } else if (!directCheckError) {
@@ -936,7 +912,7 @@ const isAuthenticatedApi = async (req, res, next) => {
         // logger.warn(`API: Erro ao obter usuário pelo token: ${userError.message}`);
         
         // Se o erro indica token expirado, tentar renovar
-        if (userError.message.includes('expired') || userError.message.includes('invalid')) {
+        if (userError.message && typeof userError.message === 'string' && (userError.message.includes('expired') || userError.message.includes('invalid'))) {
           // logger.info('API: Token expirado ou inválido, tentando renovar');
           
           // Verificar se temos refresh token

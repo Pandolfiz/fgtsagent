@@ -15,8 +15,9 @@ const session = require('express-session');
 const flash = require('connect-flash');
 const config = require('./config');
 const userApiKeyMiddleware = require('./middleware/userApiKeyMiddleware');
-const { requireAuth } = require('./middleware/auth');
+const { requireAuth, requireAdmin } = require('./middleware/unifiedAuthMiddleware');
 const { refreshTokens, applyRefreshedTokens } = require('./middleware/tokenRefresh');
+const tokenProtectionMiddleware = require('./middleware/tokenProtectionMiddleware');
 const { 
   monitorLoginAttempts, 
   monitorDataAccess, 
@@ -226,7 +227,7 @@ app.use(cors({
     // Lista de domínios permitidos
     const allowedOrigins = [
       // Localhost com diferentes portas
-      'http://localhost:5173',
+      'https://localhost:5173',
       'http://localhost:5173',
       'http://127.0.0.1:5173',
       'http://127.0.0.1:5173',
@@ -260,12 +261,15 @@ app.use(cors({
       callback(null, true);
     } else if (
       allowedOrigins.includes(origin) ||
-      origin.includes('localhost') ||
-      origin.includes('127.0.0.1') ||
-      origin.includes('172.27.0.1') ||
-      origin.includes('192.168.15.188') ||
-      origin.includes('172.20.80.1') ||
-      (origin.includes('.ngrok-free.app') || origin.includes('.ngrok.io'))
+      (typeof origin === 'string' && (
+        origin.includes('localhost') ||
+        origin.includes('127.0.0.1') ||
+        origin.includes('172.27.0.1') ||
+        origin.includes('192.168.15.188') ||
+        origin.includes('172.20.80.1') ||
+        origin.includes('.ngrok-free.app') ||
+        origin.includes('.ngrok.io')
+      ))
     ) {
       callback(null, true);
     } else {
@@ -293,6 +297,9 @@ app.use(requestLogger);
 // Aplicar sanitização de dados para todas as rotas
 app.use(sanitizeInput);
 app.use(sanitizeRequest(['body', 'query', 'params']));
+
+// ✅ ADICIONAR: Middleware de proteção contra limpeza automática de tokens
+app.use(tokenProtectionMiddleware.middleware());
 
 // Middleware de renovação automática de tokens
 app.use(refreshTokens);
@@ -443,17 +450,24 @@ app.use('/api', apiRoutes);
 // Middleware para aplicar tokens renovados na resposta
 app.use(applyRefreshedTokens);
 
-// Rotas de autenticação com Rate + Speed Limiting
-app.use('/auth', authLimiter, authSpeedLimiter, authRoutes);
-app.use('/api/auth', authLimiter, authSpeedLimiter, authRoutes);
+// Rotas de autenticação com Rate + Speed Limiting (mais permissivo em desenvolvimento)
+if (process.env.NODE_ENV === 'development') {
+  // Em desenvolvimento: rate limiting mais permissivo
+  app.use('/auth', authRoutes);
+  app.use('/api/auth', authRoutes);
+} else {
+  // Em produção: rate limiting completo
+  app.use('/auth', authLimiter, authSpeedLimiter, authRoutes);
+  app.use('/api/auth', authLimiter, authSpeedLimiter, authRoutes);
+}
 app.use('/api/whatsapp-credentials', requireAuth, whatsappCredentialRoutes);
 app.use('/api/credentials', credentialsRoutes);
 // REMOVIDO: app.use('/api', credentialsRoutes); // Isso sobrescrevia todas as rotas /api/*
 app.use('/api/chat', requireAuth, chatRoutes);
-app.use('/api/admin', adminRoutes);
+app.use('/api/admin', requireAuth, requireAdmin, adminRoutes);
 
 // Rotas de leads
-app.use('/api/leads', require('./routes/leadRoutes'));
+app.use('/api/leads', requireAuth, require('./routes/leadRoutes'));
 
 // Novas rotas para gerenciamento de contatos e mensagens
 // app.use('/api/contacts', requireAuth, contactsRoutes); // Moved up

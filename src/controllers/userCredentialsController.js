@@ -166,7 +166,7 @@ exports.updateUserApiKeyName = async (req, res) => {
   } catch (error) {
     logger.error(`Erro ao atualizar nome da chave de API: ${error.message}`);
     
-    if (error.message.includes('não encontrada') || error.message.includes('acesso negado')) {
+    if (error.message && typeof error.message === 'string' && (error.message.includes('não encontrada') || error.message.includes('acesso negado'))) {
       return res.status(404).json({
         success: false,
         message: 'Chave não encontrada ou você não tem permissão para modificá-la'

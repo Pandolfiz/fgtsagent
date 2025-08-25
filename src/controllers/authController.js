@@ -1,9 +1,9 @@
 // Controlador de autenticação
 const authService = require('../services/auth');
 const { AppError } = require('../utils/errors');
-const { supabaseAdmin } = require('../config/supabase');
+const { supabase, supabaseAdmin } = require('../config/supabase');
 const logger = require('../utils/logger');
-const { supabase } = require('../config/supabase');
+const { markRecentLogin } = require('../middleware/tokenProtectionMiddleware');
 const subscriptionController = require('./subscriptionController');
 
 /**
@@ -110,7 +110,7 @@ const getCurrentUser = async (req, res, next) => {
     });
   } catch (error) {
     // Se ocorrer erro específico de recursão, use a abordagem simplificada
-    if (error.message && error.message.includes('recursion')) {
+    if (error.message && typeof error.message === 'string' && error.message.includes('recursion')) {
       return res.status(200).json({
         status: 'success',
         data: { 
@@ -345,16 +345,11 @@ const register = async (req, res) => {
  */
 const login = async (req, res) => {
   try {
-    // Limpar qualquer sessão anterior para evitar contaminação entre usuários
-    res.clearCookie('authToken');
-    res.clearCookie('refreshToken');
-    res.clearCookie('supabase-auth-token');
-    
-    // Inicializar/Limpar dados de usuário para evitar contaminação
-    req.user = null;
+    // ✅ CORRIGIDO: NÃO limpar cookies automaticamente - isso causa perda de sessão
+    // req.user = null; // Removido para evitar conflitos
     
     // Log da operação
-    logger.info(`Iniciando processo de login após limpeza de cookies anteriores`);
+    logger.info(`Iniciando processo de login (sem limpeza automática de cookies)`);
     
     const { email, password } = req.body;
 
@@ -375,7 +370,7 @@ const login = async (req, res) => {
     if (error) {
       logger.error(`Erro de login: ${error.message}`);
       // Email não confirmado
-      if (error.message.includes('Email not confirmed')) {
+      if (error.message && typeof error.message === 'string' && error.message.includes('Email not confirmed')) {
         return res.status(401).json({
           success: false,
           message: 'É necessário confirmar seu email antes de fazer login. Verifique sua caixa de entrada.'
@@ -391,27 +386,50 @@ const login = async (req, res) => {
     // Login bem-sucedido
     logger.info(`Login bem-sucedido para: ${email}`);
 
-    // Definir cookies explicitamente com os tokens de sessão
+    // ✅ ADICIONAR: Marcar login recente para proteção contra limpeza automática
+    markRecentLogin(data.user.id);
+
+    // ✅ ADICIONAR: Verificar se já existe uma sessão ativa
+    const existingSession = await supabase.auth.getSession();
+    if (existingSession.data.session) {
+      logger.info(`Sessão existente detectada para usuário ${email}, mantendo tokens existentes`);
+    }
+
+    // ✅ CORRIGIDO: Definir cookies de forma mais robusta
     const accessToken = data.session.access_token;
     const refreshToken = data.session.refresh_token;
     const expiresIn = 60 * 60 * 24; // 24 horas em segundos
     
-    // Definir cookie do token de acesso
-    res.cookie('authToken', accessToken, {
-      httpOnly: true,
+    // ✅ CORRIGIDO: Usar configurações de cookie mais compatíveis
+    const cookieOptions = {
+      httpOnly: false, // Permitir acesso via JavaScript para Supabase
       secure: process.env.NODE_ENV === 'production',
-      maxAge: expiresIn * 1000 // em milissegundos
-    });
+      maxAge: expiresIn * 1000, // em milissegundos
+      sameSite: 'lax',
+      path: '/'
+    };
+    
+    // Definir cookie do token de acesso
+    res.cookie('authToken', accessToken, cookieOptions);
     
     // Definir cookie do token de refresh
     res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 dias em milissegundos
+      ...cookieOptions,
+      httpOnly: true, // Refresh token deve ser httpOnly
+      maxAge: 30 * 24 * 60 * 60 * 1000 // 30 dias
     });
+    
+    // ✅ CORRIGIDO: Cookie específico do Supabase para consistência
+    res.cookie('supabase-auth-token', accessToken, cookieOptions);
+    
+    // ✅ ADICIONAR: Cookie adicional para compatibilidade
+    res.cookie('js-auth-token', accessToken, cookieOptions);
     
     // Armazenar informações no log
     logger.info(`Cookies para usuário ${data.user.id} foram definidos após login bem-sucedido`);
+
+    // ✅ ADICIONAR: Header para indicar login recente (ajuda o middleware a aguardar sincronização)
+    res.setHeader('X-Recent-Login', 'true');
 
     return res.status(200).json({
       success: true,
@@ -422,7 +440,8 @@ const login = async (req, res) => {
       session: {
         accessToken,
         refreshToken
-      }
+      },
+      message: 'Login realizado com sucesso'
     });
   } catch (err) {
     logger.error(`Erro inesperado no login: ${err.message}`);
@@ -472,13 +491,13 @@ const logout = async (req, res) => {
 };
 
 /**
- * Obter informações do usuário atual (versão direta)
+ * Obter informações do usuário atual
  */
-    const getMe = async (req, res) => {
-      try {
-        logger.info(`[getMe] Buscando dados do usuário: ${req.user?.id}`);
-    
-    // Verificar se o usuário está autenticado
+const getMe = async (req, res) => {
+  try {
+    logger.info(`[getMe] Buscando dados do usuário: ${req.user?.id}`);
+
+    // ✅ VERIFICAR: Se o usuário está autenticado
     if (!req.user) {
       logger.warn('[getMe] Usuário não autenticado');
       return res.status(401).json({
@@ -486,138 +505,11 @@ const logout = async (req, res) => {
         message: 'Não autenticado'
       });
     }
-    
-    // Se ainda não temos usuário, retornar erro de autenticação
-    if (!req.user) {
-      logger.warn('Acesso não autorizado - Usuário não encontrado');
-      return res.status(401).json({
-        success: false,
-        message: 'Não autenticado'
-      });
-    }
-    
-    try {
-      // Obter perfil completo - sem usar single() para evitar erro com múltiplos registros
-      const { data: profilesData, error } = await supabaseAdmin
-        .from('user_profiles')
-        .select('*')
-        .eq('id', req.user.id)
-        .order('updated_at', { ascending: false });
-        
-      logger.info(`[getMe] Resultado da busca de perfil:`, {
-        hasError: !!error,
-        errorMessage: error?.message,
-        profilesCount: profilesData?.length || 0
-      });
-        
-      if (error) {
-        logger.error(`Erro ao buscar perfil do usuário: ${error.message}`);
-        
-        // Extrair nome completo dos metadados do usuário
-        const userMetadataName = req.user.user_metadata?.full_name || 
-          (req.user.user_metadata?.first_name && req.user.user_metadata?.last_name ? 
-            `${req.user.user_metadata.first_name} ${req.user.user_metadata.last_name}` : '');
-        
-        // Log para depuração
-        logger.info(`Retornando dados do usuário a partir dos metadados: ${JSON.stringify(req.user.user_metadata)}`);
-            
-        // Mesmo com erro, retornar um perfil padrão em vez de falhar
-        return res.status(200).json({
-          success: true,
-          user: {
-            id: req.user.id,
-            email: req.user.email,
-            full_name: userMetadataName || '',
-            displayName: userMetadataName || req.user.email?.split('@')[0] || 'Usuário',
-            firstName: req.user.user_metadata?.first_name || '',
-            lastName: req.user.user_metadata?.last_name || '',
-            name: userMetadataName || req.user.email?.split('@')[0] || 'Usuário',
-            avatar_url: req.user.user_metadata?.avatar_url || null,
-            role: req.user.app_metadata?.role || 'user'
-          }
-        });
-      }
-      
-      // Usar o primeiro registro (mais recente) ou um objeto vazio se não houver registros
-      const profile = (profilesData && profilesData.length > 0) ? profilesData[0] : {};
-      
-      logger.info(`[getMe] Perfil encontrado:`, {
-        hasProfile: !!profile,
-        profileFields: profile ? Object.keys(profile) : [],
-        full_name: profile?.full_name,
-        first_name: profile?.first_name,
-        last_name: profile?.last_name
-      });
-      
-      // Se houver múltiplos perfis, registrar para análise posterior
-      if (profilesData && profilesData.length > 1) {
-        logger.warn(`Múltiplos perfis encontrados para o usuário ${req.user.id}. Total: ${profilesData.length}`);
-      }
-      
-      // Determinar nome final de exibição
-      let finalName = '';
-      if (profile.full_name) {
-        finalName = profile.full_name;
-        logger.info(`Nome extraído da tabela user_profiles.full_name: ${finalName}`);
-      } else {
-        // Tentar obter via Admin API do Supabase Auth
-        try {
-          const { data: adminData, error: adminError } = await supabaseAdmin.auth.admin.getUserById(req.user.id);
-          if (!adminError && adminData?.user?.user_metadata?.full_name) {
-            finalName = adminData.user.user_metadata.full_name;
-            logger.info(`Nome extraído de user_metadata via Admin API: ${finalName}`);
-          }
-        } catch (adminFetchError) {
-          logger.warn(`Falha ao buscar metadata de usuário via Admin API: ${adminFetchError.message}`);
-        }
-      }
-      if (!finalName) {
-        finalName = (profile.first_name && profile.last_name)
-          ? `${profile.first_name} ${profile.last_name}`
-          : profile.name || req.user.email?.split('@')[0] || 'Usuário';
-      }
-      const displayName = finalName;
-      
-      logger.info(`Nome final selecionado: "${displayName}"`);
-      
-      // Log para depuração dos dados retornados
-      logger.info(`Retornando perfil completo: usuário=${req.user.id}, displayName=${displayName}`);
-      
-      // Construir resposta com todas as possíveis propriedades de nome
-      const response = {
-        success: true,
-        user: {
-          id: req.user.id,
-          email: req.user.email,
-          ...profile, // Incluir todos os campos do perfil
-          // Garantir que os campos de nome estejam presentes
-          full_name: displayName, // Usar o nome correto aqui
-          displayName: displayName, // E aqui também
-          firstName: profile.first_name || req.user.user_metadata?.first_name || '',
-          lastName: profile.last_name || req.user.user_metadata?.last_name || '',
-          name: displayName, // E aqui também
-          // Incluir explicitamente os metadados para o frontend
-          user_metadata: req.user.user_metadata || {},
-          // Adicionar propriedades específicas para o frontend
-          avatar_url: req.user.user_metadata?.avatar_url || profile.avatar_url || null,
-          role: req.user.app_metadata?.role || 'user'
-        }
-      };
-      
-      logger.info(`[getMe] Resposta final:`, {
-        success: response.success,
-        userId: response.user.id,
-        full_name: response.user.full_name,
-        displayName: response.user.displayName,
-        name: response.user.name
-      });
-      
-      logger.info(`Tamanho da resposta: ${JSON.stringify(response).length} bytes`);
-      
-      return res.status(200).json(response);
-    } catch (dbErr) {
-      logger.error(`Erro na consulta de perfil: ${dbErr.message || JSON.stringify(dbErr)}`);
-      // Em caso de erro na consulta, retornar os dados básicos do usuário
+
+    // ✅ TESTE: Verificar se supabaseAdmin está disponível
+    if (!supabaseAdmin) {
+      logger.error('[getMe] Cliente Supabase Admin não disponível');
+      // ✅ RETORNAR: Dados básicos dos metadados em vez de falhar
       const userMetadataName = req.user.user_metadata?.full_name || 
         (req.user.user_metadata?.first_name && req.user.user_metadata?.last_name ? 
           `${req.user.user_metadata.first_name} ${req.user.user_metadata.last_name}` : '');
@@ -633,15 +525,194 @@ const logout = async (req, res) => {
           lastName: req.user.user_metadata?.last_name || '',
           name: userMetadataName || req.user.email?.split('@')[0] || 'Usuário',
           avatar_url: req.user.user_metadata?.avatar_url || null,
-          role: req.user.app_metadata?.role || 'user'
+          role: req.user.app_metadata?.role || 'user',
+          source: 'user_metadata_no_admin',
+          hasProfile: false
         }
       });
     }
+
+    // ✅ VERIFICAR: Se o usuário tem metadados válidos primeiro
+    const userMetadataName = req.user.user_metadata?.full_name || 
+      (req.user.user_metadata?.first_name && req.user.user_metadata?.last_name ? 
+        `${req.user.user_metadata.first_name} ${req.user.user_metadata.last_name}` : '');
+    
+    logger.info(`[getMe] Metadados do usuário:`, {
+      hasUserMetadata: !!req.user.user_metadata,
+      full_name: req.user.user_metadata?.full_name,
+      first_name: req.user.user_metadata?.first_name,
+      last_name: req.user.user_metadata?.last_name,
+      userMetadataName: userMetadataName
+    });
+
+    // ✅ TENTAR: Obter perfil completo da tabela user_profiles (COM TRATAMENTO DE ERRO ROBUSTO)
+    let profilesData = null;
+    let profileError = null;
+    
+    try {
+      logger.info(`[getMe] Tentando consultar tabela user_profiles para usuário: ${req.user.id}`);
+      
+      const { data, error } = await supabaseAdmin
+        .from('user_profiles')
+        .select('*')
+        .eq('id', req.user.id)
+        .order('updated_at', { ascending: false });
+      
+      profilesData = data;
+      profileError = error;
+      
+      logger.info(`[getMe] Resultado da busca de perfil:`, {
+        hasError: !!error,
+        errorMessage: error?.message,
+        profilesCount: profilesData?.length || 0
+      });
+    } catch (dbError) {
+      logger.warn(`[getMe] Erro na consulta ao banco: ${dbError.message}`);
+      profileError = dbError;
+    }
+      
+    // ✅ SE HOUVER ERRO: Retornar dados dos metadados em vez de falhar
+    if (profileError || !profilesData || profilesData.length === 0) {
+      logger.warn(`[getMe] Usando dados dos metadados devido a erro no banco: ${profileError?.message || 'Nenhum perfil encontrado'}`);
+      
+      // ✅ RETORNAR: Perfil padrão baseado nos metadados
+      return res.status(200).json({
+        success: true,
+        user: {
+          id: req.user.id,
+          email: req.user.email,
+          full_name: userMetadataName || '',
+          displayName: userMetadataName || req.user.email?.split('@')[0] || 'Usuário',
+          firstName: req.user.user_metadata?.first_name || '',
+          lastName: req.user.user_metadata?.last_name || '',
+          name: userMetadataName || req.user.email?.split('@')[0] || 'Usuário',
+          avatar_url: req.user.user_metadata?.avatar_url || null,
+          role: req.user.app_metadata?.role || 'user',
+          // ✅ INCLUIR: Flag indicando que os dados vieram dos metadados
+          source: 'user_metadata',
+          hasProfile: false
+        }
+      });
+    }
+    
+    // ✅ USAR: O primeiro registro (mais recente) ou um objeto vazio se não houver registros
+    const profile = (profilesData && profilesData.length > 0) ? profilesData[0] : {};
+    
+    logger.info(`[getMe] Perfil encontrado:`, {
+      hasProfile: !!profile,
+      profileFields: profile ? Object.keys(profile) : [],
+      full_name: profile?.full_name,
+      first_name: profile?.first_name,
+      last_name: profile?.last_name
+    });
+    
+    // ✅ SE HOUVER MÚLTIPLOS PERFIS: Registrar para análise posterior
+    if (profilesData && profilesData.length > 1) {
+      logger.warn(`Múltiplos perfis encontrados para o usuário ${req.user.id}. Total: ${profilesData.length}`);
+    }
+    
+    // ✅ DETERMINAR: Nome final de exibição
+    let finalName = '';
+    if (profile.full_name) {
+      finalName = profile.full_name;
+      logger.info(`Nome extraído da tabela user_profiles.full_name: ${finalName}`);
+    } else {
+      // ✅ TENTAR: Obter via Admin API do Supabase Auth (COM TRATAMENTO DE ERRO)
+      try {
+        if (supabaseAdmin && supabaseAdmin.auth) {
+          const { data: adminData, error: adminError } = await supabaseAdmin.auth.admin.getUserById(req.user.id);
+          if (!adminError && adminData?.user?.user_metadata?.full_name) {
+            finalName = adminData.user.user_metadata.full_name;
+            logger.info(`Nome extraído de user_metadata via Admin API: ${finalName}`);
+          }
+        }
+      } catch (adminFetchError) {
+        logger.warn(`Falha ao buscar metadata de usuário via Admin API: ${adminFetchError.message}`);
+      }
+    }
+    
+    if (!finalName) {
+      finalName = (profile.first_name && profile.last_name)
+        ? `${profile.first_name} ${profile.last_name}`
+        : profile.name || req.user.email?.split('@')[0] || 'Usuário';
+    }
+    
+    const displayName = finalName;
+    logger.info(`Nome final selecionado: "${displayName}"`);
+    
+    // ✅ CONSTRUIR: Resposta com todas as possíveis propriedades de nome
+    const response = {
+      success: true,
+      user: {
+        id: req.user.id,
+        email: req.user.email,
+        ...profile, // Incluir todos os campos do perfil
+        // ✅ GARANTIR: Que os campos de nome estejam presentes
+        full_name: displayName,
+        displayName: displayName,
+        firstName: profile.first_name || req.user.user_metadata?.first_name || '',
+        lastName: profile.last_name || req.user.user_metadata?.last_name || '',
+        name: displayName,
+        // ✅ INCLUIR: Explicitamente os metadados para o frontend
+        user_metadata: req.user.user_metadata || {},
+        // ✅ ADICIONAR: Propriedades específicas para o frontend
+        avatar_url: req.user.user_metadata?.avatar_url || profile.avatar_url || null,
+        role: req.user.app_metadata?.role || 'user'
+      }
+    };
+    
+    logger.info(`[getMe] Resposta final:`, {
+      success: response.success,
+      userId: response.user.id,
+      full_name: response.user.full_name,
+      displayName: response.user.displayName,
+      name: response.user.name
+    });
+    
+    return res.status(200).json(response);
+    
   } catch (err) {
-    logger.error(`Erro ao buscar informações do usuário: ${err.message || JSON.stringify(err)}`);
+    logger.error(`[getMe] Erro geral ao buscar informações do usuário: ${err.message || JSON.stringify(err)}`);
+    
+    // ✅ EM CASO DE ERRO GERAL: Tentar retornar dados mínimos do usuário
+    try {
+      if (req.user && req.user.id) {
+        const userMetadataName = req.user.user_metadata?.full_name || 
+          (req.user.user_metadata?.first_name && req.user.user_metadata?.last_name ? 
+            `${req.user.user_metadata.first_name} ${req.user.user_metadata.last_name}` : '');
+        
+        logger.info(`[getMe] Retornando dados mínimos em caso de erro geral: ${userMetadataName}`);
+        
+        return res.status(200).json({
+          success: true,
+          user: {
+            id: req.user.id,
+            email: req.user.email || 'user@example.com',
+            full_name: userMetadataName || '',
+            displayName: userMetadataName || req.user.email?.split('@')[0] || 'Usuário',
+            firstName: req.user.user_metadata?.first_name || '',
+            lastName: req.user.user_metadata?.last_name || '',
+            name: userMetadataName || req.user.email?.split('@')[0] || 'Usuário',
+            avatar_url: req.user.user_metadata?.avatar_url || null,
+            role: req.user.app_metadata?.role || 'user',
+            // ✅ INCLUIR: Flag indicando que os dados vieram dos metadados como último recurso
+            source: 'user_metadata_emergency',
+            hasProfile: false,
+            error: err.message
+          }
+        });
+      }
+    } catch (fallbackErr) {
+      logger.error(`[getMe] Erro até no fallback: ${fallbackErr.message}`);
+    }
+    
+    // ✅ SE TUDO FALHAR: Retornar erro 500 com detalhes para debug
     return res.status(500).json({
       success: false,
-      message: 'Erro interno do servidor'
+      message: 'Erro interno do servidor ao buscar informações do usuário',
+      error: err.message,
+      timestamp: new Date().toISOString(),
+      userId: req.user?.id || 'unknown'
     });
   }
 };
@@ -651,7 +722,7 @@ const logout = async (req, res) => {
  */
 const renderLogin = (req, res) => {
   // Verificar se estamos usando ngrok
-  const isNgrok = req.headers.host && req.headers.host.includes('ngrok');
+  const isNgrok = req.headers.host && typeof req.headers.host === 'string' && req.headers.host.includes('ngrok');
   
   logger.info(`Renderizando página de login. Usando ngrok: ${isNgrok}`);
   

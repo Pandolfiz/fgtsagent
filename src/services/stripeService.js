@@ -167,7 +167,7 @@ class StripeService {
         after_completion: {
           type: 'redirect',
           redirect: {
-            url: `${process.env.APP_URL}/payment/success?plan=${planType}`
+            url: this.getSuccessUrl(planType)
           }
         }
       });
@@ -234,6 +234,59 @@ class StripeService {
   }
 
   /**
+   * Cria um PaymentIntent para checkout nativo (sem confirmar)
+   * Ideal para confirmCardPayment no frontend
+   */
+  async createPaymentIntentOnly(planType, customerEmail, metadata = {}, interval = 'monthly') {
+    try {
+      const plan = PLANS[planType.toUpperCase()];
+      if (!plan) {
+        throw new Error('Plano não encontrado');
+      }
+
+      const priceConfig = plan.prices[interval];
+      if (!priceConfig) {
+        throw new Error(`Intervalo de pagamento '${interval}' não suportado para este plano`);
+      }
+
+      // ✅ CONFIGURAÇÃO PARA CHECKOUT NATIVO: Sem confirm, apenas criar
+      const paymentIntentData = {
+        amount: priceConfig.amount,
+        currency: 'brl',
+        capture_method: 'automatic',
+        metadata: {
+          plan: planType,
+          interval: interval,
+          customerEmail,
+          source: 'signup_native', // ✅ IDENTIFICADOR: Checkout nativo
+          user_agent: 'fgtsagent_native',
+          ...metadata
+        },
+        description: `Assinatura ${plan.name} - ${interval} (Checkout Nativo)`,
+        receipt_email: customerEmail
+        // ✅ NOTA: Não incluir confirm ou return_url - será confirmado via confirmCardPayment
+      };
+
+      console.log('🔍 Criando PaymentIntent para checkout nativo:', paymentIntentData);
+
+      const paymentIntent = await stripe.paymentIntents.create(paymentIntentData);
+
+      logger.info(`Payment Intent nativo criado: ${paymentIntent.id} para plano ${planType} (${interval})`);
+      
+      return {
+        id: paymentIntent.id,
+        client_secret: paymentIntent.client_secret,
+        amount: paymentIntent.amount,
+        currency: paymentIntent.currency,
+        status: paymentIntent.status
+      };
+    } catch (error) {
+      logger.error('Erro ao criar Payment Intent nativo:', error);
+      throw new Error(`Falha ao criar Payment Intent nativo: ${error.message}`);
+    }
+  }
+
+  /**
    * Captura um Payment Intent confirmado
    */
   async capturePaymentIntent(paymentIntentId) {
@@ -263,14 +316,27 @@ class StripeService {
     try {
       const paymentIntent = await stripe.paymentIntents.retrieve(paymentIntentId);
       
+      // ✅ ENRIQUECER: Dados com informações úteis para o frontend
       return {
         id: paymentIntent.id,
         status: paymentIntent.status,
         amount: paymentIntent.amount,
         currency: paymentIntent.currency,
-        customer_email: paymentIntent.customer_email,
+        customerEmail: paymentIntent.customer_email || paymentIntent.receipt_email,
         metadata: paymentIntent.metadata,
-        client_secret: paymentIntent.client_secret
+        client_secret: paymentIntent.client_secret,
+        // ✅ DADOS ADICIONAIS: Para melhor experiência do usuário
+        created: paymentIntent.created,
+        last_payment_error: paymentIntent.last_payment_error,
+        next_action: paymentIntent.next_action,
+        payment_method: paymentIntent.payment_method,
+        // ✅ METADADOS ENRIQUECIDOS: Garantir que todos os campos estejam disponíveis
+        planType: paymentIntent.metadata?.planType || paymentIntent.metadata?.plan || 'basic',
+        interval: paymentIntent.metadata?.interval || 'monthly',
+        firstName: paymentIntent.metadata?.firstName || paymentIntent.metadata?.first_name || '',
+        lastName: paymentIntent.metadata?.lastName || paymentIntent.metadata?.last_name || '',
+        fullName: paymentIntent.metadata?.fullName || paymentIntent.metadata?.full_name || '',
+        phone: paymentIntent.metadata?.phone || ''
       };
     } catch (error) {
       logger.error('Erro ao obter Payment Intent:', error);
@@ -281,7 +347,7 @@ class StripeService {
   /**
    * Cria uma sessão de checkout
    */
-  async createCheckoutSession(planType, customerEmail, successUrl, cancelUrl, metadata = {}, interval = 'monthly') {
+  async createCheckoutSession(planType, customerEmail, successUrl, cancelUrl, metadata = {}, interval = 'monthly', usePopup = false) {
     try {
       const plan = PLANS[planType.toUpperCase()];
       if (!plan) {
@@ -293,7 +359,8 @@ class StripeService {
         throw new Error(`Intervalo de pagamento '${interval}' não suportado para este plano`);
       }
 
-      const session = await stripe.checkout.sessions.create({
+      // ✅ CONFIGURAÇÃO: Para popup ou redirect
+      const sessionConfig = {
         payment_method_types: ['card'],
         line_items: [{
           price: priceConfig.priceId,
@@ -301,12 +368,11 @@ class StripeService {
         }],
         mode: 'subscription',
         customer_email: customerEmail,
-        success_url: successUrl,
-        cancel_url: cancelUrl,
         metadata: {
           plan: planType,
           interval: interval,
           customerEmail,
+          usePopup: usePopup.toString(),
           ...metadata
         },
         locale: 'pt-BR',
@@ -314,10 +380,24 @@ class StripeService {
           metadata: {
             plan: planType,
             interval: interval,
-            customerEmail
+            customerEmail,
+            usePopup: usePopup.toString()
           }
         }
-      });
+      };
+
+      // ✅ POPUP: URLs específicas para popup
+      if (usePopup) {
+        sessionConfig.success_url = `${successUrl}?popup=true&session_id={CHECKOUT_SESSION_ID}`;
+        sessionConfig.cancel_url = `${cancelUrl}?popup=true&cancelled=true`;
+        sessionConfig.payment_method_collection = 'always'; // Forçar coleta de método de pagamento
+      } else {
+        // ✅ REDIRECT: URLs tradicionais
+        sessionConfig.success_url = successUrl;
+        sessionConfig.cancel_url = cancelUrl;
+      }
+
+      const session = await stripe.checkout.sessions.create(sessionConfig);
 
       logger.info(`Sessão de checkout criada: ${session.id} para plano ${planType} (${interval})`);
       return session;
@@ -334,11 +414,24 @@ class StripeService {
     try {
       const session = await stripe.checkout.sessions.retrieve(sessionId);
       
+      // ✅ ENRIQUECER: Dados com informações úteis para o frontend
       return {
         status: session.payment_status,
         customerEmail: session.customer_email,
         metadata: session.metadata,
-        paymentIntent: session.payment_intent
+        paymentIntent: session.payment_intent,
+        // ✅ DADOS ADICIONAIS: Para melhor experiência do usuário
+        id: session.id,
+        amount: session.amount_total,
+        currency: session.currency,
+        created: session.created,
+        // ✅ METADADOS ENRIQUECIDOS: Garantir que todos os campos estejam disponíveis
+        planType: session.metadata?.planType || session.metadata?.plan || 'basic',
+        interval: session.metadata?.interval || 'monthly',
+        firstName: session.metadata?.firstName || session.metadata?.first_name || '',
+        lastName: session.metadata?.lastName || session.metadata?.last_name || '',
+        fullName: session.metadata?.fullName || session.metadata?.full_name || '',
+        phone: session.metadata?.phone || ''
       };
     } catch (error) {
       logger.error('Erro ao verificar status do pagamento:', error);
@@ -423,12 +516,249 @@ class StripeService {
     try {
       logger.info(`Pagamento bem-sucedido: ${paymentIntent.id}`);
       
-      // Implementar lógica para confirmar ativação do plano
+      // ✅ NOVA LÓGICA: Criar usuário APÓS confirmação do pagamento
+      const metadata = paymentIntent.metadata;
+      const customerEmail = metadata.customerEmail;
+      const planType = metadata.plan;
+      const source = metadata.source;
+      const userName = metadata.userName;
+      
+      // ✅ DADOS COMPLETOS: Extrair todos os dados do usuário dos metadados
+      const userFirstName = metadata.firstName || userName?.split(' ')[0] || '';
+      const userLastName = metadata.lastName || userName?.split(' ').slice(1).join(' ') || '';
+      const userPhone = metadata.phone || '';
+      const userPassword = metadata.password || ''; // Senha do formulário
+      const userFullName = metadata.fullName || userName || `${userFirstName} ${userLastName}`.trim();
+      
+      // ✅ DEBUG: Verificar se a senha está sendo extraída corretamente
+      console.log('🔍 [WEBHOOK] Extração de dados dos metadados:', {
+        metadataKeys: Object.keys(metadata),
+        metadataValues: Object.entries(metadata).map(([key, value]) => ({
+          key,
+          hasValue: !!value,
+          valueLength: typeof value === 'string' ? value.length : 'N/A',
+          valueType: typeof value
+        })),
+        hasPassword: !!userPassword,
+        passwordLength: userPassword ? userPassword.length : 0,
+        passwordPreview: userPassword ? `${userPassword.substring(0, 3)}***` : 'não definida',
+        firstName: userFirstName,
+        lastName: userLastName,
+        phone: userPhone,
+        fullName: userFullName
+      });
+      
+      logger.info(`[WEBHOOK] Processando pagamento bem-sucedido:`, {
+        paymentIntentId: paymentIntent.id,
+        customerEmail,
+        planType,
+        source,
+        userName,
+        firstName: userFirstName,
+        lastName: userLastName,
+        phone: userPhone,
+        hasPassword: !!userPassword,
+        passwordLength: userPassword ? userPassword.length : 0,
+        amount: paymentIntent.amount,
+        timestamp: new Date().toISOString()
+      });
+      
+      // ✅ VERIFICAR: Se é um signup (não apenas upgrade de plano)
+      if ((source === 'signup' || source === 'signup_with_plans') && customerEmail && planType) {
+        try {
+          logger.info(`[WEBHOOK] Criando usuário após pagamento confirmado: ${customerEmail}`);
+          logger.info(`[WEBHOOK] Dados do usuário:`, {
+            email: customerEmail,
+            hasPassword: !!userPassword,
+            passwordLength: userPassword ? userPassword.length : 0,
+            passwordPreview: userPassword ? `${userPassword.substring(0, 3)}***` : 'não definida',
+            firstName: userFirstName,
+            lastName: userLastName,
+            planType: planType
+          });
+          
+          // ✅ CRIAR: Usuário no Supabase APÓS confirmação do pagamento
+          const { supabaseAdmin } = require('../config/supabase');
+          
+          // ✅ VERIFICAR: Se usuário já existe (evitar duplicação)
+          const { data: existingUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+          
+          if (listError) {
+            logger.error(`[WEBHOOK] Erro ao verificar usuários existentes: ${listError.message}`);
+            return false;
+          }
+          
+          const existingUser = existingUsers.users.find(u => u.email === customerEmail);
+          
+          if (existingUser) {
+            logger.info(`[WEBHOOK] Usuário já existe: ${existingUser.id}, ativando plano`);
+            
+            // ✅ ATUALIZAR: Usuário existente com plano ativo
+            await supabaseAdmin.auth.admin.updateUserById(existingUser.id, {
+              user_metadata: {
+                ...existingUser.user_metadata,
+                planType: planType,
+                planActivated: true,
+                paymentConfirmed: true,
+                lastPayment: new Date().toISOString(),
+                paymentIntentId: paymentIntent.id
+              }
+            });
+            
+            // ✅ CRIAR: Assinatura ativa
+            await this.createActiveSubscription(existingUser.id, planType, paymentIntent.id);
+            
+          } else {
+            logger.info(`[WEBHOOK] Usuário não existe, criando novo: ${customerEmail}`);
+            
+            // ✅ DEBUG: Verificar senha antes de criar usuário
+            console.log('🔍 [WEBHOOK] Criando usuário com senha:', {
+              email: customerEmail,
+              hasPassword: !!userPassword,
+              passwordLength: userPassword ? userPassword.length : 0,
+              passwordPreview: userPassword ? `${userPassword.substring(0, 3)}***` : 'não definida',
+              willUseTemporaryPassword: !userPassword
+            });
+            
+            // ✅ VALIDAR: Senha deve ter pelo menos 8 caracteres
+            if (userPassword && userPassword.length < 8) {
+              logger.error(`[WEBHOOK] Senha muito curta: ${userPassword.length} caracteres. Gerando senha temporária.`);
+              userPassword = null; // Forçar uso de senha temporária
+            }
+            
+            // ✅ CRIAR: Novo usuário com TODOS os dados do formulário
+            const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+              email: customerEmail,
+              password: userPassword || this.generateTemporaryPassword(), // ✅ USAR SENHA DO FORMULÁRIO
+              email_confirm: true,
+              user_metadata: {
+                planType: planType,
+                planActivated: true,
+                paymentConfirmed: true,
+                source: 'stripe_webhook',
+                signupDate: new Date().toISOString(),
+                lastPayment: new Date().toISOString(),
+                paymentIntentId: paymentIntent.id,
+                // ✅ DADOS COMPLETOS: Usar dados reais do formulário
+                firstName: userFirstName,
+                lastName: userLastName,
+                fullName: userFullName,
+                phone: userPhone,
+                signupSource: 'signup_with_plans',
+                // ✅ REMOVIDO: Não armazenar senha em metadados por segurança
+                // tempPasswordForLogin: userPassword || null,
+                // tempPasswordExpiresAt: new Date(Date.now() + 30 * 60 * 1000).toISOString()
+              }
+            });
+            
+            if (createError) {
+              logger.error(`[WEBHOOK] Erro ao criar usuário: ${createError.message}`);
+              return false;
+            }
+            
+            logger.info(`[WEBHOOK] Usuário criado com sucesso: ${newUser.user.id}`);
+            
+            // ✅ CRIAR: Perfil do usuário com dados completos
+            try {
+              await supabaseAdmin
+                .from('user_profiles')
+                .insert({
+                  id: newUser.user.id,
+                  email: customerEmail,
+                  first_name: userFirstName,
+                  last_name: userLastName,
+                  full_name: userFullName,
+                  phone: userPhone,
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                });
+            } catch (profileError) {
+              logger.warn(`[WEBHOOK] Erro ao criar perfil (ignorando): ${profileError.message}`);
+            }
+            
+            // ✅ CRIAR: Cliente na tabela clients (se existir)
+            try {
+              await supabaseAdmin
+                .from('clients')
+                .insert({
+                  id: newUser.user.id,
+                  name: userFullName,
+                  email: customerEmail,
+                  phone: userPhone,
+                  status: 'active',
+                  created_at: new Date().toISOString(),
+                  updated_at: new Date().toISOString()
+                });
+            } catch (clientError) {
+              logger.warn(`[WEBHOOK] Erro ao criar cliente (ignorando): ${clientError.message}`);
+            }
+            
+            // ✅ CRIAR: Assinatura ativa
+            await this.createActiveSubscription(newUser.user.id, planType, paymentIntent.id);
+            
+            // ✅ ENVIAR: Email de boas-vindas
+            if (userPassword) {
+              logger.info(`[WEBHOOK] Usuário criado com senha do formulário - email de boas-vindas deve ser enviado para: ${customerEmail}`);
+            } else {
+              logger.info(`[WEBHOOK] Usuário criado com senha temporária - email de redefinição deve ser enviado para: ${customerEmail}`);
+            }
+          }
+          
+          logger.info(`[WEBHOOK] Processamento concluído com sucesso para: ${customerEmail}`);
+          
+        } catch (userError) {
+          logger.error(`[WEBHOOK] Erro ao processar usuário: ${userError.message}`);
+          // Não falhar o webhook por causa de erro na criação do usuário
+        }
+      } else {
+        logger.info(`[WEBHOOK] Pagamento não é de signup, ignorando criação de usuário. Metadata:`, metadata);
+      }
       
       return true;
     } catch (error) {
       logger.error('Erro ao processar pagamento bem-sucedido:', error);
       throw error;
+    }
+  }
+  
+  /**
+   * Gera senha temporária para usuários criados via webhook
+   */
+  generateTemporaryPassword() {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
+    let password = '';
+    for (let i = 0; i < 12; i++) {
+      password += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    return password;
+  }
+  
+  /**
+   * Cria assinatura ativa para usuário
+   */
+  async createActiveSubscription(userId, planType, paymentIntentId) {
+    try {
+      const { supabaseAdmin } = require('../config/supabase');
+      
+      const { error: subscriptionError } = await supabaseAdmin
+        .from('subscriptions')
+        .upsert({
+          user_id: userId,
+          plan_type: planType,
+          status: 'active',
+          stripe_payment_intent_id: paymentIntentId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'user_id' });
+      
+      if (subscriptionError) {
+        logger.error(`[WEBHOOK] Erro ao criar assinatura: ${subscriptionError.message}`);
+      } else {
+        logger.info(`[WEBHOOK] Assinatura criada para usuário: ${userId}`);
+      }
+      
+    } catch (error) {
+      logger.error(`[WEBHOOK] Erro ao criar assinatura: ${error.message}`);
     }
   }
 
@@ -713,11 +1043,18 @@ class StripeService {
           source: 'signup',
           userName: metadata.userName,
           user_agent: 'fgtsagent_web',
+          // ✅ DADOS COMPLETOS: Incluir todos os dados do usuário
+          firstName: metadata.firstName || '',
+          lastName: metadata.lastName || '',
+          fullName: metadata.fullName || metadata.userName || '',
+          phone: metadata.phone || '',
+          password: metadata.password || '', // Senha para criação no webhook
           ...metadata
         },
         payment_method: paymentMethodId, // ✅ MÉTODO: PaymentMethod criado no frontend
-        receipt_email: customerEmail,
-        return_url: `${process.env.APP_URL || 'http://localhost:5173'}/payment/return` // ✅ RETURN URL: Para 3D Secure
+        receipt_email: customerEmail
+        // ✅ REMOVIDO: return_url para evitar redirecionamentos incorretos
+        // O frontend deve sempre usar popup para manter estado
       };
 
       console.log('🔍 Criando E confirmando PaymentIntent:', {
@@ -836,10 +1173,13 @@ class StripeService {
       }
 
       // ✅ CONFIRMAR: PaymentIntent com método de pagamento + return_url
-      const confirmedIntent = await stripe.paymentIntents.confirm(paymentIntentId, {
-        payment_method: paymentMethodId,
-        return_url: `${process.env.APP_URL || 'http://localhost:5173'}/payment/return`
-      });
+      const confirmData = {
+        payment_method: paymentMethodId
+        // ✅ REMOVIDO: return_url para evitar redirecionamentos incorretos
+        // O frontend deve sempre usar popup para manter estado
+      };
+      
+      const confirmedIntent = await stripe.paymentIntents.confirm(paymentIntentId, confirmData);
       
       logger.info('✅ PaymentIntent confirmado com método de pagamento:', {
         id: confirmedIntent.id,
@@ -894,6 +1234,180 @@ class StripeService {
       // ✅ PROPAGAR: Erro específico do Stripe
       throw error;
     }
+  }
+
+  /**
+   * Processa pagamento completo com Stripe (criação de conta + assinatura RECORRENTE)
+   * Frontend envia dados do cartão, backend processa tudo
+   */
+  async processCompletePayment(planType, customerEmail, cardData = {}, metadata = {}, interval = 'monthly') {
+    try {
+      console.log('🔄 Iniciando processamento completo de ASSINATURA RECORRENTE...');
+      
+      // ✅ VALIDAR PLANO
+      const plan = PLANS[planType.toUpperCase()];
+      if (!plan) {
+        throw new Error('Plano não encontrado');
+      }
+
+      const priceConfig = plan.prices[interval];
+      if (!priceConfig) {
+        throw new Error(`Intervalo de pagamento '${interval}' não suportado para este plano`);
+      }
+
+      console.log('✅ Plano validado:', { planType, interval, price: priceConfig });
+
+      // ✅ CRIAR CUSTOMER NO STRIPE
+      console.log('🔄 Criando customer no Stripe...');
+      const customer = await stripe.customers.create({
+        email: customerEmail,
+        name: metadata.userName,
+        phone: metadata.phone,
+        metadata: {
+          plan: planType,
+          interval: interval,
+          customerEmail,
+          source: metadata.source,
+          user_agent: 'fgtsagent_backend',
+          ...metadata
+        }
+      });
+
+      console.log('✅ Customer criado:', customer.id);
+
+      // ✅ CRIAR ASSINATURA RECORRENTE DIRETAMENTE (sem PaymentMethod)
+      console.log('🔄 Criando ASSINATURA RECORRENTE...');
+      
+      const subscriptionData = {
+        customer: customer.id,
+        items: [{ price: priceConfig.priceId }],
+        // ✅ CONFIGURAÇÃO PARA ASSINATURA RECORRENTE
+        payment_behavior: 'default_incomplete', // Permite pagamento inicial falhar
+        payment_settings: { 
+          save_default_payment_method: 'on_subscription', // Salva método de pagamento
+          payment_method_types: ['card'] // Aceita apenas cartão
+        },
+        // ✅ METADADOS IMPORTANTES PARA ASSINATURA
+        metadata: {
+          plan: planType,
+          interval: interval,
+          source: metadata.source,
+          user_agent: 'fgtsagent_backend',
+          customer_email: customerEmail,
+          customer_name: metadata.userName,
+          ...metadata
+        },
+        // ✅ EXPANDIR DADOS IMPORTANTES
+        expand: ['latest_invoice.payment_intent']
+      };
+
+      console.log('🔄 Dados da assinatura:', subscriptionData);
+
+      const subscription = await stripe.subscriptions.create(subscriptionData);
+
+      console.log('✅ Assinatura RECORRENTE criada:', subscription.id);
+
+      // ✅ PROCESSAR PRIMEIRA FATURA (pagamento inicial)
+      console.log('🔄 Processando primeira fatura da assinatura...');
+      
+      // ✅ CORREÇÃO: subscription.latest_invoice é um objeto, precisamos do ID
+      let invoice = null;
+      if (subscription.latest_invoice) {
+        if (typeof subscription.latest_invoice === 'string') {
+          // ✅ Se for string (ID), usar diretamente
+          invoice = await stripe.invoices.retrieve(subscription.latest_invoice);
+        } else if (subscription.latest_invoice.id) {
+          // ✅ Se for objeto, usar o ID
+          invoice = await stripe.invoices.retrieve(subscription.latest_invoice.id);
+        } else {
+          console.log('⚠️ latest_invoice não tem ID válido:', subscription.latest_invoice);
+        }
+      }
+      
+      if (invoice) {
+        console.log('✅ Primeira fatura processada:', invoice.id, 'Status:', invoice.status);
+        if (invoice.payment_intent) {
+          console.log('🔄 Primeira fatura criada, aguardando confirmação...');
+          console.log('⚠️ Assinatura criada mas aguardando confirmação da primeira cobrança');
+        }
+      } else {
+        console.log('⚠️ Nenhuma fatura encontrada para processar');
+      }
+
+      // ✅ VERIFICAR STATUS FINAL DA ASSINATURA
+      const finalSubscription = await stripe.subscriptions.retrieve(subscription.id);
+      console.log('✅ Status final da assinatura:', finalSubscription.status);
+
+      // ✅ RETORNAR RESULTADO COMPLETO
+      return {
+        status: 'success',
+        customerId: customer.id,
+        subscriptionId: subscription.id,
+        subscriptionStatus: finalSubscription.status,
+        planType: planType,
+        interval: interval,
+        amount: priceConfig.amount,
+        currency: 'brl',
+        // ✅ INFORMAÇÕES IMPORTANTES PARA ASSINATURA
+        nextBillingDate: finalSubscription.current_period_end,
+        cancelAtPeriodEnd: finalSubscription.cancel_at_period_end,
+        // ✅ DADOS DA PRIMEIRA COBRANÇA (pode ser null)
+        firstInvoiceStatus: invoice ? invoice.status : 'not_created',
+        firstPaymentStatus: invoice && invoice.payment_intent ? 'pending' : 'not_required'
+      };
+
+    } catch (error) {
+      logger.error('Erro ao processar assinatura recorrente:', error);
+      throw new Error(`Falha ao processar assinatura: ${error.message}`);
+    }
+  }
+
+  /**
+   * Detecta a URL de retorno baseada no ambiente
+   */
+  getReturnUrl() {
+    // ✅ PRIORIDADE 1: Usar APP_URL se configurado
+    if (process.env.APP_URL) {
+      return `${process.env.APP_URL}/payment/return`;
+    }
+    
+    // ✅ PRIORIDADE 2: Detectar ambiente de desenvolvimento
+    if (process.env.NODE_ENV === 'development') {
+      // ✅ DESENVOLVIMENTO: Usar HTTPS local na porta 5174
+      return 'https://localhost:5174/payment/return';
+    }
+    
+    // ✅ PRIORIDADE 3: Detectar ambiente de produção
+    if (process.env.NODE_ENV === 'production') {
+      return 'https://fgtsagent.com.br/payment/return';
+    }
+    
+    // ✅ FALLBACK: URL padrão para desenvolvimento
+    return 'https://localhost:5174/payment/return';
+  }
+
+  /**
+   * Detecta a URL de sucesso baseada no ambiente
+   */
+  getSuccessUrl(planType) {
+    // ✅ PRIORIDADE 1: Usar APP_URL se configurado
+    if (process.env.APP_URL) {
+      return `${process.env.APP_URL}/payment/success?plan=${planType}`;
+    }
+    
+    // ✅ PRIORIDADE 2: Detectar ambiente de desenvolvimento
+    if (process.env.NODE_ENV === 'development') {
+      // ✅ DESENVOLVIMENTO: Usar HTTPS local na porta 5174
+      return `https://localhost:5174/payment/success?plan=${planType}`;
+    }
+    
+    // ✅ PRIORIDADE 3: Detectar ambiente de produção
+    if (process.env.NODE_ENV === 'production') {
+      return `https://fgtsagent.com.br/payment/success?plan=${planType}`;
+    }
+    
+    // ✅ FALLBACK: URL padrão para desenvolvimento
+    return `https://localhost:5174/payment/success?plan=${planType}`;
   }
 
   /**

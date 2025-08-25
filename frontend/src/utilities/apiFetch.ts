@@ -53,14 +53,23 @@ export async function apiFetch(input: RequestInfo, init?: RequestInit) {
           // Salvar a URL atual para redirecionamento pós-login
           localStorage.setItem('redirectAfterLogin', window.location.pathname + window.location.search);
           
-          // Limpar todos os possíveis tokens para garantir que não fique em um loop
-          localStorage.removeItem('supabase.auth.token');
-          sessionStorage.removeItem('supabase.auth.token');
-          localStorage.removeItem('supabase_tokens');
-          localStorage.removeItem('authToken');
-          document.cookie = 'authToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-          document.cookie = 'refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
-          document.cookie = 'js-auth-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+          // ❌ REMOVIDO: Limpeza automática que estava causando problemas
+          // localStorage.removeItem('supabase.auth.token');
+          // sessionStorage.removeItem('supabase.auth.token');
+          // localStorage.removeItem('supabase_tokens');
+          // localStorage.removeItem('authToken');
+          // document.cookie = 'authToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+          // document.cookie = 'refreshToken=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+          // document.cookie = 'js-auth-token=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;';
+          
+          // ✅ MANTER: Apenas logout via Supabase para garantir consistência
+          try {
+            if (window.supabase) {
+              await window.supabase.auth.signOut();
+            }
+          } catch (e) {
+            console.error('Erro ao fazer logout via Supabase:', e);
+          }
           
           // Redirecionar para login com mensagem explicativa
           const redirectUrl = '/login?error=session_expired&message=Sua sessão expirou. Por favor faça login novamente.';

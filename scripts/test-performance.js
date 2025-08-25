@@ -12,7 +12,7 @@ const TEST_ENDPOINTS = [
   '/api/dashboard/stats?period=daily', // Precisa auth
   '/api/leads/complete', // Precisa auth
   '/api/messages/5527997186150_5527996115344', // Precisa auth
-  '/api/admin/leads/842c16a8-0ef2-4cfd-98de-6b7bc348564b/cpf' // Precisa auth
+  '/api/leads/842c16a8-0ef2-4cfd-98de-6b7bc348564b/cpf' // Precisa auth
 ];
 
 // Token válido (você pode substituir por um token real)
@@ -104,7 +104,7 @@ async function runPerformanceTests() {
     '/api/dashboard/stats?period=daily',
     '/api/leads/complete',
     '/api/messages/5527997186150_5527996115344',
-    '/api/admin/leads/842c16a8-0ef2-4cfd-98de-6b7bc348564b/cpf'
+    '/api/leads/842c16a8-0ef2-4cfd-98de-6b7bc348564b/cpf'
   ];
   
   for (const endpoint of protectedEndpoints) {
