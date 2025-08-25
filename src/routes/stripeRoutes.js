@@ -509,8 +509,36 @@ router.get('/webhook/test', (req, res) => {
   }
 });
 
+// ✅ ROTA DE TESTE: Simular webhook do Stripe
+router.post('/webhook/test-simulate', express.raw({ type: 'application/json' }), (req, res) => {
+  try {
+    console.log('🧪 Teste de webhook simulado:', {
+      contentType: req.headers['content-type'],
+      bodyType: typeof req.body,
+      bodyLength: req.body?.length || 0,
+      isBuffer: Buffer.isBuffer(req.body),
+      isString: typeof req.body === 'string',
+      timestamp: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      message: 'Teste de webhook simulado',
+      bodyInfo: {
+        type: typeof req.body,
+        length: req.body?.length || 0,
+        isBuffer: Buffer.isBuffer(req.body),
+        isString: typeof req.body === 'string'
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erro no teste simulado:', error);
+    res.status(500).json({ error: 'Erro interno no teste' });
+  }
+});
+
 // ✅ WEBHOOK DO STRIPE: Para processar eventos de pagamento e assinatura
-router.post('/webhook', async (req, res) => {
+router.post('/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
   try {
     // ✅ DEBUG: Verificar tipo do corpo da requisição
     console.log('🔍 Webhook recebido:', {
@@ -521,6 +549,14 @@ router.post('/webhook', async (req, res) => {
       isString: typeof req.body === 'string',
       timestamp: new Date().toISOString()
     });
+
+    // ✅ IMPORTANTE: O corpo agora deve vir como Buffer ou string
+    if (!req.body || (typeof req.body !== 'string' && !Buffer.isBuffer(req.body))) {
+      console.error('❌ Corpo da requisição inválido para webhook');
+      return res.status(400).json({ 
+        error: 'Corpo da requisição deve ser string ou Buffer para webhook' 
+      });
+    }
 
     const sig = req.headers['stripe-signature'];
     const endpointSecret = process.env.STRIPE_WEBHOOK_SECRET;
