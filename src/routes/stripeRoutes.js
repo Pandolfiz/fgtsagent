@@ -4,6 +4,7 @@ const { requireAuth } = require('../middleware/auth');
 const { validate, schemas } = require('../middleware/validationMiddleware');
 const logger = require('../utils/logger');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const Joi = require('joi');
 
 const router = express.Router();
 
@@ -29,28 +30,95 @@ const getBaseUrl = () => {
   return 'https://localhost:5174';
 };
 
-// Schema de validação para criação de checkout
-const checkoutSchema = {
-  body: {
-    type: 'object',
-    properties: {
-      planType: {
-        type: 'string',
-        enum: ['basic', 'pro', 'premium']
-      },
-      successUrl: {
-        type: 'string',
-        format: 'uri'
-      },
-      cancelUrl: {
-        type: 'string',
-        format: 'uri'
-      }
-    },
-    required: ['planType'],
-    additionalProperties: false
-  }
-};
+// Schema de validação para criação de checkout (SIMPLIFICADO)
+const checkoutSchema = Joi.object({
+  planType: Joi.string()
+    .valid('basic', 'pro', 'premium')
+    .required()
+    .messages({
+      'any.required': 'Tipo do plano é obrigatório',
+      'any.only': 'Tipo do plano deve ser basic, pro ou premium'
+    }),
+  userEmail: Joi.string()
+    .email({ tlds: { allow: false } })
+    .max(254)
+    .optional()
+    .messages({
+      'string.email': 'Email deve ter formato válido',
+      'string.max': 'Email muito longo'
+    }),
+  userName: Joi.string()
+    .min(1)
+    .max(100)
+    .optional()
+    .messages({
+      'string.min': 'Nome não pode estar vazio',
+      'string.max': 'Nome muito longo'
+    }),
+  interval: Joi.string()
+    .valid('monthly', 'semiannual', 'annual')
+    .default('monthly')
+    .messages({
+      'any.only': 'Intervalo deve ser monthly, semiannual ou annual'
+    }),
+  priceId: Joi.string()
+    .optional()
+    .messages({
+      'string.base': 'ID do preço deve ser uma string'
+    }),
+  userData: Joi.object({
+    firstName: Joi.string()
+      .min(1)
+      .max(50)
+      .optional()
+      .messages({
+        'string.min': 'Nome não pode estar vazio',
+        'string.max': 'Nome muito longo'
+      }),
+    lastName: Joi.string()
+      .min(1)
+      .max(50)
+      .optional()
+      .messages({
+        'string.min': 'Sobrenome não pode estar vazio',
+        'string.max': 'Sobrenome muito longo'
+      }),
+    phone: Joi.string()
+      .optional()
+      .messages({
+        'string.base': 'Telefone deve ser uma string'
+      }),
+    password: Joi.string()
+      .optional()
+      .messages({
+        'string.base': 'Senha deve ser uma string'
+      }),
+    planType: Joi.string()
+      .valid('basic', 'pro', 'premium')
+      .optional()
+      .messages({
+        'any.only': 'Tipo do plano deve ser basic, pro ou premium'
+      }),
+    source: Joi.string()
+      .optional()
+      .default('signup_with_plans')
+      .messages({
+        'string.base': 'Fonte deve ser uma string'
+      })
+  }).optional(),
+  successUrl: Joi.string()
+    .uri()
+    .optional()
+    .messages({
+      'string.uri': 'URL de sucesso deve ser válida'
+    }),
+  cancelUrl: Joi.string()
+    .uri()
+    .optional()
+    .messages({
+      'string.uri': 'URL de cancelamento deve ser válida'
+    })
+}).unknown(true); // ✅ PERMITIR campos adicionais
 
 /**
  * GET /api/stripe/plans
@@ -99,47 +167,84 @@ router.get('/plans/:planType', async (req, res) => {
 
 /**
  * POST /api/stripe/create-checkout-session
- * Cria uma sessão de checkout do Stripe (USUÁRIOS LOGADOS)
+ * Cria uma sessão de checkout para assinatura
  */
-router.post('/create-checkout-session', requireAuth, validate(checkoutSchema), async (req, res) => {
+router.post('/create-checkout-session', async (req, res) => {
   try {
-    const { planType, successUrl, cancelUrl } = req.body;
-    const user = req.user;
+    const { planType, userEmail, userName, interval = 'monthly', userData, usePopup = false } = req.body;
     
-    // ✅ URLs padrão para checkout - Detecta ambiente automaticamente
-    const baseUrl = getBaseUrl();    
-    const defaultSuccessUrl = `${baseUrl}/payment/success?plan=${planType}&session_id={CHECKOUT_SESSION_ID}`;
-    const defaultCancelUrl = `${baseUrl}/payment/cancel`;
+    console.log('🔄 Criando Checkout Session:', { planType, userEmail, interval, usePopup });
     
-    // ✅ POPUP: Verificar se deve usar popup ou redirect
-    const usePopup = req.query.popup === 'true';
+    // ✅ VALIDAÇÃO SIMPLES
+    if (!planType || !userEmail || !userName) {
+      return res.status(400).json({
+        success: false,
+        message: 'planType, userEmail e userName são obrigatórios'
+      });
+    }
     
-    const session = await stripeService.createCheckoutSession(
+    // ✅ DADOS SIMPLIFICADOS
+    const checkoutData = {
       planType,
-      user.email,
-      successUrl || defaultSuccessUrl,
-      cancelUrl || defaultCancelUrl,
-      {
-        userId: user.id,
-        userName: `${user.firstName} ${user.lastName}`.trim(),
-        usePopup: usePopup
+      userEmail,
+      userName,
+      interval,
+      usePopup,
+      // ✅ METADADOS ESSENCIAIS
+      metadata: {
+        plan: planType,
+        interval: interval,
+        customerEmail: userEmail,
+        userName: userName,
+        mode: 'signup',
+        usePopup: usePopup.toString()
       },
-      'monthly', // interval padrão
-      usePopup
+      // ✅ URLs SIMPLES
+      successUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/success?plan=${planType}&status=success`,
+      cancelUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/cancel?plan=${planType}&status=cancelled`
+    };
+    
+    // ✅ ADICIONAR DADOS DE SIGNUP SE EXISTIREM
+    if (userData) {
+      checkoutData.metadata.signupData = JSON.stringify({
+        firstName: userData.firstName || userData.first_name || '',
+        lastName: userData.lastName || userData.last_name || '',
+        phone: userData.phone || '',
+        planType: planType,
+        source: userData.source || 'signup_with_plans'
+      });
+    }
+    
+    console.log('📦 Dados preparados:', checkoutData);
+    
+    // ✅ CRIAR SESSÃO
+    const session = await stripeService.createCheckoutSession(
+      checkoutData.planType,
+      checkoutData.userEmail,
+      checkoutData.successUrl,
+      checkoutData.cancelUrl,
+      checkoutData.metadata,
+      checkoutData.interval,
+      checkoutData.usePopup
     );
     
+    console.log('✅ Sessão criada:', session.id);
+    
+    // ✅ RETORNAR RESPOSTA
     res.status(200).json({
       success: true,
       data: {
         sessionId: session.id,
-        url: session.url
+        url: session.url,
+        mode: 'signup'
       }
     });
+    
   } catch (error) {
-    logger.error('Erro ao criar sessão de checkout:', error);
-    res.status(400).json({
+    console.error('❌ Erro ao criar sessão:', error);
+    res.status(500).json({
       success: false,
-      message: error.message || 'Erro ao criar sessão de pagamento'
+      message: error.message || 'Erro interno do servidor'
     });
   }
 });
@@ -222,7 +327,7 @@ router.post('/create-payment-intent', async (req, res) => {
         plan: planInfo,
         status: paymentIntent.status,
         requiresAction: paymentIntent.requiresAction,
-        nextAction: paymentIntent.nextAction
+        nextAction: paymentIntent.nextAction // ✅ Já está correto - vem do serviço
       }
     });
   } catch (error) {
@@ -500,7 +605,7 @@ router.get('/webhook/test', (req, res) => {
         webhookSecretLength: webhookSecret?.length || 0,
         hasStripeKey: !!stripeKey,
         stripeKeyLength: stripeKey?.length || 0,
-        timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString()
       }
     });
   } catch (error) {
@@ -549,11 +654,11 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
       isString: typeof req.body === 'string',
       timestamp: new Date().toISOString()
     });
-
+    
     // ✅ IMPORTANTE: O corpo agora deve vir como Buffer ou string
     if (!req.body || (typeof req.body !== 'string' && !Buffer.isBuffer(req.body))) {
       console.error('❌ Corpo da requisição inválido para webhook');
-      return res.status(400).json({ 
+      return res.status(400).json({
         error: 'Corpo da requisição deve ser string ou Buffer para webhook' 
       });
     }
@@ -579,34 +684,39 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
     // ✅ PROCESSAR: Eventos específicos
     switch (event.type) {
+      case 'checkout.session.completed':
+        console.log('🔄 Checkout session completada:', event.data.object.id);
+        await stripeService.handleCheckoutCompleted(event.data.object);
+        break;
+        
       case 'customer.subscription.created':
         console.log('🔄 Assinatura criada:', event.data.object.id);
-        await handleSubscriptionCreated(event.data.object);
+        await stripeService.handleSubscriptionCreated(event.data.object);
         break;
         
       case 'customer.subscription.updated':
         console.log('🔄 Assinatura atualizada:', event.data.object.id);
-        await handleSubscriptionUpdated(event.data.object);
+        await stripeService.handleSubscriptionUpdated(event.data.object);
         break;
         
       case 'customer.subscription.deleted':
         console.log('🔄 Assinatura cancelada:', event.data.object.id);
-        await handleSubscriptionDeleted(event.data.object);
+        await stripeService.handleSubscriptionDeleted(event.data.object);
         break;
         
       case 'invoice.payment_succeeded':
         console.log('🔄 Pagamento de fatura realizado:', event.data.object.id);
-        await handleInvoicePaymentSucceeded(event.data.object);
+        await stripeService.handleInvoicePaymentSucceeded(event.data.object);
         break;
         
       case 'invoice.payment_failed':
         console.log('🔄 Pagamento de fatura falhou:', event.data.object.id);
-        await handleInvoicePaymentFailed(event.data.object);
+        await stripeService.handleInvoicePaymentFailed(event.data.object);
         break;
         
       case 'customer.created':
         console.log('🔄 Cliente criado:', event.data.object.id);
-        await handleCustomerCreated(event.data.object);
+        await stripeService.handleCustomerCreated(event.data.object);
         break;
         
       default:
@@ -621,88 +731,7 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
   }
 });
 
-// ✅ FUNÇÕES AUXILIARES: Para processar eventos específicos
-async function handleSubscriptionCreated(subscription) {
-  try {
-    console.log('🔄 Processando assinatura criada:', subscription.id);
-    
-    // ✅ ATUALIZAR: Status da assinatura no banco
-    // ✅ CRIAR: Perfil do usuário se necessário
-    // ✅ ENVIAR: Email de boas-vindas
-    
-    console.log('✅ Assinatura criada processada com sucesso');
-  } catch (error) {
-    console.error('❌ Erro ao processar assinatura criada:', error);
-  }
-}
-
-async function handleSubscriptionUpdated(subscription) {
-  try {
-    console.log('🔄 Processando assinatura atualizada:', subscription.id);
-    
-    // ✅ ATUALIZAR: Status da assinatura no banco
-    // ✅ VERIFICAR: Mudanças de plano
-    
-    console.log('✅ Assinatura atualizada processada com sucesso');
-  } catch (error) {
-    console.error('❌ Erro ao processar assinatura atualizada:', error);
-  }
-}
-
-async function handleSubscriptionDeleted(subscription) {
-  try {
-    console.log('🔄 Processando assinatura cancelada:', subscription.id);
-    
-    // ✅ ATUALIZAR: Status da assinatura no banco
-    // ✅ DESATIVAR: Acesso do usuário
-    // ✅ ENVIAR: Email de cancelamento
-    
-    console.log('✅ Assinatura cancelada processada com sucesso');
-  } catch (error) {
-    console.error('❌ Erro ao processar assinatura cancelada:', error);
-  }
-}
-
-async function handleInvoicePaymentSucceeded(invoice) {
-  try {
-    console.log('🔄 Processando pagamento de fatura realizado:', invoice.id);
-    
-    // ✅ ATUALIZAR: Status da fatura no banco
-    // ✅ VERIFICAR: Se é primeira cobrança
-    // ✅ ATIVAR: Acesso do usuário se necessário
-    
-    console.log('✅ Pagamento de fatura processado com sucesso');
-  } catch (error) {
-    console.error('❌ Erro ao processar pagamento de fatura:', error);
-  }
-}
-
-async function handleInvoicePaymentFailed(invoice) {
-  try {
-    console.log('🔄 Processando pagamento de fatura falhou:', invoice.id);
-    
-    // ✅ ATUALIZAR: Status da fatura no banco
-    // ✅ NOTIFICAR: Usuário sobre falha
-    // ✅ VERIFICAR: Política de retry
-    
-    console.log('✅ Falha de pagamento processada com sucesso');
-  } catch (error) {
-    console.error('❌ Erro ao processar falha de pagamento:', error);
-  }
-}
-
-async function handleCustomerCreated(customer) {
-  try {
-    console.log('🔄 Processando cliente criado:', customer.id);
-    
-    // ✅ CRIAR: Perfil do usuário no banco
-    // ✅ SALVAR: Dados do cliente
-    
-    console.log('✅ Cliente criado processado com sucesso');
-  } catch (error) {
-    console.error('❌ Erro ao processar cliente criado:', error);
-  }
-}
+// ✅ WEBHOOK AGORA CHAMA O SERVIÇO CORRETO: stripeService.handleCheckoutCompleted
 
 /**
  * POST /api/stripe/create-customer
@@ -1054,7 +1083,7 @@ router.get('/temp-password/:paymentIntentId', async (req, res) => {
 /**
  * POST /api/stripe/process-payment
  * Processa ASSINATURA RECORRENTE completa com Stripe (criação de conta + assinatura)
- * Frontend envia dados do cartão, backend processa tudo
+ * ✅ NOVA ARQUITETURA: Frontend envia dados do cartão, backend processa tudo
  */
 router.post('/process-payment', async (req, res) => {
   try {
@@ -1065,7 +1094,7 @@ router.post('/process-payment', async (req, res) => {
       planType,
       userEmail,
       userName,
-      cardData,
+      hasCardData: !!cardData,
       interval,
       userData: userData ? {
         ...userData,
@@ -1106,7 +1135,7 @@ router.post('/process-payment', async (req, res) => {
     const result = await stripeService.processCompletePayment(
       planType,
       userEmail,
-      cardData, // ✅ Agora recebe cardData em vez de paymentMethodId
+      cardData, // ✅ Agora recebe cardData para backend processar
       {
         source: 'signup_processed',
         userName: userName.trim(),
@@ -1115,7 +1144,7 @@ router.post('/process-payment', async (req, res) => {
         lastName: userData?.lastName || '',
         fullName: userData?.fullName || userName.trim(),
         phone: userData?.phone || '',
-        password: userData?.password || '', // Senha para criação no webhook
+        password: userData?.password || '', // Senha para criação no Supabase
         planType: planType,
         interval: interval,
         ...userData // Incluir firstName, lastName, phone, password, etc.
@@ -1144,6 +1173,188 @@ router.post('/process-payment', async (req, res) => {
     res.status(400).json({
       success: false,
       message: error.message || 'Erro ao processar assinatura recorrente'
+    });
+  }
+});
+
+/**
+ * POST /api/stripe/create-setup-intent
+ * Cria um SetupIntent para Payment Element
+ */
+router.post('/create-setup-intent', async (req, res) => {
+  try {
+    const { planType, userEmail, interval = 'monthly' } = req.body;
+    
+    console.log('🔄 Criando SetupIntent para Payment Element:', { planType, userEmail, interval });
+    
+    // ✅ VALIDAÇÃO: Campos obrigatórios
+    if (!planType || !userEmail) {
+      return res.status(400).json({
+        success: false,
+        message: 'planType e userEmail são obrigatórios'
+      });
+    }
+
+    // ✅ CRIAR SETUP INTENT: Para Payment Element
+    const setupIntent = await stripe.setupIntents.create({
+      payment_method_types: ['card'],
+      // ✅ CORREÇÃO: Usar 'customer' em vez de 'customer_email'
+      // ✅ NOTA: Para SetupIntent, não precisamos criar customer ainda
+      metadata: {
+        planType,
+        interval,
+        source: 'signup_with_plans',
+        userEmail
+      },
+      // ✅ NOVO: Configurações para assinatura
+      usage: 'off_session', // ✅ Para cobranças futuras (assinaturas)
+      // ✅ ADICIONAR: Configurações específicas para 3DS
+      payment_method_options: {
+        card: {
+          request_three_d_secure: 'automatic' // ✅ Solicitar 3DS automaticamente
+        }
+      }
+      // ❌ REMOVIDO: confirm_params não existe na API do Stripe
+    });
+
+    console.log('✅ SetupIntent criado com sucesso:', setupIntent.id);
+
+    res.status(200).json({
+      success: true,
+      data: {
+        id: setupIntent.id,
+        client_secret: setupIntent.client_secret,
+        status: setupIntent.status,
+        planType,
+        interval,
+        userEmail
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao criar SetupIntent:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Erro interno do servidor'
+    });
+  }
+});
+
+/**
+ * POST /api/stripe/verify-captcha
+ * Verifica o captcha e confirma o SetupIntent
+ */
+router.post('/verify-captcha', async (req, res) => {
+  try {
+    const { setupIntentId, captchaToken, rqdata } = req.body;
+    
+    console.log('🔄 Verificando captcha para SetupIntent:', { setupIntentId, hasCaptchaToken: !!captchaToken, hasRqdata: !!rqdata });
+    
+    // ✅ VALIDAÇÃO: Campos obrigatórios
+    if (!setupIntentId || !captchaToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'setupIntentId e captchaToken são obrigatórios'
+      });
+    }
+
+    // ✅ RECUPERAR SETUP INTENT
+    const setupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+    console.log('📋 SetupIntent recuperado:', { id: setupIntent.id, status: setupIntent.status });
+
+    if (!setupIntent) {
+      return res.status(404).json({
+        success: false,
+        message: 'SetupIntent não encontrado'
+      });
+    }
+
+    // ✅ VERIFICAR SE AINDA PRECISA DE AÇÃO
+    if (setupIntent.status !== 'requires_action') {
+      return res.status(400).json({
+        success: false,
+        message: `SetupIntent não requer ação. Status atual: ${setupIntent.status}`
+      });
+    }
+
+    // ✅ VERIFICAR CAPTCHA COM STRIPE
+    try {
+      const verificationResponse = await stripe.request({
+        method: 'POST',
+        url: setupIntent.next_action.use_stripe_sdk.stripe_js.verification_url,
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        data: new URLSearchParams({
+          captcha_token: captchaToken,
+          rqdata: rqdata || ''
+        }).toString()
+      });
+
+      console.log('✅ Captcha verificado com sucesso');
+
+      // ✅ RECUPERAR SETUP INTENT ATUALIZADO
+      const updatedSetupIntent = await stripe.setupIntents.retrieve(setupIntentId);
+      console.log('📋 SetupIntent após captcha:', { id: updatedSetupIntent.id, status: updatedSetupIntent.status });
+
+      // ✅ PROCESSAR RESULTADO
+      if (updatedSetupIntent.status === 'succeeded') {
+        console.log('✅ SetupIntent confirmado com sucesso após captcha');
+        
+        // ✅ PROCESSAR WEBHOOK (criar usuário no Supabase)
+        const webhookResult = await stripeService.handleSetupIntentSucceeded(updatedSetupIntent);
+        
+        res.status(200).json({
+          success: true,
+          data: {
+            message: 'Captcha verificado e SetupIntent confirmado com sucesso',
+            setupIntentId: updatedSetupIntent.id,
+            status: updatedSetupIntent.status,
+            customerId: updatedSetupIntent.customer,
+            paymentMethodId: updatedSetupIntent.payment_method,
+            webhookProcessed: webhookResult
+          }
+        });
+      } else if (updatedSetupIntent.status === 'requires_action') {
+        console.log('⚠️ SetupIntent ainda requer ação após captcha:', updatedSetupIntent.next_action);
+        
+        res.status(200).json({
+          success: true,
+          data: {
+            message: 'Captcha verificado, mas SetupIntent ainda requer ação',
+            setupIntentId: updatedSetupIntent.id,
+            status: updatedSetupIntent.status,
+            nextAction: updatedSetupIntent.next_action,
+            requiresAction: true
+          }
+        });
+      } else {
+        console.log('❌ SetupIntent falhou após captcha:', updatedSetupIntent.status);
+        
+        res.status(400).json({
+          success: false,
+          message: `SetupIntent falhou após verificação do captcha. Status: ${updatedSetupIntent.status}`,
+          setupIntentId: updatedSetupIntent.id,
+          status: updatedSetupIntent.status,
+          lastSetupError: updatedSetupIntent.last_setup_error
+        });
+      }
+
+    } catch (verificationError) {
+      console.error('❌ Erro ao verificar captcha com Stripe:', verificationError);
+      
+      res.status(400).json({
+        success: false,
+        message: 'Falha na verificação do captcha',
+        error: verificationError.message
+      });
+    }
+
+  } catch (error) {
+    console.error('❌ Erro ao verificar captcha:', error);
+    res.status(500).json({
+      success: false,
+      message: error.message || 'Erro interno do servidor'
     });
   }
 });

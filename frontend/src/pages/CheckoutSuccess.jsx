@@ -498,6 +498,21 @@ const CheckoutSuccess = () => {
                   {subscriptionData?.metadata && Object.keys(subscriptionData.metadata).length > 0 && (
                     <div className="mt-3 p-2 bg-emerald-600/10 rounded-lg border border-emerald-500/30">
                       <h3 className="font-medium text-white mb-2 text-xs">Detalhes do Pagamento</h3>
+                      
+                      {/* ✅ NOVO: Seção sobre período de teste gratuito */}
+                      <div className="mt-3 p-3 bg-green-600/20 rounded-lg border border-green-500/30">
+                        <div className="flex items-center mb-2">
+                          <span className="text-green-400 mr-2">🎁</span>
+                          <h4 className="font-medium text-white text-sm">Período de Teste Gratuito</h4>
+                        </div>
+                        <div className="text-xs text-green-200 space-y-1">
+                          <p>✅ <strong>7 dias de teste gratuito</strong> ativados automaticamente</p>
+                          <p>📅 Primeira cobrança: após o período de teste</p>
+                          <p>💳 Acesso completo a todas as funcionalidades durante o teste</p>
+                          <p>⚠️ Cancele a qualquer momento antes do fim do período de teste</p>
+                        </div>
+                      </div>
+                      
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs">
                         {subscriptionData.metadata.planType && (
                           <div>

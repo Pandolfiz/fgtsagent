@@ -59,8 +59,8 @@ export async function fetchStripeProducts() {
 
 // Função para obter URL de checkout do Stripe
 export function getStripeCheckoutUrl(priceId, successUrl, cancelUrl) {
-  const baseUrl = process.env.REACT_APP_API_URL || 'http://localhost:3000';
-  return `${baseUrl}/api/stripe/checkout?price_id=${priceId}&success_url=${encodeURIComponent(successUrl)}&cancel_url=${encodeURIComponent(cancelUrl)}`;
+  // ✅ CORRETO: Usar sempre /api (proxy do Vite faz o redirecionamento)
+  return `/api/stripe/checkout?price_id=${priceId}&success_url=${encodeURIComponent(successUrl)}&cancel_url=${encodeURIComponent(cancelUrl)}`;
 }
 
 // Função para validar se um preço existe no Stripe
