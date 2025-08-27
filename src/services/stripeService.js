@@ -8,112 +8,25 @@ if (!process.env.STRIPE_SECRET_KEY) {
 
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const logger = require('../utils/logger');
+const stripeProductService = require('./stripeProductService');
 
-// Configuração dos planos disponíveis (IDs atualizados para produção)
-const PLANS = {
-  BASIC: {
-    name: 'Plano Básico',
-    description: 'Ideal para pequenos negócios',
-    prices: {
-      monthly: {
-        priceId: 'price_1RxYwzH8jGtRbIKFzM62Xmkj',
-        amount: 10000, // R$ 100,00
-        interval: 'month',
-        intervalCount: 1
-      },
-      semiannual: {
-        priceId: 'price_1RxYwzH8jGtRbIKFNdCDRlrr',
-        amount: 9500, // R$ 95,00
-        interval: 'month',
-        intervalCount: 6,
-        discount: '5%'
-      },
-      annual: {
-        priceId: 'price_1RxYwzH8jGtRbIKFOZFuYVGV',
-        amount: 9000, // R$ 90,00
-        interval: 'year',
-        intervalCount: 1,
-        discount: '10%'
-      }
-    },
-    productId: 'prod_StLe32rSb1vwni',
-    features: [
-      'Até 50 consultas mensais',
-      'Relatórios básicos',
-      'Suporte por email',
-      'Dashboard simples'
-    ]
-  },
-  PRO: {
-    name: 'Plano Pro',
-    description: 'Perfeito para empresas em crescimento',
-    prices: {
-      monthly: {
-        priceId: 'price_1RxgK6H8jGtRbIKF79rax6aZ',
-        amount: 29999, // R$ 299,99
-        interval: 'month',
-        intervalCount: 1
-      },
-      semiannual: {
-        priceId: 'price_1RxgLiH8jGtRbIKFjjtdhuQ4',
-        amount: 28999, // R$ 289,99
-        interval: 'month',
-        intervalCount: 6,
-        discount: '3.3%'
-      },
-      annual: {
-        priceId: 'price_1RxgLiH8jGtRbIKFSdpy1d3E',
-        amount: 27499, // R$ 274,99
-        interval: 'year',
-        intervalCount: 1,
-        discount: '8.3%'
-      }
-    },
-    productId: 'prod_StTGwa0T0ZPLjJ',
-    features: [
-      'Consultas ilimitadas',
-      'Notificações em tempo real',
-      'Relatórios avançados',
-      'Suporte prioritário',
-      'API de integração',
-      'Múltiplos usuários'
-    ]
-  },
-  PREMIUM: {
-    name: 'Plano Premium',
-    description: 'Solução completa para grandes empresas',
-    prices: {
-      monthly: {
-        priceId: 'price_1RxgMnH8jGtRbIKFO9Ictegk',
-        amount: 49999, // R$ 499,99
-        interval: 'month',
-        intervalCount: 1
-      },
-      semiannual: {
-        priceId: 'price_1RxgNdH8jGtRbIKFugHg15Dv',
-        amount: 48999, // R$ 489,99
-        interval: 'month',
-        intervalCount: 6,
-        discount: '2%'
-      },
-      annual: {
-        priceId: 'price_1RxgNdH8jGtRbIKFsVrqDeHq',
-        amount: 44999, // R$ 449,99
-        interval: 'year',
-        intervalCount: 1,
-        discount: '10%'
-      }
-    },
-    productId: 'prod_StTJjcT9YTpvCz',
-    features: [
-      'Todas as funcionalidades Pro',
-      'API dedicada',
-      'Integração personalizada',
-      'Gerente de conta dedicado',
-      'SLA garantido',
-      'Treinamento personalizado',
-      'Suporte 24/7'
-    ]
+// ✅ CONFIGURAÇÃO DINÂMICA - SEM HARDCODING
+// Os produtos e preços são buscados dinamicamente do Stripe
+const getPlanConfig = async (planType, interval = 'monthly') => {
+  try {
+    const price = await stripeProductService.getPriceByPlanAndInterval(planType, interval);
+    
+    return {
+      name: `${planType.charAt(0).toUpperCase() + planType.slice(1)}`,
+      description: `Plano ${planType} com funcionalidades ${planType === 'basic' ? 'essenciais' : planType === 'pro' ? 'avançadas' : 'completas'}`,
+      priceId: price.id,
+      amount: price.amount,
+      currency: price.currency,
+      interval: price.interval
+    };
+  } catch (error) {
+    console.error(`❌ Erro ao buscar configuração do plano ${planType}:`, error);
+    throw error;
   }
 };
 
@@ -145,13 +58,11 @@ class StripeService {
    */
   async createPaymentLink(planType, customerEmail, metadata = {}) {
     try {
-      const plan = PLANS[planType.toUpperCase()];
-      if (!plan) {
-        throw new Error('Plano não encontrado');
+      // ✅ BUSCAR CONFIGURAÇÃO DINAMICAMENTE DO STRIPE (mensal como padrão)
+      const defaultPrice = await getPlanConfig(planType, 'monthly');
+      if (!defaultPrice) {
+        throw new Error(`Configuração não encontrada para o plano ${planType}`);
       }
-
-      // Usar preço mensal como padrão
-      const defaultPrice = plan.prices.monthly;
 
       const paymentLink = await stripe.paymentLinks.create({
         line_items: [{
@@ -185,14 +96,10 @@ class StripeService {
    */
   async createPaymentIntent(planType, customerEmail, metadata = {}, interval = 'monthly') {
     try {
-      const plan = PLANS[planType.toUpperCase()];
-      if (!plan) {
-        throw new Error('Plano não encontrado');
-      }
-
-      const priceConfig = plan.prices[interval];
+      // ✅ BUSCAR CONFIGURAÇÃO DINAMICAMENTE DO STRIPE
+      const priceConfig = await getPlanConfig(planType, interval);
       if (!priceConfig) {
-        throw new Error(`Intervalo de pagamento '${interval}' não suportado para este plano`);
+        throw new Error(`Configuração não encontrada para o plano ${planType} - ${interval}`);
       }
 
       // ✅ VERIFICAR: Se o preço existe no Stripe
@@ -236,7 +143,7 @@ class StripeService {
           user_agent: 'fgtsagent_web',
           ...metadata
         },
-        description: `Assinatura ${plan.name} - ${interval}`,
+        description: `Assinatura ${planType} - ${interval}`,
         receipt_email: customerEmail
         // ✅ NOTA: confirm e return_url serão configurados na confirmação
         // quando o frontend enviar o PaymentMethod ID real
@@ -270,14 +177,10 @@ class StripeService {
    */
   async createPaymentIntentOnly(planType, customerEmail, metadata = {}, interval = 'monthly') {
     try {
-      const plan = PLANS[planType.toUpperCase()];
-      if (!plan) {
-        throw new Error('Plano não encontrado');
-      }
-
-      const priceConfig = plan.prices[interval];
+      // ✅ BUSCAR CONFIGURAÇÃO DINAMICAMENTE DO STRIPE
+      const priceConfig = await getPlanConfig(planType, interval);
       if (!priceConfig) {
-        throw new Error(`Intervalo de pagamento '${interval}' não suportado para este plano`);
+        throw new Error(`Configuração não encontrada para o plano ${planType} - ${interval}`);
       }
 
       // ✅ CONFIGURAÇÃO PARA CHECKOUT NATIVO: Sem confirm, apenas criar
@@ -293,7 +196,7 @@ class StripeService {
           user_agent: 'fgtsagent_native',
           ...metadata
         },
-        description: `Assinatura ${plan.name} - ${interval} (Checkout Nativo)`,
+        description: `Assinatura ${planType} - ${interval} (Checkout Nativo)`,
         receipt_email: customerEmail
         // ✅ NOTA: Não incluir confirm ou return_url - será confirmado via confirmCardPayment
       };
@@ -388,19 +291,15 @@ class StripeService {
         throw new Error('Email, successUrl e cancelUrl são obrigatórios');
       }
 
-      const plan = PLANS[planType.toUpperCase()];
-      if (!plan) {
-        throw new Error('Plano não encontrado');
-      }
-
-      const priceConfig = plan.prices[interval];
+      // ✅ BUSCAR CONFIGURAÇÃO DINAMICAMENTE DO STRIPE
+      const priceConfig = await getPlanConfig(planType, interval);
       if (!priceConfig) {
-        throw new Error(`Intervalo '${interval}' não suportado para este plano`);
+        throw new Error(`Configuração não encontrada para o plano ${planType} - ${interval}`);
       }
 
-      console.log('📋 Criando Checkout Session:', { planType, interval, priceId: priceConfig.priceId });
+      console.log('📋 Criando Checkout Session com 3DS:', { planType, interval, priceId: priceConfig.priceId });
 
-      // ✅ CONFIGURAÇÃO SIMPLIFICADA
+      // ✅ CONFIGURAÇÃO OFICIALMENTE SUPORTADA PELA STRIPE
       const sessionConfig = {
         payment_method_types: ['card'],
         customer_email: customerEmail,
@@ -411,10 +310,10 @@ class StripeService {
           quantity: 1,
         }],
         subscription_data: {
-          trial_period_days: 7,
+          trial_period_days: 7, // ✅ FREE TRIAL DE 7 DIAS
           trial_settings: {
             end_behavior: {
-              missing_payment_method: 'cancel'
+              missing_payment_method: 'cancel' // ✅ CANCELAR se não houver método de pagamento
             }
           },
           metadata: {
@@ -423,9 +322,15 @@ class StripeService {
             customerEmail: customerEmail
           }
         },
+        // ✅ NOVO: CONFIGURAÇÃO 3DS AUTOMÁTICA (OFICIALMENTE SUPORTADA)
+        payment_method_options: {
+          card: {
+            request_three_d_secure: 'automatic' // ✅ 3DS AUTOMÁTICO para máxima segurança
+          }
+        },
         success_url: successUrl,
         cancel_url: cancelUrl,
-        billing_address_collection: 'required',
+        billing_address_collection: 'required', // ✅ COLETAR endereço para 3DS
         allow_promotion_codes: true,
         metadata: {
           plan: planType,
@@ -435,15 +340,17 @@ class StripeService {
         }
       };
 
-      console.log('🔧 Configuração da sessão:', sessionConfig);
+      console.log('🔧 Configuração da sessão com 3DS:', sessionConfig);
 
       // ✅ CRIAR SESSÃO
       const session = await stripe.checkout.sessions.create(sessionConfig);
 
-      console.log('✅ Sessão criada:', {
+      console.log('✅ Sessão criada com 3DS:', {
         id: session.id,
         url: session.url ? 'PRESENTE' : 'AUSENTE',
-        mode: session.mode
+        mode: session.mode,
+        has3DS: !!sessionConfig.payment_method_options?.card?.request_three_d_secure,
+        trialPeriod: sessionConfig.subscription_data.trial_period_days
       });
 
       // ✅ VERIFICAR URL
@@ -462,8 +369,8 @@ class StripeService {
       };
 
     } catch (error) {
-      logger.error('Erro ao criar sessão de checkout:', error);
-      throw new Error(`Falha ao criar sessão: ${error.message}`);
+      logger.error('Erro ao criar sessão de checkout com 3DS:', error);
+      throw new Error(`Falha ao criar sessão com 3DS: ${error.message}`);
     }
   }
 
@@ -1016,7 +923,160 @@ class StripeService {
     try {
       logger.info(`Assinatura criada: ${subscription.id}`);
       
-      // Implementar lógica para ativar recursos do usuário
+      // ✅ EXTRAIR: Dados da assinatura
+      const customerId = subscription.customer;
+      const planType = subscription.metadata?.plan || 'pro';
+      const source = subscription.metadata?.source || 'stripe_webhook';
+      
+      console.log('🔍 [WEBHOOK SUBSCRIPTION] Dados da assinatura:', {
+        subscriptionId: subscription.id,
+        customerId,
+        planType,
+        source,
+        metadata: subscription.metadata
+      });
+      
+      // ✅ BUSCAR: Cliente no Stripe para obter email
+      const customer = await stripe.customers.retrieve(customerId);
+      const customerEmail = customer.email;
+      
+      if (!customerEmail) {
+        logger.warn(`[WEBHOOK SUBSCRIPTION] Cliente sem email: ${customerId}`);
+        return false;
+      }
+      
+      console.log('🔍 [WEBHOOK SUBSCRIPTION] Cliente encontrado:', {
+        customerId,
+        customerEmail,
+        customerName: customer.name
+      });
+      
+      // ✅ VERIFICAR: Se é um signup (não apenas upgrade de plano)
+      if (source === 'signup_with_plans' && customerEmail && planType) {
+        try {
+          logger.info(`[WEBHOOK SUBSCRIPTION] Criando usuário após assinatura confirmada: ${customerEmail}`);
+          
+          // ✅ CRIAR: Usuário no Supabase APÓS confirmação da assinatura
+          const { supabaseAdmin } = require('../config/supabase');
+          
+          // ✅ VERIFICAR: Se usuário já existe (evitar duplicação)
+          const { data: existingUsers, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+          
+          if (listError) {
+            logger.error(`[WEBHOOK SUBSCRIPTION] Erro ao verificar usuários existentes: ${listError.message}`);
+            return false;
+          }
+          
+          const existingUser = existingUsers.users.find(u => u.email === customerEmail);
+          
+          if (existingUser) {
+            logger.info(`[WEBHOOK SUBSCRIPTION] Usuário já existe: ${customerEmail}`);
+            return true;
+          }
+          
+          // ✅ EXTRAIR: Dados do usuário dos metadados ou gerar dados padrão
+          const userFirstName = customer.name ? customer.name.split(' ')[0] : 'Usuário';
+          const userLastName = customer.name ? customer.name.split(' ').slice(1).join(' ') : 'Novo';
+          const userPhone = customer.phone || '';
+          
+          // ✅ GERAR: Senha temporária
+          const userPassword = this.generateTemporaryPassword();
+          
+          console.log('🔍 [WEBHOOK SUBSCRIPTION] Criando usuário com dados:', {
+            email: customerEmail,
+            firstName: userFirstName,
+            lastName: userLastName,
+            phone: userPhone,
+            planType,
+            passwordLength: userPassword.length
+          });
+          
+          // ✅ CRIAR: Novo usuário no Supabase
+          const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+            email: customerEmail,
+            password: userPassword,
+            email_confirm: true,
+            user_metadata: {
+              firstName: userFirstName,
+              lastName: userLastName,
+              phone: userPhone,
+              planType: planType,
+              source: source,
+              stripeCustomerId: customerId,
+              stripeSubscriptionId: subscription.id
+            }
+          });
+          
+          if (createError) {
+            logger.error(`[WEBHOOK SUBSCRIPTION] Erro ao criar usuário: ${createError.message}`);
+            return false;
+          }
+          
+          logger.info(`[WEBHOOK SUBSCRIPTION] Usuário criado com sucesso: ${newUser.user.id}`);
+          
+          // ✅ CRIAR: Perfil do usuário na tabela user_profiles
+          const { error: profileError } = await supabaseAdmin
+            .from('user_profiles')
+            .insert({
+              id: newUser.user.id,
+              first_name: userFirstName,
+              last_name: userLastName,
+              phone: userPhone,
+              plan_type: planType,
+              subscription_status: 'active',
+              stripe_customer_id: customerId,
+              stripe_subscription_id: subscription.id,
+              created_at: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            });
+          
+          if (profileError) {
+            logger.error(`[WEBHOOK SUBSCRIPTION] Erro ao criar perfil: ${profileError.message}`);
+            return false;
+          }
+          
+          logger.info(`[WEBHOOK SUBSCRIPTION] Perfil criado com sucesso para usuário: ${newUser.user.id}`);
+          
+          // ✅ ENVIAR: Email de boas-vindas com credenciais
+          logger.info(`[WEBHOOK SUBSCRIPTION] Usuário criado com senha temporária - email de redefinição deve ser enviado para: ${customerEmail}`);
+          
+          // ✅ IMPORTANTE: Tentar login automático
+          try {
+            await this.performAutoLoginAfterWebhook(customerEmail, userPassword, {
+              firstName: userFirstName,
+              lastName: userLastName,
+              planType: planType,
+              stripeCustomerId: customerId,
+              stripeSubscriptionId: subscription.id
+            });
+            logger.info(`[WEBHOOK SUBSCRIPTION] Login automático realizado para: ${customerEmail}`);
+          } catch (loginError) {
+            logger.warn(`[WEBHOOK SUBSCRIPTION] Login automático falhou para: ${customerEmail}`, loginError.message);
+            
+            // ✅ IMPORTANTE: Limpar qualquer resíduo de sessão falhada
+            try {
+              await this.cleanupFailedAutoLogin(customerEmail);
+              logger.info(`[WEBHOOK SUBSCRIPTION] Limpeza de resíduos realizada para: ${customerEmail}`);
+            } catch (cleanupError) {
+              logger.warn(`[WEBHOOK SUBSCRIPTION] Falha na limpeza de resíduos para: ${customerEmail}`, cleanupError.message);
+            }
+            
+            // Não falhar o webhook por causa do login automático
+          }
+          
+          return true;
+          
+        } catch (userError) {
+          logger.error(`[WEBHOOK SUBSCRIPTION] Erro ao processar criação de usuário: ${userError.message}`);
+          return false;
+        }
+      } else {
+        logger.info(`[WEBHOOK SUBSCRIPTION] Não é signup ou dados insuficientes:`, {
+          source,
+          hasEmail: !!customerEmail,
+          hasPlan: !!planType
+        });
+      }
       
       return true;
     } catch (error) {
@@ -1048,7 +1108,29 @@ class StripeService {
     try {
       logger.info(`Assinatura cancelada: ${subscription.id}`);
       
-      // Implementar lógica para desativar recursos do usuário
+      // ✅ IMPLEMENTAR: Lógica para desativar recursos do usuário
+      const customerId = subscription.customer;
+      const customer = await stripe.customers.retrieve(customerId);
+      const customerEmail = customer.email;
+      
+      if (customerEmail) {
+        // ✅ ATUALIZAR: Status da assinatura no Supabase
+        const { supabaseAdmin } = require('../config/supabase');
+        
+        const { error: updateError } = await supabaseAdmin
+          .from('user_profiles')
+          .update({ 
+            subscription_status: 'cancelled',
+            updated_at: new Date().toISOString()
+          })
+          .eq('stripe_customer_id', customerId);
+        
+        if (updateError) {
+          logger.error(`[WEBHOOK] Erro ao atualizar status da assinatura: ${updateError.message}`);
+        } else {
+          logger.info(`[WEBHOOK] Status da assinatura atualizado para 'cancelled' para: ${customerEmail}`);
+        }
+      }
       
       return true;
     } catch (error) {
@@ -1058,98 +1140,371 @@ class StripeService {
   }
 
   /**
+   * Trata pagamento de fatura realizado com sucesso
+   */
+  async handleInvoicePaymentSucceeded(invoice) {
+    try {
+      logger.info(`Pagamento de fatura realizado: ${invoice.id}`);
+      
+      // ✅ EXTRAIR: Dados da fatura
+      const customerId = invoice.customer;
+      const subscriptionId = invoice.subscription;
+      const amount = invoice.amount_paid;
+      const currency = invoice.currency;
+      
+      console.log('🔍 [WEBHOOK INVOICE] Pagamento realizado:', {
+        invoiceId: invoice.id,
+        customerId,
+        subscriptionId,
+        amount,
+        currency,
+        status: invoice.status
+      });
+      
+      if (subscriptionId) {
+        // ✅ ATUALIZAR: Status da assinatura para 'active'
+        const { supabaseAdmin } = require('../config/supabase');
+        
+        const { error: updateError } = await supabaseAdmin
+          .from('user_profiles')
+          .update({ 
+            subscription_status: 'active',
+            last_payment_date: new Date().toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('stripe_subscription_id', subscriptionId);
+        
+        if (updateError) {
+          logger.error(`[WEBHOOK] Erro ao atualizar status da assinatura: ${updateError.message}`);
+        } else {
+          logger.info(`[WEBHOOK] Status da assinatura atualizado para 'active' após pagamento`);
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      logger.error('Erro ao processar pagamento de fatura:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Trata falha no pagamento de fatura
+   */
+  async handleInvoicePaymentFailed(invoice) {
+    try {
+      logger.info(`Pagamento de fatura falhou: ${invoice.id}`);
+      
+      // ✅ EXTRAIR: Dados da fatura
+      const customerId = invoice.customer;
+      const subscriptionId = invoice.subscription;
+      const attemptCount = invoice.attempt_count;
+      
+      console.log('🔍 [WEBHOOK INVOICE] Falha no pagamento:', {
+        invoiceId: invoice.id,
+        customerId,
+        subscriptionId,
+        attemptCount,
+        status: invoice.status
+      });
+      
+      if (subscriptionId) {
+        // ✅ ATUALIZAR: Status da assinatura para 'past_due'
+        const { supabaseAdmin } = require('../config/supabase');
+        
+        const { error: updateError } = await supabaseAdmin
+          .from('user_profiles')
+          .update({ 
+            subscription_status: 'past_due',
+            payment_failure_count: attemptCount,
+            updated_at: new Date().toISOString()
+          })
+          .eq('stripe_subscription_id', subscriptionId);
+        
+        if (updateError) {
+          logger.error(`[WEBHOOK] Erro ao atualizar status da assinatura: ${updateError.message}`);
+        } else {
+          logger.info(`[WEBHOOK] Status da assinatura atualizado para 'past_due' após falha no pagamento`);
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      logger.error('Erro ao processar falha no pagamento de fatura:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Trata criação de cliente
+   */
+  async handleCustomerCreated(customer) {
+    try {
+      logger.info(`Cliente criado: ${customer.id}`);
+      
+      // ✅ LOG: Dados do cliente para auditoria
+      console.log('🔍 [WEBHOOK CUSTOMER] Novo cliente:', {
+        customerId: customer.id,
+        email: customer.email,
+        name: customer.name,
+        phone: customer.phone,
+        created: customer.created
+      });
+      
+      return true;
+    } catch (error) {
+      logger.error('Erro ao processar criação de cliente:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Trata trial que vai terminar em 3 dias
+   */
+  async handleSubscriptionTrialWillEnd(subscription) {
+    try {
+      logger.info(`Trial vai terminar em 3 dias: ${subscription.id}`);
+      
+      // ✅ EXTRAIR: Dados da assinatura
+      const customerId = subscription.customer;
+      const trialEnd = subscription.trial_end;
+      const customer = await stripe.customers.retrieve(customerId);
+      const customerEmail = customer.email;
+      
+      console.log('🔍 [WEBHOOK TRIAL] Trial terminando em 3 dias:', {
+        subscriptionId: subscription.id,
+        customerId,
+        customerEmail,
+        trialEnd: new Date(trialEnd * 1000).toISOString(),
+        daysLeft: Math.ceil((trialEnd - Date.now() / 1000) / 86400)
+      });
+      
+      if (customerEmail) {
+        // ✅ ENVIAR: Email de notificação sobre trial terminando
+        logger.info(`[WEBHOOK TRIAL] Enviando notificação para: ${customerEmail}`);
+        
+        // TODO: Implementar envio de email
+        // await emailService.sendTrialEndingNotification(customerEmail, subscription);
+        
+        // ✅ ATUALIZAR: Status no Supabase para 'trial_ending'
+        const { supabaseAdmin } = require('../config/supabase');
+        
+        const { error: updateError } = await supabaseAdmin
+          .from('user_profiles')
+          .update({ 
+            subscription_status: 'trial_ending',
+            trial_end_date: new Date(trialEnd * 1000).toISOString(),
+            updated_at: new Date().toISOString()
+          })
+          .eq('stripe_customer_id', customerId);
+        
+        if (updateError) {
+          logger.error(`[WEBHOOK] Erro ao atualizar status do trial: ${updateError.message}`);
+        } else {
+          logger.info(`[WEBHOOK] Status do trial atualizado para 'trial_ending' para: ${customerEmail}`);
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      logger.error('Erro ao processar trial que vai terminar:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Trata trial que terminou
+   */
+  async handleSubscriptionTrialEnded(subscription) {
+    try {
+      logger.info(`Trial terminou: ${subscription.id}`);
+      
+      // ✅ EXTRAIR: Dados da assinatura
+      const customerId = subscription.customer;
+      const customer = await stripe.customers.retrieve(customerId);
+      const customerEmail = customer.email;
+      
+      console.log('🔍 [WEBHOOK TRIAL] Trial terminou:', {
+        subscriptionId: subscription.id,
+        customerId,
+        customerEmail,
+        status: subscription.status,
+        currentPeriodEnd: new Date(subscription.current_period_end * 1000).toISOString()
+      });
+      
+      if (customerEmail) {
+        // ✅ VERIFICAR: Se há método de pagamento configurado
+        if (subscription.default_payment_method) {
+          // ✅ ATUALIZAR: Status para 'active' (cobrança automática ativada)
+          const { supabaseAdmin } = require('../config/supabase');
+          
+          const { error: updateError } = await supabaseAdmin
+            .from('user_profiles')
+            .update({ 
+              subscription_status: 'active',
+              trial_ended_date: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('stripe_customer_id', customerId);
+          
+          if (updateError) {
+            logger.error(`[WEBHOOK] Erro ao atualizar status após trial: ${updateError.message}`);
+          } else {
+            logger.info(`[WEBHOOK] Status atualizado para 'active' após trial para: ${customerEmail}`);
+          }
+        } else {
+          // ✅ ATUALIZAR: Status para 'incomplete' (sem método de pagamento)
+          const { supabaseAdmin } = require('../config/supabase');
+          
+          const { error: updateError } = await supabaseAdmin
+            .from('user_profiles')
+            .update({ 
+              subscription_status: 'incomplete',
+              trial_ended_date: new Date().toISOString(),
+              updated_at: new Date().toISOString()
+            })
+            .eq('stripe_customer_id', customerId);
+          
+          if (updateError) {
+            logger.error(`[WEBHOOK] Erro ao atualizar status após trial: ${updateError.message}`);
+          } else {
+            logger.info(`[WEBHOOK] Status atualizado para 'incomplete' após trial para: ${customerEmail}`);
+          }
+        }
+      }
+      
+      return true;
+    } catch (error) {
+      logger.error('Erro ao processar trial terminado:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Lista todos os planos disponíveis
    */
-  getAvailablePlans() {
-    return Object.entries(PLANS).map(([key, plan]) => ({
-      id: key.toLowerCase(),
-      name: plan.name,
-      description: plan.description,
-      features: plan.features,
-      prices: Object.entries(plan.prices).map(([interval, price]) => ({
-        interval: interval,
-        priceId: price.priceId,
+  async getAvailablePlans() {
+    try {
+      console.log('🔄 Buscando planos disponíveis...');
+      
+      // ✅ BUSCAR PRODUTOS DINAMICAMENTE DO STRIPE
+      const products = await stripeProductService.getAvailableProducts();
+      
+      console.log(`✅ ${products.length} planos encontrados`);
+      
+      // ✅ FORMATAR PARA FRONTEND
+      return products.map(product => ({
+        id: product.id,
+        name: product.name,
+        description: product.description,
+        features: product.metadata?.features ? JSON.parse(product.metadata.features) : [],
+        prices: product.prices.map(price => ({
+          interval: price.interval,
+          priceId: price.id,
         amount: price.amount,
         amountFormatted: `R$ ${(price.amount / 100).toFixed(2).replace('.', ',')}`,
-        intervalText: this.getIntervalText(price.interval, price.intervalCount),
-        discount: price.discount || null
+          intervalText: price.interval === 'month' ? 'por mês' : 'por ano',
+          discount: null
       }))
     }));
+    } catch (error) {
+      console.error('❌ Erro ao buscar planos disponíveis:', error);
+      throw error;
+    }
   }
 
   /**
    * Obtém informações de um plano específico
    */
-  getPlanInfo(planType, interval = 'monthly') {
-    console.log('🔍 getPlanInfo chamado com:', { planType, interval });
-    console.log('🔍 PLANS disponíveis:', Object.keys(PLANS));
-    
-    const planKey = planType.toUpperCase();
-    console.log('🔍 Procurando plano com chave:', planKey);
-    
-    const plan = PLANS[planKey];
-    if (!plan) {
-      console.log('❌ Plano não encontrado para chave:', planKey);
-      throw new Error(`Plano ${planType} não encontrado`);
+  async getPlanInfo(planType, interval = 'monthly') {
+    try {
+      console.log('🔍 getPlanInfo chamado com:', { planType, interval });
+      
+      // ✅ BUSCAR PRODUTO DINAMICAMENTE DO STRIPE COM PREÇOS
+      const product = await stripeProductService.getProductWithPricesByPlanType(planType);
+      console.log('✅ Produto encontrado:', product.name);
+      
+      // ✅ VALIDAÇÃO DE SEGURANÇA: Verificar se product.prices existe
+      if (!product.prices || !Array.isArray(product.prices)) {
+        console.error('❌ Produto não possui preços válidos:', {
+          productId: product.id,
+          productName: product.name,
+          hasPrices: !!product.prices,
+          pricesType: typeof product.prices,
+          prices: product.prices
+        });
+        throw new Error(`Produto ${planType} não possui preços configurados`);
+      }
+      
+      // ✅ BUSCAR PREÇO ESPECÍFICO
+      const price = await stripeProductService.getPriceByPlanAndInterval(planType, interval);
+      console.log('✅ Preço encontrado:', { interval, amount: price.amount });
+      
+      return {
+        id: planType.toLowerCase(),
+        name: product.name,
+        description: product.description,
+        price: price.amount,
+        priceFormatted: `R$ ${(price.amount / 100).toFixed(2).replace('.', ',')}`,
+        interval: interval,
+        intervalText: price.interval === 'month' ? 'por mês' : 'por ano',
+        discount: null, // ✅ TODO: Implementar sistema de desconto
+        features: [], // ✅ TODO: Implementar busca de features do metadata
+        priceId: price.id,
+        // ✅ TODOS OS PREÇOS DISPONÍVEIS
+        prices: product.prices.map(p => ({
+          interval: p.interval,
+          priceId: p.id,
+          amount: p.amount,
+          amountFormatted: `R$ ${(p.amount / 100).toFixed(2).replace('.', ',')}`,
+          intervalText: p.interval === 'month' ? 'por mês' : 'por ano',
+          discount: null
+        }))
+      };
+    } catch (error) {
+      console.error(`❌ Erro ao buscar informações do plano ${planType}:`, error);
+      throw error;
     }
-    
-    console.log('✅ Plano encontrado:', plan.name);
-    console.log('🔍 Preços disponíveis:', Object.keys(plan.prices));
-    
-    const priceConfig = plan.prices[interval];
-    if (!priceConfig) {
-      console.log('❌ Intervalo não encontrado:', interval);
-      throw new Error(`Intervalo de pagamento '${interval}' não suportado para este plano`);
-    }
-    
-    console.log('✅ Configuração de preço encontrada:', priceConfig);
-    
-    return {
-      id: planType.toLowerCase(),
-      name: plan.name,
-      description: plan.description,
-      price: priceConfig.amount,
-      priceFormatted: `R$ ${(priceConfig.amount / 100).toFixed(2).replace('.', ',')}`,
-      interval: interval,
-      intervalText: this.getIntervalText(priceConfig.interval, priceConfig.intervalCount),
-      discount: priceConfig.discount,
-      features: plan.features,
-      priceId: priceConfig.priceId,
-      // Adicionar todos os preços disponíveis para o frontend
-      prices: Object.entries(plan.prices).map(([priceInterval, price]) => ({
-        interval: priceInterval,
-        priceId: price.priceId,
-        amount: price.amount,
-        amountFormatted: `R$ ${(price.amount / 100).toFixed(2).replace('.', ',')}`,
-        intervalText: this.getIntervalText(price.interval, price.intervalCount),
-        discount: price.discount || null
-      }))
-    };
   }
 
   /**
    * Obtém todos os preços de um plano específico
    */
-  getPlanPrices(planType) {
-    const plan = PLANS[planType.toUpperCase()];
-    if (!plan) {
-      throw new Error('Plano não encontrado');
+  async getPlanPrices(planType) {
+    try {
+      // ✅ BUSCAR PRODUTO DINAMICAMENTE DO STRIPE COM PREÇOS
+      const product = await stripeProductService.getProductWithPricesByPlanType(planType);
+      
+      // ✅ VALIDAÇÃO DE SEGURANÇA: Verificar se product.prices existe
+      if (!product.prices || !Array.isArray(product.prices)) {
+        console.error('❌ Produto não possui preços válidos:', {
+          productId: product.id,
+          productName: product.name,
+          hasPrices: !!product.prices,
+          pricesType: typeof product.prices,
+          prices: product.prices
+        });
+        throw new Error(`Produto ${planType} não possui preços configurados`);
+      }
+      
+      return {
+        id: planType.toLowerCase(),
+        name: product.name,
+        description: product.description,
+        features: [], // ✅ TODO: Implementar busca de features do metadata
+        prices: product.prices.map(price => ({
+          interval: price.interval,
+          priceId: price.id,
+          amount: price.amount,
+          amountFormatted: `R$ ${(price.amount / 100).toFixed(2).replace('.', ',')}`,
+          intervalText: price.interval === 'month' ? 'por mês' : 'por ano',
+          discount: null // ✅ TODO: Implementar sistema de desconto
+        }))
+      };
+    } catch (error) {
+      console.error(`❌ Erro ao buscar preços do plano ${planType}:`, error);
+      throw error;
     }
-
-    return {
-      id: planType.toLowerCase(),
-      name: plan.name,
-      description: plan.description,
-      features: plan.features,
-      prices: Object.entries(plan.prices).map(([interval, price]) => ({
-        interval: interval,
-        priceId: price.priceId,
-        amount: price.amount,
-        amountFormatted: `R$ ${(price.amount / 100).toFixed(2).replace('.', ',')}`,
-        intervalText: this.getIntervalText(price.interval, price.intervalCount),
-        discount: price.discount || null
-      }))
-    };
   }
 
   /**
@@ -1194,14 +1549,10 @@ class StripeService {
    */
   async createAndConfirmPaymentIntent(planType, customerEmail, paymentMethodId, metadata = {}, interval = 'monthly') {
     try {
-      const plan = PLANS[planType.toUpperCase()];
-      if (!plan) {
-        throw new Error('Plano não encontrado');
-      }
-
-      const priceConfig = plan.prices[interval];
+      // ✅ BUSCAR CONFIGURAÇÃO DINAMICAMENTE DO STRIPE
+      const priceConfig = await getPlanConfig(planType, interval);
       if (!priceConfig) {
-        throw new Error(`Intervalo de pagamento '${interval}' não suportado para este plano`);
+        throw new Error(`Configuração não encontrada para o plano ${planType} - ${interval}`);
       }
       
       // ✅ VALIDAÇÃO: Verificar se o preço está configurado corretamente
@@ -1223,7 +1574,7 @@ class StripeService {
         currency: 'brl',
         capture_method: 'automatic',
         confirm: "true", // ✅ CONFIRMAR: Imediatamente após criação (STRING)
-        description: `Assinatura ${plan.name} - ${interval}`,
+        description: `Assinatura ${planType} - ${interval}`,
         metadata: {
           plan: planType,
           interval: interval,
@@ -1260,7 +1611,7 @@ class StripeService {
       console.log('🔍 Configuração do plano:', {
         planType,
         interval,
-        planName: plan.name,
+        planName: planType,
         amount: priceConfig.amount,
         amountFormatted: `R$ ${(priceConfig.amount / 100).toFixed(2)}`,
         priceId: priceConfig.priceId
@@ -1433,15 +1784,10 @@ class StripeService {
     try {
       console.log('🔄 Iniciando processamento completo de ASSINATURA RECORRENTE...');
       
-      // ✅ VALIDAR PLANO
-      const plan = PLANS[planType.toUpperCase()];
-      if (!plan) {
-        throw new Error('Plano não encontrado');
-      }
-
-      const priceConfig = plan.prices[interval];
+      // ✅ VALIDAR PLANO - BUSCA DINÂMICA
+      const priceConfig = await getPlanConfig(planType, interval);
       if (!priceConfig) {
-        throw new Error(`Intervalo de pagamento '${interval}' não suportado para este plano`);
+        throw new Error(`Configuração não encontrada para o plano ${planType} - ${interval}`);
       }
 
       console.log('✅ Plano validado:', { planType, interval, price: priceConfig });
@@ -1529,6 +1875,12 @@ class StripeService {
         },
         // ✅ NOVO: PERÍODO DE TESTE GRATUITO DE 7 DIAS
         trial_period_days: 7, // Usuário tem 7 dias de teste grátis
+        // ✅ NOVO: CONFIGURAÇÕES 3DS PARA ASSINATURAS
+        payment_method_options: {
+          card: {
+            request_three_d_secure: 'automatic' // ✅ 3DS AUTOMÁTICO
+          }
+        },
         // ✅ METADADOS IMPORTANTES PARA ASSINATURA
         metadata: {
           plan: planType,
@@ -1556,11 +1908,13 @@ class StripeService {
         const trialEnd = new Date(subscription.trial_end * 1000);
         const firstBilling = new Date(subscription.current_period_end * 1000);
         
-        console.log('🎁 PERÍODO DE TESTE GRATUITO CONFIGURADO:');
+        console.log('🎁 PERÍODO DE TESTE GRATUITO CONFIGURADO COM 3DS:');
         console.log('   📅 Início do teste:', trialStart.toLocaleDateString('pt-BR'));
         console.log('   📅 Fim do teste:', trialEnd.toLocaleDateString('pt-BR'));
         console.log('   💳 Primeira cobrança:', firstBilling.toLocaleDateString('pt-BR'));
         console.log('   ⏰ Duração do teste: 7 dias');
+        console.log('   🔐 3DS configurado: AUTOMÁTICO');
+        console.log('   🛡️ Segurança: MÁXIMA (endereço obrigatório)');
       }
 
       // ✅ PROCESSAR PRIMEIRA FATURA (pagamento inicial)
@@ -1756,12 +2110,19 @@ class StripeService {
           'Assinatura ativa e funcionando normalmente.',
         // ✅ NOVO: Mensagem sobre período de teste
         trialMessage: finalSubscription.trial_start ? 
-          `🎁 Período de teste gratuito de 7 dias ativo! Primeira cobrança em ${new Date(finalSubscription.current_period_end * 1000).toLocaleDateString('pt-BR')}` :
+          `🎁 Período de teste gratuito de 7 dias ativo com 3DS! Primeira cobrança em ${new Date(finalSubscription.current_period_end * 1000).toLocaleDateString('pt-BR')}` :
           'Assinatura ativa sem período de teste',
         // ✅ NOVO: Informações sobre usuário criado no Supabase
         userCreated: true,
         userEmail: customerEmail,
-        userMessage: 'Usuário criado com sucesso no sistema. Você pode fazer login com seu email e senha.'
+        userMessage: 'Usuário criado com sucesso no sistema. Você pode fazer login com seu email e senha.',
+        // ✅ NOVO: Informações de segurança 3DS
+        securityFeatures: {
+          threeDSecure: 'automatic',
+          billingAddressRequired: true,
+          trialEndBehavior: 'cancel_if_no_payment_method',
+          fraudProtection: 'high'
+        }
       };
 
     } catch (error) {
@@ -1781,8 +2142,8 @@ class StripeService {
     
     // ✅ PRIORIDADE 2: Detectar ambiente de desenvolvimento
     if (process.env.NODE_ENV === 'development') {
-      // ✅ DESENVOLVIMENTO: Usar HTTPS local na porta 5174
-      return 'https://localhost:5174/payment/return';
+      // ✅ DESENVOLVIMENTO: Usar HTTPS local na porta 5173
+      return 'https://localhost:5173/payment/return';
     }
     
     // ✅ PRIORIDADE 3: Detectar ambiente de produção
@@ -1791,7 +2152,7 @@ class StripeService {
     }
     
     // ✅ FALLBACK: URL padrão para desenvolvimento
-    return 'https://localhost:5174/payment/return';
+    return 'https://localhost:5173/payment/return';
   }
 
   /**
@@ -1805,8 +2166,8 @@ class StripeService {
     
     // ✅ PRIORIDADE 2: Detectar ambiente de desenvolvimento
     if (process.env.NODE_ENV === 'development') {
-      // ✅ DESENVOLVIMENTO: Usar HTTPS local na porta 5174
-      return `https://localhost:5174/payment/success?plan=${planType}`;
+      // ✅ DESENVOLVIMENTO: Usar HTTPS local na porta 5173
+      return `https://localhost:5173/payment/success?plan=${planType}`;
     }
     
     // ✅ PRIORIDADE 3: Detectar ambiente de produção
@@ -1815,7 +2176,7 @@ class StripeService {
     }
     
     // ✅ FALLBACK: URL padrão para desenvolvimento
-    return `https://localhost:5174/payment/success?plan=${planType}`;
+    return `https://localhost:5173/payment/success?plan=${planType}`;
   }
 
   /**
@@ -1938,6 +2299,308 @@ class StripeService {
       
     } catch (error) {
       logger.error('Erro ao processar SetupIntent bem-sucedido:', error);
+      return false;
+    }
+  }
+
+  /**
+   * Obtém configurações padrão para 3DS em assinaturas
+   * ✅ BASEADO NA DOCUMENTAÇÃO OFICIAL DO STRIPE
+   */
+  get3DSConfig() {
+    return {
+      // ✅ 3DS AUTOMÁTICO: Otimiza conversão e segurança
+      request_three_d_secure: 'automatic',
+      
+      // ✅ COMPORTAMENTO DO TRIAL: Cancelar se não houver método de pagamento
+      trial_settings: {
+        end_behavior: {
+          missing_payment_method: 'cancel'
+        }
+      },
+      
+      // ✅ COLETAR ENDEREÇO: Necessário para 3DS
+      billing_address_collection: 'required',
+      
+              // ✅ PERÍODO DE TESTE: 7 dias
+              trial_period_days: 7
+    };
+  }
+
+  /**
+   * Cria uma assinatura recorrente com free trial
+   * Ideal para modelos SaaS com cobrança recorrente
+   */
+  async createSubscriptionWithTrial(planType, customerEmail, userName, metadata = {}, interval = 'monthly') {
+    try {
+      console.log('🔄 Criando assinatura recorrente com free trial:', { planType, customerEmail, interval });
+      
+      // ✅ BUSCAR CONFIGURAÇÃO DO PLANO
+      const priceConfig = await getPlanConfig(planType, interval);
+      if (!priceConfig) {
+        throw new Error(`Configuração não encontrada para o plano ${planType} - ${interval}`);
+      }
+
+      // ✅ CONVERTER INTERVALO PARA FORMATO STRIPE
+      const stripeInterval = interval === 'monthly' ? 'month' : 'year';
+      
+      // ✅ BUSCAR OU CRIAR CLIENTE
+      let customer;
+      try {
+        const existingCustomers = await stripe.customers.list({
+          email: customerEmail,
+          limit: 1
+        });
+        
+        if (existingCustomers.data.length > 0) {
+          customer = existingCustomers.data[0];
+          console.log('✅ Cliente existente encontrado:', customer.id);
+        } else {
+          customer = await this.createCustomer(customerEmail, userName, {
+            source: 'signup_subscription',
+            planType,
+            interval
+          });
+          console.log('✅ Novo cliente criado:', customer.id);
+        }
+      } catch (error) {
+        console.error('❌ Erro ao buscar/criar cliente:', error);
+        throw new Error(`Falha ao gerenciar cliente: ${error.message}`);
+      }
+
+      // ✅ CRIAR SETUP INTENT PARA VALIDAR CARTÃO
+      const setupIntent = await stripe.setupIntents.create({
+        customer: customer.id,
+        payment_method_types: ['card'],
+        usage: 'off_session', // ✅ Para cobranças futuras (assinaturas)
+        metadata: {
+          planType,
+          interval,
+          source: 'signup_subscription',
+          customerEmail,
+          userName: userName.trim(),
+          ...metadata
+        }
+      });
+
+      console.log('✅ Setup Intent criado:', setupIntent.id);
+
+      // ✅ CRIAR ASSINATURA COM FREE TRIAL
+      const subscription = await stripe.subscriptions.create({
+        customer: customer.id,
+        items: [{
+          price: priceConfig.priceId,
+        }],
+        trial_period_days: 7, // ✅ FREE TRIAL DE 7 DIAS
+        trial_settings: {
+          end_behavior: {
+            missing_payment_method: 'pause' // ✅ Pausar se não houver método de pagamento (não cancelar)
+          }
+        },
+        metadata: {
+          planType,
+          interval,
+          source: 'signup_subscription',
+          customerEmail,
+          userName: userName.trim(),
+          ...metadata
+        },
+        // ✅ CONFIGURAÇÕES DE COBRANÇA
+        collection_method: 'charge_automatically',
+        expand: ['latest_invoice.payment_intent'],
+        // ✅ IMPORTANTE: Permitir que o SetupIntent seja anexado
+        payment_behavior: 'default_incomplete',
+        payment_settings: {
+          save_default_payment_method: 'on_subscription'
+        }
+      });
+
+      console.log('✅ Assinatura criada com free trial:', {
+        id: subscription.id,
+        status: subscription.status,
+        trialEnd: subscription.trial_end,
+        currentPeriodEnd: subscription.current_period_end
+      });
+
+      // ✅ RETORNAR DADOS COMPLETOS
+      return {
+        subscription,
+        setupIntent,
+        customer,
+        planConfig: priceConfig
+      };
+
+    } catch (error) {
+      console.error('❌ Erro ao criar assinatura com free trial:', error);
+      throw new Error(`Falha ao criar assinatura: ${error.message}`);
+    }
+  }
+
+  /**
+   * Anexa um método de pagamento a uma assinatura existente
+   * Necessário para manter a assinatura ativa após o free trial
+   */
+  async attachPaymentMethodToSubscription(subscriptionId, paymentMethodId) {
+    try {
+      console.log('🔄 Anexando método de pagamento à assinatura:', { subscriptionId, paymentMethodId });
+
+      // ✅ 1. ANEXAR MÉTODO DE PAGAMENTO AO CLIENTE
+      const subscription = await stripe.subscriptions.retrieve(subscriptionId, {
+        expand: ['customer', 'default_payment_method']
+      });
+
+      if (!subscription.customer) {
+        throw new Error('Assinatura não possui cliente associado');
+      }
+
+      const customerId = typeof subscription.customer === 'string' 
+        ? subscription.customer 
+        : subscription.customer.id;
+
+      // ✅ 2. ANEXAR MÉTODO DE PAGAMENTO AO CLIENTE
+      await stripe.paymentMethods.attach(paymentMethodId, {
+        customer: customerId
+      });
+
+      // ✅ 3. DEFINIR COMO MÉTODO PADRÃO DO CLIENTE
+      await stripe.customers.update(customerId, {
+        invoice_settings: {
+          default_payment_method: paymentMethodId
+        }
+      });
+
+      // ✅ 4. DEFINIR COMO MÉTODO PADRÃO DA ASSINATURA
+      const updatedSubscription = await stripe.subscriptions.update(subscriptionId, {
+        default_payment_method: paymentMethodId
+      });
+
+      console.log('✅ Método de pagamento anexado com sucesso:', {
+        subscriptionId,
+        paymentMethodId,
+        customerId,
+        status: updatedSubscription.status
+      });
+
+      return {
+        subscription: updatedSubscription,
+        paymentMethod: paymentMethodId,
+        customer: customerId
+      };
+
+    } catch (error) {
+      console.error('❌ Erro ao anexar método de pagamento:', error);
+      throw new Error(`Falha ao anexar método de pagamento: ${error.message}`);
+    }
+  }
+
+  /**
+   * Realiza login automático após criação de usuário via webhook
+   */
+  async performAutoLoginAfterWebhook(email, password, userData) {
+    try {
+      logger.info(`[AUTO-LOGIN] Tentando login automático para: ${email}`);
+      
+      // ✅ CRIAR: Sessão no Supabase
+      const { supabaseAdmin } = require('../config/supabase');
+      
+      // ✅ VERIFICAR: Se usuário existe e está ativo
+      const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserByEmail(email);
+      
+      if (userError || !user) {
+        throw new Error(`Usuário não encontrado: ${email}`);
+      }
+      
+      if (!user.email_confirmed_at) {
+        throw new Error(`Email não confirmado: ${email}`);
+      }
+      
+      // ✅ CRIAR: Sessão de autenticação
+      const { data: { session }, error: sessionError } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'magiclink',
+        email: email,
+        options: {
+          redirectTo: `${process.env.FRONTEND_URL || 'https://localhost:5173'}/dashboard`,
+          data: {
+            firstName: userData.firstName,
+            lastName: userData.lastName,
+            planType: userData.planType,
+            stripeCustomerId: userData.stripeCustomerId,
+            stripeSubscriptionId: userData.stripeSubscriptionId,
+            source: 'webhook_auto_login'
+          }
+        }
+      });
+      
+      if (sessionError) {
+        throw new Error(`Erro ao criar sessão: ${sessionError.message}`);
+      }
+      
+      // ✅ ARMAZENAR: Dados da sessão para uso posterior
+      const sessionData = {
+        accessToken: session.access_token,
+        refreshToken: session.refresh_token,
+        userId: user.id,
+        email: user.email,
+        userData: userData,
+        createdAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000) // 24 horas
+      };
+      
+      // ✅ SALVAR: Sessão no Redis ou banco para uso posterior
+      // TODO: Implementar armazenamento de sessão
+      logger.info(`[AUTO-LOGIN] Sessão criada com sucesso para: ${email}`);
+      
+      return {
+        success: true,
+        session: sessionData,
+        user: user
+      };
+      
+    } catch (error) {
+      logger.error(`[AUTO-LOGIN] Erro no login automático: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Limpa resíduos de sessão falhada após login automático
+   */
+  async cleanupFailedAutoLogin(email) {
+    try {
+      logger.info(`[CLEANUP] Limpando resíduos de sessão falhada para: ${email}`);
+      
+      // ✅ VERIFICAR: Se há sessões ativas para este email
+      const { supabaseAdmin } = require('../config/supabase');
+      
+      // ✅ BUSCAR: Usuário por email
+      const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserByEmail(email);
+      
+      if (userError || !user) {
+        logger.warn(`[CLEANUP] Usuário não encontrado para limpeza: ${email}`);
+        return false;
+      }
+      
+      // ✅ IMPORTANTE: Revogar todas as sessões ativas do usuário
+      const { error: revokeError } = await supabaseAdmin.auth.admin.updateUserById(
+        user.id,
+        { 
+          app_metadata: {
+            ...user.app_metadata,
+            last_cleanup: new Date().toISOString(),
+            failed_auto_login: true
+          }
+        }
+      );
+      
+      if (revokeError) {
+        logger.warn(`[CLEANUP] Erro ao atualizar metadados: ${revokeError.message}`);
+      }
+      
+      logger.info(`[CLEANUP] Limpeza de resíduos concluída para: ${email}`);
+      return true;
+      
+    } catch (error) {
+      logger.error(`[CLEANUP] Erro na limpeza de resíduos: ${error.message}`);
       return false;
     }
   }

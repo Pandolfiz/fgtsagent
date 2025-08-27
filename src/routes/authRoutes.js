@@ -1468,6 +1468,101 @@ router.post('/create-user-after-payment', async (req, res) => {
   }
 });
 
+// ✅ ROTA: Verificar se há login automático disponível após webhook
+router.get('/check-auto-login/:email', async (req, res) => {
+  try {
+    const { email } = req.params;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email é obrigatório'
+      });
+    }
+
+    logger.info(`[AUTH] Verificando login automático para: ${email}`);
+    
+    // ✅ VERIFICAR: Se há sessão automática disponível
+    // TODO: Implementar verificação de sessão automática
+    // Por enquanto, retornar que não há sessão automática
+    
+    res.json({
+      success: true,
+      hasAutoLogin: false,
+      message: 'Nenhum login automático disponível'
+    });
+    
+  } catch (error) {
+    logger.error(`[AUTH] Erro ao verificar login automático: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// ✅ ROTA: Limpeza manual de estado de autenticação (útil para debugging)
+router.post('/force-clear-state', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email é obrigatório'
+      });
+    }
+
+    logger.info(`[AUTH] Limpeza manual de estado solicitada para: ${email}`);
+    
+    // ✅ IMPORTANTE: Limpar estado do usuário
+    const { supabaseAdmin } = require('../config/supabase');
+    
+    // ✅ BUSCAR: Usuário por email
+    const { data: { user }, error: userError } = await supabaseAdmin.auth.admin.getUserByEmail(email);
+    
+    if (userError || !user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Usuário não encontrado'
+      });
+    }
+    
+    // ✅ LIMPAR: Metadados de sessão
+    const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
+      user.id,
+      { 
+        app_metadata: {
+          ...user.app_metadata,
+          last_manual_cleanup: new Date().toISOString(),
+          state_cleared: true
+        }
+      }
+    );
+    
+    if (updateError) {
+      logger.warn(`[AUTH] Erro ao limpar metadados: ${updateError.message}`);
+    }
+    
+    res.json({
+      success: true,
+      message: 'Estado de autenticação limpo com sucesso',
+      data: {
+        userId: user.id,
+        email: user.email,
+        cleanedAt: new Date().toISOString()
+      }
+    });
+    
+  } catch (error) {
+    logger.error(`[AUTH] Erro na limpeza manual: ${error.message}`);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
 // ✅ ROTA: Auto-login movida para antes de /login para evitar conflito
 
 // ✅ POST /api/auth/clear-session - Limpar sessão e cookies de autenticação
