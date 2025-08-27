@@ -77,6 +77,10 @@ export default function Login() {
     setLoading(true);
     
     try {
+      // ✅ IMPORTANTE: Limpar estado anterior antes de fazer login
+      console.log('🧹 Login: Limpando estado anterior de autenticação...');
+      await tokenManager.forceClearAll();
+      
       // ✅ UNIFICADO: Usar apenas Supabase Auth
       const { data, error } = await supabase.auth.signInWithPassword({
         email,

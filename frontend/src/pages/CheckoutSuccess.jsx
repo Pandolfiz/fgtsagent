@@ -16,6 +16,7 @@ const CheckoutSuccess = () => {
 
   // ✅ PRIMEIRO useEffect: Obter dados da assinatura e iniciar login automático
   useEffect(() => {
+    // ✅ PRIORIDADE 1: Dados via location.state (se disponível)
     if (location.state) {
       console.log('✅ CheckoutSuccess: Dados recebidos via state:', location.state);
       
@@ -56,10 +57,133 @@ const CheckoutSuccess = () => {
         setLoading(false);
       }
     } else {
-      console.log('⚠️ CheckoutSuccess: Nenhum dado recebido via state');
+      // ✅ PRIORIDADE 2: Extrair dados dos parâmetros da URL
+      console.log('⚠️ CheckoutSuccess: Nenhum dado recebido via state, extraindo da URL...');
+      
+      const planType = searchParams.get('plan') || 'pro';
+      const status = searchParams.get('status') || 'success';
+      const sessionId = searchParams.get('session_id');
+      
+      console.log('🔍 CheckoutSuccess: Parâmetros da URL:', { planType, status, sessionId });
+      
+      // ✅ CRIAR: Dados básicos da assinatura
+      const basicSubscriptionData = {
+        planType,
+        source: 'stripe_checkout',
+        timestamp: new Date().toISOString(),
+        status: status === 'success' ? 'succeeded' : 'pending',
+        metadata: {
+          plan: planType,
+          interval: 'monthly',
+          source: 'stripe_checkout',
+          signupDate: new Date().toISOString()
+        }
+      };
+      
+      setSubscriptionData(basicSubscriptionData);
+      
+      // ✅ TENTAR: Buscar dados da sessão do Stripe se tiver session_id
+      if (sessionId) {
+        console.log('🔄 CheckoutSuccess: Buscando dados da sessão do Stripe:', sessionId);
+        fetchStripeSessionData(sessionId);
+      } else {
+        // ✅ FALLBACK: Tentar obter session_id do localStorage
+        const storedSessionId = localStorage.getItem('stripe_session_id');
+        if (storedSessionId) {
+          console.log('🔄 CheckoutSuccess: Session ID encontrado no localStorage:', storedSessionId);
+          fetchStripeSessionData(storedSessionId);
+        } else {
+          // ✅ FALLBACK: Tentar obter dados do localStorage
+          console.log('🔄 CheckoutSuccess: Tentando obter dados do localStorage...');
+          const signupData = localStorage.getItem('signup_user_data');
+          
+          if (signupData) {
+            try {
+              const parsedData = JSON.parse(signupData);
+              console.log('✅ CheckoutSuccess: Dados encontrados no localStorage:', parsedData);
+              
+              // ✅ ATUALIZAR: Dados da assinatura com informações do usuário
+              setSubscriptionData(prev => ({
+                ...prev,
+                userData: {
+                  firstName: parsedData.first_name || parsedData.firstName || '',
+                  lastName: parsedData.last_name || parsedData.lastName || '',
+                  email: parsedData.email || '',
+                  phone: parsedData.phone || '',
+                  fullName: `${parsedData.first_name || parsedData.firstName || ''} ${parsedData.last_name || parsedData.lastName || ''}`.trim()
+                }
+              }));
+              
+              // ✅ INICIAR: Login automático se tiver email
+              if (parsedData.email) {
+                console.log('🔄 CheckoutSuccess: Iniciando login automático com dados do localStorage');
+                performAutoLogin(parsedData.email, parsedData.fullName || `${parsedData.first_name} ${parsedData.last_name}`.trim(), parsedData);
+              } else {
+                setLoading(false);
+              }
+            } catch (e) {
+              console.warn('⚠️ CheckoutSuccess: Erro ao ler dados do localStorage:', e);
+              setLoading(false);
+            }
+          } else {
+            console.log('⚠️ CheckoutSuccess: Nenhum dado encontrado, mostrando página básica');
+            setLoading(false);
+          }
+        }
+      }
+    }
+  }, [location.state, searchParams]);
+
+  // ✅ NOVA FUNÇÃO: Buscar dados da sessão do Stripe
+  const fetchStripeSessionData = async (sessionId) => {
+    try {
+      console.log('🔄 CheckoutSuccess: Buscando dados da sessão:', sessionId);
+      
+      // ✅ TENTAR: Buscar dados da sessão via backend
+      const response = await axios.post('/api/stripe/retrieve-session', { sessionId });
+      
+      if (response.data.success) {
+        console.log('✅ CheckoutSuccess: Dados da sessão obtidos:', response.data.data);
+        
+        const sessionData = response.data.data;
+        
+        // ✅ ATUALIZAR: Dados da assinatura com informações reais do Stripe
+        setSubscriptionData(prev => ({
+          ...prev,
+          amount: sessionData.amountTotal,
+          currency: sessionData.currency,
+          status: sessionData.paymentStatus,
+          customerEmail: sessionData.customerEmail,
+          metadata: {
+            ...prev.metadata,
+            ...sessionData.metadata
+          }
+        }));
+        
+        // ✅ LIMPAR: session_id do localStorage após uso
+        localStorage.removeItem('stripe_session_id');
+        console.log('✅ CheckoutSuccess: Session ID removido do localStorage');
+        
+        // ✅ INICIAR: Login automático se tiver email do cliente
+        if (sessionData.customerEmail) {
+          console.log('🔄 CheckoutSuccess: Iniciando login automático com email da sessão');
+          performAutoLogin(sessionData.customerEmail, sessionData.customerDetails?.name || 'Usuário', {});
+        } else {
+          setLoading(false);
+        }
+      } else {
+        console.warn('⚠️ CheckoutSuccess: Falha ao buscar dados da sessão:', response.data);
+        // ✅ LIMPAR: session_id mesmo em caso de falha
+        localStorage.removeItem('stripe_session_id');
+        setLoading(false);
+      }
+    } catch (error) {
+      console.warn('⚠️ CheckoutSuccess: Erro ao buscar dados da sessão:', error.message);
+      // ✅ LIMPAR: session_id mesmo em caso de erro
+      localStorage.removeItem('stripe_session_id');
       setLoading(false);
     }
-  }, [location.state]);
+  };
 
   // ✅ FUNÇÃO: Login automático do usuário
   const performAutoLogin = async (email, userName, userData) => {

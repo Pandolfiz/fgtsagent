@@ -226,23 +226,25 @@ app.use(cors({
     
     // Lista de domínios permitidos
     const allowedOrigins = [
-      // Localhost com diferentes portas
+      // Localhost com diferentes portas (HTTPS primeiro)
       'https://localhost:5173',
+      'https://localhost:3000',
+      'https://localhost:8000',
       'http://localhost:5173',
       'http://127.0.0.1:5173',
-      'http://127.0.0.1:5173',
+      'http://127.0.0.1:3000',
       'http://localhost:3000',
       'http://localhost:8000',
       
       // Interfaces de rede locais (para desenvolvimento)
+      'https://172.27.0.1:5173',
       'http://172.27.0.1:5173',
-      'http://172.27.0.1:5173',
+      'https://192.168.15.188:5173',
       'http://192.168.15.188:5173',
-      'http://192.168.15.188:5173',
-      'http://172.20.80.1:5173',
+      'https://172.20.80.1:5173',
       'http://172.20.80.1:5173',
       
-      // URLs de produção
+      // URLs de produção (HTTPS primeiro)
       'https://fgtsagent.com.br',
       'https://www.fgtsagent.com.br',
       'http://fgtsagent.com.br',

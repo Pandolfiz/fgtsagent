@@ -2,11 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { Check, Zap, Crown, Star } from 'lucide-react';
 import api from '../utils/api.js';
 
-const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
+const PricingPlans = ({ onPlanSelect, selectedPlan, selectedInterval, onIntervalChange }) => {
   const [plans, setPlans] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [selectedInterval, setSelectedInterval] = useState('annual'); // Padrão para maximizar conversão
+  const [internalInterval, setInternalInterval] = useState(selectedInterval || 'monthly'); // Usar prop ou padrão
+
+  // ✅ HELPER: Extrair tipo do plano do nome
+  const getPlanType = (planName) => {
+    const lowerName = planName.toLowerCase();
+    if (lowerName.includes('basic')) return 'basic';
+    if (lowerName.includes('pro')) return 'pro';
+    if (lowerName.includes('premium')) return 'premium';
+    return 'basic'; // Padrão
+  };
 
   useEffect(() => {
     fetchPlans();
@@ -138,9 +147,12 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
             <div className="bg-white/10 backdrop-blur-lg rounded-lg p-1 border border-cyan-400/30">
               <div className="flex gap-1">
                 <button
-                  onClick={() => setSelectedInterval('monthly')}
+                  onClick={() => {
+                    setInternalInterval('monthly');
+                    onIntervalChange && onIntervalChange('monthly');
+                  }}
                   className={`px-4 py-1.5 text-xs rounded-md font-medium transition-all duration-300 ${
-                    selectedInterval === 'monthly'
+                    internalInterval === 'monthly'
                       ? 'bg-cyan-500 text-white shadow-md'
                       : 'text-white/70 hover:text-white hover:bg-white/10'
                   }`}
@@ -148,9 +160,12 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
                   Mensal
                 </button>
                 <button
-                  onClick={() => setSelectedInterval('annual')}
+                  onClick={() => {
+                    setInternalInterval('annual');
+                    onIntervalChange && onIntervalChange('annual');
+                  }}
                   className={`px-4 py-1.5 text-xs rounded-md font-medium transition-all duration-300 ${
-                    selectedInterval === 'annual'
+                    internalInterval === 'annual'
                       ? 'bg-emerald-500 text-white shadow-md'
                       : 'text-white/70 hover:text-white hover:bg-white/10'
                   }`}
@@ -167,11 +182,11 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
             <div
               key={plan.id}
               className={`relative bg-white/10 rounded-lg shadow-xl backdrop-blur-lg p-3 transition-all duration-300 cursor-pointer border-2 card-futuristic min-h-[280px] flex flex-col overflow-visible ${
-                selectedPlan === plan.id
+                selectedPlan === getPlanType(plan.name)
                   ? 'border-cyan-400 ring-1 ring-cyan-400/50 shadow-cyan-500/25'
                   : getPlanColor(plan.id)
               }`}
-              onClick={() => onPlanSelect(plan.id)}
+              onClick={() => onPlanSelect(getPlanType(plan.name))}
             >
               {getPlanBadge(plan.id)}
 
@@ -185,11 +200,11 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
                 
                 {/* Preços com contraste mensal vs anual */}
                 <div className="mt-2">
-                  {selectedInterval === 'monthly' ? (
+                  {internalInterval === 'monthly' ? (
                     /* Preço mensal em destaque */
                     <div className="mb-1">
                       <span className="text-lg font-bold text-white">
-                        {plan.prices.find(p => p.interval === 'monthly')?.amountFormatted || 'R$ 0,00'}
+                        {plan.prices.find(p => p.interval === 'month')?.amountFormatted || 'R$ 0,00'}
                       </span>
                       <span className="text-cyan-200 ml-1 text-xs">/mês</span>
                     </div>
@@ -199,7 +214,7 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
                       {/* Preço mensal riscado */}
                       <div className="mb-1">
                         <span className="text-sm text-white/50 line-through">
-                          {plan.prices.find(p => p.interval === 'monthly')?.amountFormatted || 'R$ 0,00'}
+                          {plan.prices.find(p => p.interval === 'month')?.amountFormatted || 'R$ 0,00'}
                         </span>
                         <span className="text-white/40 text-xs ml-1">/mês</span>
                       </div>
@@ -207,9 +222,9 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
                       {/* Preço anual em destaque */}
                       <div className="mb-1">
                         <span className="text-lg font-bold text-white">
-                          {plan.prices.find(p => p.interval === 'annual')?.amountFormatted || 'R$ 0,00'}
+                          {plan.prices.find(p => p.interval === 'year')?.amountFormatted || 'R$ 0,00'}
                         </span>
-                        <span className="text-cyan-200 ml-1 text-xs">/mês</span>
+                        <span className="text-cyan-200 ml-1 text-xs">/ano</span>
                       </div>
                     </>
                   )}
@@ -219,12 +234,12 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
                     <p className="text-white/60 text-xs">
                       {selectedInterval === 'monthly' 
                         ? 'cobrado mensalmente' 
-                        : 'cobrado mensalmente com desconto anual'
+                        : 'cobrado anualmente com desconto'
                       }
                     </p>
-                    {selectedInterval === 'annual' && plan.prices.find(p => p.interval === 'annual')?.discount && (
+                    {internalInterval === 'annual' && plan.prices.find(p => p.interval === 'year')?.discount && (
                       <p className="text-emerald-400 text-xs font-medium">
-                        💰 {plan.prices.find(p => p.interval === 'annual')?.discount} desconto
+                        💰 {plan.prices.find(p => p.interval === 'year')?.discount} desconto
                       </p>
                     )}
                   </div>
@@ -243,21 +258,21 @@ const PricingPlans = ({ onPlanSelect, selectedPlan }) => {
               <div className="text-center mt-auto">
                 <button
                   className={`w-full py-1.5 px-2 text-xs rounded-md font-semibold transition-all duration-300 ${
-                    selectedPlan === plan.id
+                    selectedPlan === getPlanType(plan.name)
                       ? 'bg-gradient-to-r from-cyan-500 to-emerald-500 text-white hover:from-cyan-600 hover:to-emerald-600 shadow-lg shadow-cyan-500/25'
                       : 'bg-white/20 text-white hover:bg-white/30 border border-cyan-400/30'
                   }`}
                   onClick={(e) => {
                     e.stopPropagation();
-                    onPlanSelect(plan.id);
+                    onPlanSelect(getPlanType(plan.name));
                   }}
                 >
-                  {selectedPlan === plan.id ? 'Selecionado' : 'Selecionar'}
+                  {selectedPlan === getPlanType(plan.name) ? 'Selecionado' : 'Selecionar'}
                 </button>
                 
                 {/* Indicador de economia anual */}
                 <div className="mt-1 text-center">
-                  {selectedInterval === 'annual' ? (
+                  {internalInterval === 'annual' ? (
                     <span className="text-emerald-400 text-xs">
                       💰 Economia anual
                     </span>

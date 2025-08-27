@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { ArrowLeft, ArrowRight, CheckCircle } from 'lucide-react';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import PricingPlans from '../components/PricingPlans';
-import StripeCheckout from '../components/StripeCheckout';
+import SubscriptionCheckout from '../components/SubscriptionCheckout';
+import StepIndicator from '../components/StepIndicator';
 import NeuralNetworkBackground from '../NeuralNetworkBackground.jsx';
 import LandingNavbar from '../components/LandingNavbar.jsx';
 import axios from 'axios';
@@ -12,6 +13,7 @@ const SignUpWithPlans = () => {
   const location = useLocation();
   const [currentStep, setCurrentStep] = useState(1);
   const [selectedPlan, setSelectedPlan] = useState('pro'); // Default para o plano mais popular
+  const [selectedInterval, setSelectedInterval] = useState('monthly'); // Default para mensal
   const [userData, setUserData] = useState({
     first_name: '',
     last_name: '',
@@ -57,28 +59,34 @@ const SignUpWithPlans = () => {
   useEffect(() => {
     // ✅ VERIFICAR: Se há dados salvos no localStorage
     try {
-      const storedUserData = localStorage.getItem('signup_user_data');
-      const storedStep = localStorage.getItem('signup_current_step');
-      const storedPlan = localStorage.getItem('signup_selected_plan');
-      
-      if (storedUserData) {
-        const parsed = JSON.parse(storedUserData);
-        setUserData(parsed);
+              const storedUserData = localStorage.getItem('signup_user_data');
+        const storedStep = localStorage.getItem('signup_current_step');
+        const storedPlan = localStorage.getItem('signup_selected_plan');
+        const storedInterval = localStorage.getItem('signup_selected_interval');
         
-        // ✅ RECUPERAR: Step e plano salvos
-        if (storedStep) {
-          setCurrentStep(parseInt(storedStep));
-        }
-        
-        if (storedPlan) {
-          setSelectedPlan(storedPlan);
-        } else {
-          setSelectedPlan(parsed.planType || 'pro');
-        }
+        if (storedUserData) {
+          const parsed = JSON.parse(storedUserData);
+          setUserData(parsed);
+          
+          // ✅ RECUPERAR: Step, plano e intervalo salvos
+          if (storedStep) {
+            setCurrentStep(parseInt(storedStep));
+          }
+          
+          if (storedPlan) {
+            setSelectedPlan(storedPlan);
+          } else {
+            setSelectedPlan(parsed.planType || 'pro');
+          }
+          
+          if (storedInterval) {
+            setSelectedInterval(storedInterval);
+          }
         
         console.log('✅ SignUpWithPlans: Estado recuperado do localStorage:', {
           step: storedStep,
           plan: storedPlan,
+          interval: storedInterval,
           userData: parsed
         });
       }
@@ -241,7 +249,9 @@ const SignUpWithPlans = () => {
     setError(null);
   }, []);
 
-  const handleCheckoutSuccess = useCallback(async () => {
+  const handleCheckoutSuccess = useCallback(async (data) => {
+    console.log('✅ Assinatura ativada com sucesso:', data);
+    
     // ✅ ARMAZENAR: Dados do usuário no localStorage para uso no login automático
     try {
       const userDataForStorage = {
@@ -251,7 +261,11 @@ const SignUpWithPlans = () => {
         fullName: `${userData.first_name} ${userData.last_name}`.trim(),
         phone: userData.phone,
         password: userData.password, // ✅ IMPORTANTE: Incluir senha para criação no webhook
-        planType: selectedPlan,
+        planType: data.planType || selectedPlan,
+        interval: data.interval || selectedInterval,
+        subscriptionId: data.subscription?.id,
+        trialEnd: data.subscription?.trial_end,
+        setupIntentId: data.setupIntent?.id,
         source: 'signup_with_plans',
         timestamp: new Date().toISOString()
       };
@@ -269,7 +283,9 @@ const SignUpWithPlans = () => {
       navigate('/payment/success', {
         state: {
           userData: userDataForStorage,
-          planType: selectedPlan,
+          planType: data.planType || selectedPlan,
+          interval: data.interval || selectedInterval,
+          subscription: data.subscription,
           source: 'signup_with_plans',
           timestamp: new Date().toISOString()
         }
@@ -279,53 +295,40 @@ const SignUpWithPlans = () => {
       console.error('❌ SignUpWithPlans: Erro ao salvar dados do usuário:', error);
       setError('Erro ao processar dados do usuário. Tente novamente.');
     }
-  }, [userData, selectedPlan, navigate]);
+  }, [userData, selectedPlan, selectedInterval, navigate]);
 
   const handleCheckoutError = useCallback((error) => {
     setError(error.message || 'Erro no processamento do pagamento');
   }, []);
 
   const handleStepClick = useCallback((stepId) => {
-    // Só permite navegar para etapas anteriores ou a atual
-    if (stepId < currentStep) {
+    // ✅ PERMITIR: Navegação livre entre todas as etapas
+    if (stepId !== currentStep) {
       setCurrentStep(stepId);
       setError('');
+      
+      // ✅ PERSISTIR: Step atual no localStorage
+      try {
+        localStorage.setItem('signup_current_step', stepId.toString());
+        console.log('✅ SignUpWithPlans: Step alterado para:', stepId);
+        
+        // ✅ FEEDBACK: Mostrar mensagem de confirmação
+        const stepTitle = steps.find(s => s.id === stepId)?.title || `Etapa ${stepId}`;
+        console.log(`✅ Navegando para: ${stepTitle}`);
+      } catch (error) {
+        console.error('❌ Erro ao salvar step no localStorage:', error);
+      }
     }
-  }, [currentStep]);
+  }, [currentStep, steps]);
 
+    // ✅ COMPONENTE: Indicador de etapas clicável
   const renderStepIndicator = useCallback(() => (
-    <div className="flex items-center justify-center mb-2">
-      {steps.map((step, index) => (
-        <React.Fragment key={step.id}>
-          <div className="flex flex-col items-center">
-            <div
-              className={`w-6 h-6 rounded-full flex items-center justify-center border transition-colors ${
-                currentStep >= step.id
-                  ? 'bg-cyan-400 border-cyan-400 text-gray-900'
-                  : 'border-cyan-400/30 text-cyan-400/30'
-              }`}
-            >
-              {currentStep > step.id ? (
-                <CheckCircle className="w-4 h-4" />
-              ) : (
-                step.id
-              )}
-            </div>
-            <span className={`text-xs mt-1 ${
-              currentStep >= step.id ? 'text-cyan-400' : 'text-cyan-400/30'
-            }`}>
-              {step.title}
-            </span>
-          </div>
-          {index < steps.length - 1 && (
-            <div className={`w-16 h-0.5 mx-2 ${
-              currentStep > step.id ? 'bg-cyan-400' : 'bg-cyan-400/30'
-            }`} />
-          )}
-        </React.Fragment>
-      ))}
-    </div>
-  ), [currentStep, steps]);
+    <StepIndicator
+      steps={steps}
+      currentStep={currentStep}
+      onStepClick={handleStepClick}
+    />
+  ), [steps, currentStep, handleStepClick]);
 
   const renderStep1 = useCallback(() => (
     <div className="max-w-md mx-auto">
@@ -533,11 +536,18 @@ const SignUpWithPlans = () => {
     <div>
       <PricingPlans
         selectedPlan={selectedPlan}
+        selectedInterval={selectedInterval}
         onPlanSelect={(planType) => {
           setSelectedPlan(planType);
           
           // ✅ PERSISTIR: Plano selecionado
           localStorage.setItem('signup_selected_plan', planType);
+        }}
+        onIntervalChange={(interval) => {
+          setSelectedInterval(interval);
+          
+          // ✅ PERSISTIR: Intervalo selecionado
+          localStorage.setItem('signup_selected_interval', interval);
         }}
       />
       {error && (
@@ -548,24 +558,19 @@ const SignUpWithPlans = () => {
         </div>
       )}
     </div>
-  ), [selectedPlan, error]);
+  ), [selectedPlan, selectedInterval, error]);
 
   const renderStep3 = useCallback(() => (
     <div className="space-y-4">
-      {/* ✅ DEBUG: Indicador visual de que estamos no step 3 */}
-      <div className="bg-green-900/20 border border-green-400/30 rounded-lg p-4">
-        <h3 className="text-green-200 text-sm mb-2">✅ Step 3: Checkout de Pagamento</h3>
-        <p className="text-green-300 text-xs">Renderizando componente StripeCheckout...</p>
-      </div>
-      
-      <StripeCheckout
+      <SubscriptionCheckout
         selectedPlan={stableSelectedPlan}
+        selectedInterval={selectedInterval}
         userData={stableUserData}
         onSuccess={handleCheckoutSuccess}
         onError={handleCheckoutError}
       />
     </div>
-  ), [stableSelectedPlan, stableUserData, handleCheckoutSuccess, handleCheckoutError]);
+  ), [stableSelectedPlan, selectedInterval, stableUserData, handleCheckoutSuccess, handleCheckoutError]);
 
   const renderStepContent = useCallback(() => {
     switch (currentStep) {

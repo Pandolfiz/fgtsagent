@@ -37,7 +37,7 @@ const StripeCheckout = ({
         },
         // ✅ IMPORTANTE: false para subscription
         usePopup: false,
-        // ✅ URLs simples
+        // ✅ URLs simples (o session_id será armazenado no localStorage)
         successUrl: `${window.location.origin}/payment/success?plan=${selectedPlan}&status=success`,
         cancelUrl: `${window.location.origin}/payment/cancel?plan=${selectedPlan}&status=cancelled`
       };
@@ -48,6 +48,14 @@ const StripeCheckout = ({
       
       if (response.data.success && response.data.data?.url) {
         console.log('✅ Checkout Session criada, redirecionando...');
+        
+        // ✅ ARMAZENAR: session_id no localStorage para a página de sucesso
+        if (response.data.data.sessionId) {
+          localStorage.setItem('stripe_session_id', response.data.data.sessionId);
+          console.log('✅ Session ID armazenado no localStorage:', response.data.data.sessionId);
+        }
+        
+        // ✅ REDIRECIONAR: Para o Stripe
         window.location.href = response.data.data.url;
       } else {
         throw new Error(response.data.message || 'Erro ao criar sessão');

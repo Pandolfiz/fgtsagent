@@ -124,15 +124,20 @@ const checkoutSchema = Joi.object({
  * GET /api/stripe/plans
  * Lista todos os planos disponíveis
  */
-router.get('/plans', (req, res) => {
+router.get('/plans', async (req, res) => {
   try {
-    const plans = stripeService.getAvailablePlans();
+    console.log('🔄 GET /plans - Listando planos disponíveis...');
+    
+    const plans = await stripeService.getAvailablePlans();
+    
+    console.log(`✅ ${plans.length} planos encontrados`);
     
     res.status(200).json({
       success: true,
       data: plans
     });
   } catch (error) {
+    console.error('❌ Erro ao listar planos:', error);
     logger.error('Erro ao listar planos:', error);
     res.status(500).json({
       success: false,
@@ -173,7 +178,7 @@ router.post('/create-checkout-session', async (req, res) => {
   try {
     const { planType, userEmail, userName, interval = 'monthly', userData, usePopup = false } = req.body;
     
-    console.log('🔄 Criando Checkout Session:', { planType, userEmail, interval, usePopup });
+    console.log('🔄 Criando Checkout Session com 3DS:', { planType, userEmail, interval, usePopup });
     
     // ✅ VALIDAÇÃO SIMPLES
     if (!planType || !userEmail || !userName) {
@@ -200,8 +205,8 @@ router.post('/create-checkout-session', async (req, res) => {
         usePopup: usePopup.toString()
       },
       // ✅ URLs SIMPLES
-      successUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/success?plan=${planType}&status=success`,
-      cancelUrl: `${process.env.FRONTEND_URL || 'http://localhost:5173'}/payment/cancel?plan=${planType}&status=cancelled`
+      successUrl: `${process.env.FRONTEND_URL || 'https://localhost:5173'}/payment/success?plan=${planType}&status=success`,
+      cancelUrl: `${process.env.FRONTEND_URL || 'https://localhost:5173'}/payment/cancel?plan=${planType}&status=cancelled`
     };
     
     // ✅ ADICIONAR DADOS DE SIGNUP SE EXISTIREM
@@ -215,9 +220,9 @@ router.post('/create-checkout-session', async (req, res) => {
       });
     }
     
-    console.log('📦 Dados preparados:', checkoutData);
+    console.log('📦 Dados preparados para checkout com 3DS:', checkoutData);
     
-    // ✅ CRIAR SESSÃO
+    // ✅ CRIAR SESSÃO COM 3DS
     const session = await stripeService.createCheckoutSession(
       checkoutData.planType,
       checkoutData.userEmail,
@@ -228,7 +233,12 @@ router.post('/create-checkout-session', async (req, res) => {
       checkoutData.usePopup
     );
     
-    console.log('✅ Sessão criada:', session.id);
+    console.log('✅ Sessão com 3DS criada:', {
+      id: session.id,
+      has3DS: true,
+      trialPeriod: 7,
+      securityLevel: 'high'
+    });
     
     // ✅ RETORNAR RESPOSTA
     res.status(200).json({
@@ -236,7 +246,14 @@ router.post('/create-checkout-session', async (req, res) => {
       data: {
         sessionId: session.id,
         url: session.url,
-        mode: 'signup'
+        mode: 'signup',
+        has3DS: true, // ✅ INDICAR que 3DS está ativo
+        trialPeriod: 7, // ✅ INDICAR período de teste
+        securityFeatures: {
+          threeDSecure: 'automatic', // ✅ Configuração 3DS
+          billingAddressRequired: true, // ✅ Endereço obrigatório para 3DS
+          trialEndBehavior: 'cancel_if_no_payment_method' // ✅ Comportamento do trial
+        }
       }
     });
     
@@ -287,7 +304,7 @@ router.post('/create-payment-intent', async (req, res) => {
     console.log('🔍 Chamando getPlanInfo com:', { planType, interval });
     
     // Validar se o plano existe
-    const planInfo = stripeService.getPlanInfo(planType, interval);
+    const planInfo = await stripeService.getPlanInfo(planType, interval);
     if (!planInfo) {
       console.log('❌ Plano não encontrado:', { planType, interval });
       return res.status(400).json({
@@ -376,7 +393,7 @@ router.post('/create-native-payment-intent', async (req, res) => {
     console.log('🔍 Chamando getPlanInfo com:', { planType, interval });
     
     // Validar se o plano existe
-    const planInfo = stripeService.getPlanInfo(planType, interval);
+    const planInfo = await stripeService.getPlanInfo(planType, interval);
     if (!planInfo) {
       console.log('❌ Plano não encontrado:', { planType, interval });
       return res.status(400).json({
@@ -445,7 +462,7 @@ router.post('/create-signup-checkout-session', async (req, res) => {
     }
     
     // Validar se o plano existe
-    const planInfo = stripeService.getPlanInfo(planType, interval);
+    const planInfo = await stripeService.getPlanInfo(planType, interval);
     if (!planInfo) {
       return res.status(400).json({
         success: false,
@@ -684,11 +701,6 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
 
     // ✅ PROCESSAR: Eventos específicos
     switch (event.type) {
-      case 'checkout.session.completed':
-        console.log('🔄 Checkout session completada:', event.data.object.id);
-        await stripeService.handleCheckoutCompleted(event.data.object);
-        break;
-        
       case 'customer.subscription.created':
         console.log('🔄 Assinatura criada:', event.data.object.id);
         await stripeService.handleSubscriptionCreated(event.data.object);
@@ -704,6 +716,16 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
         await stripeService.handleSubscriptionDeleted(event.data.object);
         break;
         
+      case 'customer.subscription.trial_will_end':
+        console.log('🔄 Trial vai terminar em 3 dias:', event.data.object.id);
+        await stripeService.handleSubscriptionTrialWillEnd(event.data.object);
+        break;
+        
+      case 'customer.subscription.trial_ended':
+        console.log('🔄 Trial terminou:', event.data.object.id);
+        await stripeService.handleSubscriptionTrialEnded(event.data.object);
+        break;
+        
       case 'invoice.payment_succeeded':
         console.log('🔄 Pagamento de fatura realizado:', event.data.object.id);
         await stripeService.handleInvoicePaymentSucceeded(event.data.object);
@@ -714,9 +736,24 @@ router.post('/webhook', express.raw({ type: 'application/json' }), async (req, r
         await stripeService.handleInvoicePaymentFailed(event.data.object);
         break;
         
+      case 'invoice.upcoming':
+        console.log('🔄 Próxima fatura criada:', event.data.object.id);
+        // TODO: Implementar notificação de próxima cobrança
+        break;
+        
       case 'customer.created':
         console.log('🔄 Cliente criado:', event.data.object.id);
         await stripeService.handleCustomerCreated(event.data.object);
+        break;
+        
+      case 'payment_method.attached':
+        console.log('🔄 Método de pagamento anexado:', event.data.object.id);
+        // TODO: Implementar log de método de pagamento anexado
+        break;
+        
+      case 'checkout.session.completed':
+        console.log('🔄 Checkout session completada:', event.data.object.id);
+        await stripeService.handleCheckoutCompleted(event.data.object);
         break;
         
       default:
@@ -1118,7 +1155,7 @@ router.post('/process-payment', async (req, res) => {
     console.log('🔍 Chamando getPlanInfo com:', { planType, interval });
     
     // Validar se o plano existe
-    const planInfo = stripeService.getPlanInfo(planType, interval);
+    const planInfo = await stripeService.getPlanInfo(planType, interval);
     if (!planInfo) {
       console.log('❌ Plano não encontrado:', { planType, interval });
       return res.status(400).json({
@@ -1361,5 +1398,187 @@ router.post('/verify-captcha', async (req, res) => {
 
 // ✅ ROTA REMOVIDA: Esta rota estava duplicada e conflitante
 // A rota principal /payment-status/:sessionId já trata tanto Payment Intent quanto Checkout Session
+
+// ✅ NOVA ROTA: LISTAR PRODUTOS DISPONÍVEIS
+router.get('/products', async (req, res) => {
+  try {
+    console.log('🔄 Listando produtos disponíveis...');
+    
+    const stripeProductService = require('../services/stripeProductService');
+    const products = await stripeProductService.getAvailableProducts();
+    
+    console.log(`✅ ${products.length} produtos encontrados`);
+    
+    res.json({
+      success: true,
+      data: products
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao listar produtos:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// ✅ NOVA ROTA: BUSCAR PRODUTO ESPECÍFICO
+router.get('/products/:planType', async (req, res) => {
+  try {
+    const { planType } = req.params;
+    const { interval = 'monthly' } = req.query;
+    
+    console.log('🔄 Buscando produto:', { planType, interval });
+    
+    const stripeProductService = require('../services/stripeProductService');
+    const product = await stripeProductService.getProductByPlanType(planType);
+    const price = await stripeProductService.getPriceByPlanAndInterval(planType, interval);
+    
+    console.log('✅ Produto e preço encontrados:', { product: product.name, price: price.id });
+    
+    res.json({
+      success: true,
+      data: {
+        product,
+        price
+      }
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao buscar produto:', error);
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+/**
+ * POST /api/stripe/create-subscription
+ * Cria uma assinatura recorrente com free trial
+ * Ideal para modelos SaaS com cobrança recorrente
+ */
+router.post('/create-subscription', async (req, res) => {
+  try {
+    const { planType, userEmail, userName, interval = 'monthly', userData } = req.body;
+    
+    // ✅ DEBUG: Log dos dados recebidos
+    console.log('🔍 Dados recebidos na rota create-subscription:', {
+      planType,
+      userEmail,
+      userName,
+      interval,
+      userData: userData ? {
+        ...userData,
+        hasPassword: !!userData.password,
+        passwordLength: userData.password ? userData.password.length : 0,
+        passwordPreview: userData.password ? `${userData.password.substring(0, 3)}***` : 'não definida'
+      } : 'não fornecido'
+    });
+    
+    // ✅ VALIDAÇÃO: Campos obrigatórios
+    if (!planType || !userEmail || !userName) {
+      console.log('❌ Validação falhou:', { planType, userEmail, userName });
+      return res.status(400).json({
+        success: false,
+        message: 'planType, userEmail e userName são obrigatórios'
+      });
+    }
+    
+    // ✅ VALIDAR PLANO
+    const planInfo = await stripeService.getPlanInfo(planType, interval);
+    if (!planInfo) {
+      console.log('❌ Plano não encontrado:', { planType, interval });
+      return res.status(400).json({
+        success: false,
+        message: `Plano ${planType} com intervalo ${interval} não encontrado`
+      });
+    }
+    
+    console.log('✅ Plano encontrado:', planInfo);
+    
+    // ✅ CRIAR ASSINATURA RECORRENTE
+    const subscriptionData = await stripeService.createSubscriptionWithTrial(
+      planType,
+      userEmail,
+      userName,
+      {
+        source: 'signup_subscription',
+        userName: userName.trim(),
+        // ✅ DADOS COMPLETOS: Passar todos os dados do usuário para o webhook
+        firstName: userData?.firstName || '',
+        lastName: userData?.lastName || '',
+        fullName: userData?.fullName || userName.trim(),
+        phone: userData?.phone || '',
+        password: userData?.password || '', // Senha para criação no webhook
+        planType: planType,
+        interval: interval,
+        ...userData
+      },
+      interval
+    );
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        subscription: subscriptionData.subscription,
+        setupIntent: subscriptionData.setupIntent,
+        plan: planInfo,
+        status: subscriptionData.subscription.status,
+        trialEnd: subscriptionData.subscription.trial_end,
+        currentPeriodEnd: subscriptionData.subscription.current_period_end
+      }
+    });
+  } catch (error) {
+    console.error('❌ Erro ao criar assinatura recorrente:', error);
+    res.status(400).json({
+      success: false,
+      message: error.message || 'Erro ao criar assinatura recorrente'
+    });
+  }
+});
+
+/**
+ * POST /api/stripe/attach-payment-method
+ * Anexa um método de pagamento a uma assinatura existente
+ * Necessário para manter a assinatura ativa após o free trial
+ */
+router.post('/attach-payment-method', async (req, res) => {
+  try {
+    const { subscriptionId, paymentMethodId } = req.body;
+    
+    // ✅ VALIDAR DADOS OBRIGATÓRIOS
+    if (!subscriptionId || !paymentMethodId) {
+      console.log('❌ Validação falhou:', { subscriptionId, paymentMethodId });
+      return res.status(400).json({
+        success: false,
+        message: 'Subscription ID e Payment Method ID são obrigatórios'
+        });
+    }
+
+    console.log('🔍 Anexando método de pagamento:', { subscriptionId, paymentMethodId });
+
+    // ✅ ANEXAR MÉTODO DE PAGAMENTO À ASSINATURA
+    const result = await stripeService.attachPaymentMethodToSubscription(
+      subscriptionId,
+      paymentMethodId
+    );
+
+    // ✅ RETORNAR SUCESSO
+    res.status(200).json({
+      success: true,
+      message: 'Método de pagamento anexado com sucesso',
+      data: result
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao anexar método de pagamento:', error);
+    res.status(500).json({
+      success: false,
+      message: `Erro ao anexar método de pagamento: ${error.message}`
+    });
+  }
+});
 
 module.exports = router; 

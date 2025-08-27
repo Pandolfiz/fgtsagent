@@ -99,6 +99,17 @@ class TokenManager {
       sessionStorage.removeItem(this.STORAGE_KEYS.PRIMARY);
       sessionStorage.removeItem(this.STORAGE_KEYS.SUPABASE);
       
+      // 3. IMPORTANTE: Limpar estado interno do Supabase
+      try {
+        if (window.supabase && window.supabase.auth) {
+          // Forçar logout do Supabase para limpar estado interno
+          window.supabase.auth.signOut({ scope: 'local' });
+          console.log('🔄 TokenManager: Estado interno do Supabase limpo');
+        }
+      } catch (supabaseError) {
+        console.warn('⚠️ TokenManager: Erro ao limpar Supabase:', supabaseError);
+      }
+      
       console.log('✅ TokenManager: Token removido com sucesso');
       return true;
     } catch (error) {
@@ -153,6 +164,55 @@ class TokenManager {
     
     const elapsed = Date.now() - parseInt(timestamp);
     return elapsed < 60000; // 60 segundos (aumentado)
+  }
+
+  /**
+   * Limpa completamente o estado de autenticação
+   * IMPORTANTE: Usar quando houver problemas de persistência
+   */
+  async forceClearAll() {
+    try {
+      console.log('🧹 TokenManager: Limpeza forçada de todo estado de autenticação...');
+      
+      // 1. Limpar tokens
+      this.clearToken();
+      
+      // 2. Limpar Supabase completamente
+      try {
+        if (window.supabase && window.supabase.auth) {
+          // Forçar logout global
+          await window.supabase.auth.signOut({ scope: 'global' });
+          console.log('🔄 TokenManager: Logout global do Supabase realizado');
+        }
+      } catch (supabaseError) {
+        console.warn('⚠️ TokenManager: Erro no logout global:', supabaseError);
+      }
+      
+      // 3. Limpar todos os cookies relacionados
+      try {
+        document.cookie.split(";").forEach(function(c) { 
+          document.cookie = c.replace(/^ +/, "").replace(/=.*/, "=;expires=" + new Date().toUTCString() + ";path=/"); 
+        });
+        console.log('🍪 TokenManager: Cookies limpos');
+      } catch (cookieError) {
+        console.warn('⚠️ TokenManager: Erro ao limpar cookies:', cookieError);
+      }
+      
+      // 4. Limpar storage do navegador
+      try {
+        localStorage.clear();
+        sessionStorage.clear();
+        console.log('🗑️ TokenManager: Storage limpo');
+      } catch (storageError) {
+        console.warn('⚠️ TokenManager: Erro ao limpar storage:', storageError);
+      }
+      
+      console.log('✅ TokenManager: Limpeza forçada concluída');
+      return true;
+    } catch (error) {
+      console.error('❌ TokenManager: Erro na limpeza forçada:', error);
+      return false;
+    }
   }
 }
 

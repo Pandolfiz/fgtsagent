@@ -1,0 +1,56 @@
+[
+  {
+    "productId": "prod_SwiWPpxpNuodBO",
+    "name": "Plano Basic - Teste",
+    "prices": [
+      {
+        "priceId": "price_1S0p54HN4szZ74xnkLFVClZj",
+        "amount": 2900,
+        "currency": "brl",
+        "interval": "month"
+      },
+      {
+        "priceId": "price_1S0p54HN4szZ74xnPEiGYjwu",
+        "amount": 29000,
+        "currency": "brl",
+        "interval": "year"
+      }
+    ]
+  },
+  {
+    "productId": "prod_SwiW3Qen6fdOpz",
+    "name": "Plano Pro - Teste",
+    "prices": [
+      {
+        "priceId": "price_1S0p55HN4szZ74xnUXyEQNVk",
+        "amount": 5900,
+        "currency": "brl",
+        "interval": "month"
+      },
+      {
+        "priceId": "price_1S0p55HN4szZ74xnnkiiSnk9",
+        "amount": 59000,
+        "currency": "brl",
+        "interval": "year"
+      }
+    ]
+  },
+  {
+    "productId": "prod_SwiWEyq1sDVCON",
+    "name": "Plano Premium - Teste",
+    "prices": [
+      {
+        "priceId": "price_1S0p56HN4szZ74xncoRexLm3",
+        "amount": 9900,
+        "currency": "brl",
+        "interval": "month"
+      },
+      {
+        "priceId": "price_1S0p56HN4szZ74xnzhuhdYZC",
+        "amount": 99000,
+        "currency": "brl",
+        "interval": "year"
+      }
+    ]
+  }
+]
