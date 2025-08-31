@@ -431,16 +431,14 @@ const login = async (req, res) => {
     // ✅ ADICIONAR: Header para indicar login recente (ajuda o middleware a aguardar sincronização)
     res.setHeader('X-Recent-Login', 'true');
 
+    // ✅ CORRIGIDO: Retornar sessão do Supabase para compatibilidade com frontend
     return res.status(200).json({
       success: true,
       user: {
         id: data.user.id,
         email: data.user.email
       },
-      session: {
-        accessToken,
-        refreshToken
-      },
+      session: data.session, // ✅ Usar sessão original do Supabase
       message: 'Login realizado com sucesso'
     });
   } catch (err) {

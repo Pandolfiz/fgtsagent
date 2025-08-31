@@ -1,334 +1,788 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { loadStripe } from '@stripe/stripe-js';
+import React, { useState, useEffect } from 'react';
 import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
-import { CheckCircle, CreditCard, Lock, Shield, Clock, Calendar, Zap } from 'lucide-react';
-import api from '../utils/api';
+import { loadStripe } from '@stripe/stripe-js';
+import axios from 'axios';
 
-// ✅ CONFIGURAÇÃO: Stripe (usar chave pública)
-const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 'pk_test_...');
-
-// ✅ COMPONENTE: Formulário de assinatura recorrente
-const SubscriptionForm = ({ selectedPlan, selectedInterval, userData, onSuccess, onError }) => {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [loading, setLoading] = useState(false);
+// ✅ NOVO: Componente para criação de usuário no Stripe
+const UserCreator = ({ onUserCreated, onError }) => {
+  const [formData, setFormData] = useState({
+    first_name: 'Teste',
+    last_name: 'Usuário',
+    email: 'teste@exemplo.com',
+    phone: ''
+  });
+  const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState(null);
-  const [processing, setProcessing] = useState(false);
-  const [succeeded, setSucceeded] = useState(false);
 
-  // ✅ CRIAR ASSINATURA RECORRENTE
-  const createSubscription = useCallback(async () => {
+  const handleInputChange = (e) => {
+    const { name, value } = e.target;
+    console.log('🔍 Input change:', { name, value, currentFormData: formData });
+    setFormData(prev => {
+      const newData = {
+        ...prev,
+        [name]: value
+      };
+      console.log('🔍 New form data:', newData);
+      return newData;
+    });
+  };
+
+  const createUser = async () => {
+    if (!formData.first_name || !formData.last_name || !formData.email) {
+      setError('Por favor, preencha todos os campos obrigatórios');
+        return;
+      }
+
+    setIsCreating(true);
+    setError(null);
+
     try {
-      setLoading(true);
-      setError(null);
-
-      console.log('🔄 Criando assinatura recorrente...', { selectedPlan, selectedInterval });
-
-      const response = await api.post('/stripe/create-subscription', {
-        planType: selectedPlan,
-        userEmail: userData.email,
-        userName: `${userData.first_name} ${userData.last_name}`,
-        interval: selectedInterval,
-        userData: {
-          firstName: userData.first_name,
-          lastName: userData.last_name,
-          phone: userData.phone,
-          password: userData.password,
-          planType: selectedPlan,
-          source: 'signup_with_plans'
-        }
+      console.log('🔍 Criando usuário no Stripe...');
+      
+              const response = await axios.post('/api/stripe/create-customer', {
+        name: `${formData.first_name} ${formData.last_name}`.trim(),
+        email: formData.email,
+        phone: formData.phone || undefined
       });
 
-      if (response.data.success && response.data.data?.subscription) {
-        console.log('✅ Assinatura criada:', response.data.data.subscription);
-        return response.data.data;
+      if (response.data.success) {
+        console.log('✅ Usuário criado no Stripe:', response.data.customer);
+        onUserCreated(response.data.customer);
       } else {
-        throw new Error(response.data.message || 'Erro ao criar assinatura');
+        throw new Error(response.data.error || 'Erro ao criar usuário');
       }
-    } catch (err) {
-      console.error('❌ Erro ao criar assinatura:', err);
-      setError(err.message || 'Erro ao criar assinatura');
-      throw err;
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedPlan, selectedInterval, userData]);
 
-  // ✅ PROCESSAR ASSINATURA
-  const handleSubmit = useCallback(async (event) => {
-    event.preventDefault();
-    
-    if (!stripe || !elements) {
+    } catch (createError) {
+      console.error('❌ Erro ao criar usuário:', createError);
+      setError(`Erro ao criar usuário: ${createError.message}`);
+      onError?.(createError);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  console.log('🔍 UserCreator render:', { formData, isCreating, error });
+  
+  return (
+    <div className="space-y-4">
+      {/* ✅ TESTE: Campo simples para debug */}
+      <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+        <h4 className="font-medium text-yellow-800 mb-2">Teste de Campo</h4>
+        <input
+          type="text"
+          value="Campo de teste"
+          onChange={(e) => console.log('Teste input change:', e.target.value)}
+          className="w-full px-3 py-2 border border-yellow-300 rounded-md"
+          placeholder="Teste"
+        />
+      </div>
+      
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Nome *
+          </label>
+          <input
+            type="text"
+            name="first_name"
+            value={formData.first_name}
+            onChange={handleInputChange}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Digite seu nome"
+            style={{ pointerEvents: 'auto', userSelect: 'auto' }}
+          />
+        </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">
+            Sobrenome *
+          </label>
+          <input
+            type="text"
+            name="last_name"
+            value={formData.last_name}
+            onChange={handleInputChange}
+            required
+            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+            placeholder="Digite seu sobrenome"
+            style={{ pointerEvents: 'auto', userSelect: 'auto' }}
+          />
+        </div>
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Email *
+        </label>
+        <input
+          type="email"
+          name="email"
+          value={formData.email}
+          onChange={handleInputChange}
+          required
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          placeholder="Digite seu email"
+          style={{ pointerEvents: 'auto', userSelect: 'auto' }}
+        />
+      </div>
+      
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">
+          Telefone (opcional)
+        </label>
+        <input
+          type="tel"
+          name="phone"
+          value={formData.phone}
+          onChange={handleInputChange}
+          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          placeholder="Digite seu telefone"
+          style={{ pointerEvents: 'auto', userSelect: 'auto' }}
+        />
+      </div>
+      
+      <button
+        type="button"
+        onClick={createUser}
+        disabled={isCreating}
+        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded-lg transition-colors"
+      >
+        {isCreating ? 'Criando usuário...' : 'Criar usuário e continuar'}
+      </button>
+      
+      {error && (
+        <div className="mt-2 text-red-600 text-sm">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ✅ NOVO: Componente para seleção de plano e criação de SetupIntent
+const PlanSelector = ({ userData, onSetupIntentCreated, onError }) => {
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState(null);
+
+  const plans = [
+    {
+      id: 'basic_monthly',
+      name: 'Plano Básico',
+      type: 'basic',
+      price: 9990, // em centavos
+      price_id: 'price_123456789',
+      description: 'Funcionalidades básicas para começar'
+    },
+    {
+      id: 'pro_monthly',
+      name: 'Plano Pro',
+      type: 'pro',
+      price: 19990, // em centavos
+      price_id: 'price_987654321',
+      description: 'Funcionalidades avançadas para profissionais'
+    },
+    {
+      id: 'enterprise_monthly',
+      name: 'Plano Enterprise',
+      type: 'enterprise',
+      price: 49990, // em centavos
+      price_id: 'price_456789123',
+      description: 'Solução completa para empresas'
+    }
+  ];
+
+  const createSetupIntent = async () => {
+    if (!selectedPlan || !userData) {
+      setError('Por favor, selecione um plano');
       return;
     }
 
+    setIsCreating(true);
+    setError(null);
+
     try {
-      setProcessing(true);
-      setError(null);
+      console.log('🔍 Criando SetupIntent...');
+      
+              const response = await axios.post('/api/stripe/create-setup-intent', {
+        customerId: userData.id,
+        planId: selectedPlan.id
+      });
 
-      // ✅ CRIAR ASSINATURA
-      const subscriptionData = await createSubscription();
-
-      // ✅ CONFIRMAR SETUP DO CARTÃO (não pagamento)
-      const { error: setupError, setupIntent } = await stripe.confirmCardSetup(
-        subscriptionData.setupIntent.client_secret,
-        {
-          payment_method: {
-            card: elements.getElement(CardElement),
-            billing_details: {
-              name: `${userData.first_name} ${userData.last_name}`,
-              email: userData.email,
-              phone: userData.phone
-            }
-          }
-        }
-      );
-
-      if (setupError) {
-        console.error('❌ Erro na configuração do cartão:', setupError);
-        setError(setupError.message || 'Erro na validação do cartão');
-      } else if (setupIntent.status === 'succeeded') {
-        console.log('✅ Cartão configurado com sucesso:', setupIntent);
-        
-        // ✅ IMPORTANTE: Anexar método de pagamento à assinatura
-        try {
-          const attachResponse = await api.post('/stripe/attach-payment-method', {
-            subscriptionId: subscriptionData.subscription.id,
-            paymentMethodId: setupIntent.payment_method
-          });
-          
-          if (attachResponse.data.success) {
-            console.log('✅ Método de pagamento anexado à assinatura');
-            
-            // ✅ IMPORTANTE: Tentar login automático após sucesso
-            try {
-              console.log('🔄 Tentando login automático...');
-              await new Promise(resolve => setTimeout(resolve, 2000)); // Aguardar 2s para webhook processar
-              
-              const loginResponse = await api.get(`/auth/check-auto-login/${userData.email}`);
-              console.log('🔍 Resposta do login automático:', loginResponse.data);
-              
-              if (loginResponse.data.hasAutoLogin) {
-                console.log('✅ Login automático disponível!');
-              } else {
-                console.log('⚠️ Login automático não disponível ainda');
-                
-                // ✅ IMPORTANTE: Limpar estado se login automático falhar
-                try {
-                  console.log('🧹 Limpando estado de autenticação...');
-                  await api.post('/auth/force-clear-state', { email: userData.email });
-                  console.log('✅ Estado limpo com sucesso');
-                } catch (clearError) {
-                  console.warn('⚠️ Erro ao limpar estado:', clearError);
-                }
-              }
-            } catch (loginError) {
-              console.warn('⚠️ Erro ao verificar login automático:', loginError);
-              
-              // ✅ IMPORTANTE: Limpar estado em caso de erro
-              try {
-                console.log('🧹 Limpando estado de autenticação após erro...');
-                await api.post('/auth/force-clear-state', { email: userData.email });
-                console.log('✅ Estado limpo com sucesso');
-              } catch (clearError) {
-                console.warn('⚠️ Erro ao limpar estado:', clearError);
-              }
-              
-              // Não falhar o checkout por causa do login automático
-            }
-            
-            setSucceeded(true);
-            
-            // ✅ NOTIFICAR SUCESSO
-            if (onSuccess) {
-              onSuccess({
-                subscription: subscriptionData.subscription,
-                setupIntent,
-                planType: selectedPlan,
-                interval: selectedInterval,
-                userData
-              });
-            }
-          } else {
-            throw new Error('Falha ao anexar método de pagamento');
-          }
-        } catch (attachError) {
-          console.error('❌ Erro ao anexar método de pagamento:', attachError);
-          setError('Cartão validado, mas falha ao configurar assinatura. Tente novamente.');
-        }
+      if (response.data.success) {
+        console.log('✅ SetupIntent criado:', response.data.setupIntent);
+        onSetupIntentCreated(response.data.setupIntent, selectedPlan);
+      } else {
+        throw new Error(response.data.error || 'Erro ao criar SetupIntent');
       }
-    } catch (err) {
-      console.error('❌ Erro no checkout:', err);
-      setError(err.message || 'Erro no checkout');
-      if (onError) onError(err);
-    } finally {
-      setProcessing(false);
-    }
-  }, [stripe, elements, selectedPlan, selectedInterval, userData, createSubscription, onSuccess, onError]);
 
-  // ✅ ESTILOS DO CARD ELEMENT
-  const cardElementOptions = {
-    style: {
-      base: {
-        fontSize: '16px',
-        color: '#ffffff',
-        fontFamily: 'Inter, sans-serif',
-        '::placeholder': {
-          color: '#94a3b8',
-        },
-        backgroundColor: 'transparent',
-      },
-      invalid: {
-        color: '#ef4444',
-      },
-    },
-    hidePostalCode: true,
+    } catch (createError) {
+      console.error('❌ Erro ao criar SetupIntent:', createError);
+      setError(`Erro ao criar SetupIntent: ${createError.message}`);
+      onError?.(createError);
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  if (succeeded) {
-    return (
-      <div className="text-center py-8">
-        <CheckCircle className="w-16 h-16 text-green-400 mx-auto mb-4" />
-        <h3 className="text-xl font-semibold text-white mb-2">Assinatura Ativada!</h3>
-        <p className="text-cyan-200 mb-4">Seu free trial começou agora.</p>
-        <div className="bg-emerald-500/20 border border-emerald-400/30 rounded-lg p-4 max-w-sm mx-auto">
-          <div className="flex items-center justify-center space-x-2 text-emerald-300 mb-2">
-            <Clock className="w-5 h-5" />
-            <span className="font-semibold">Free Trial Ativo</span>
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        {plans.map((plan) => (
+          <div
+            key={plan.id}
+            className={`p-4 border rounded-lg cursor-pointer transition-all ${
+              selectedPlan?.id === plan.id
+                ? 'border-blue-500 bg-blue-50 ring-2 ring-blue-200'
+                : 'border-gray-200 hover:border-gray-300'
+            }`}
+            onClick={() => setSelectedPlan(plan)}
+          >
+            <div className="text-center">
+              <h3 className="font-medium text-gray-900">{plan.name}</h3>
+              <p className="text-2xl font-bold text-blue-600 mt-2">
+                R$ {(plan.price / 100).toFixed(2)}/mês
+              </p>
+              <p className="text-sm text-gray-600 mt-1">{plan.description}</p>
+            </div>
           </div>
-          <p className="text-sm text-emerald-200">
-            ✅ Cartão validado com sucesso!<br/>
-            🎉 Seu free trial de 7 dias começou agora.<br/>
-            💳 Após esse período, será cobrado automaticamente.
+        ))}
+      </div>
+      
+      {selectedPlan && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+          <h3 className="font-medium text-green-800">Plano Selecionado</h3>
+          <p className="text-sm text-green-600 mt-1">
+            {selectedPlan.name} - R$ {(selectedPlan.price / 100).toFixed(2)}/mês
           </p>
         </div>
+      )}
+      
+      <button
+        type="button"
+        onClick={createSetupIntent}
+        disabled={!selectedPlan || isCreating}
+        className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded-lg transition-colors"
+      >
+        {isCreating ? 'Criando SetupIntent...' : 'Continuar para Pagamento'}
+      </button>
+      
+      {error && (
+        <div className="mt-2 text-red-600 text-sm">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ✅ NOVO: Componente para criação de Payment Method
+const PaymentMethodCreator = ({ userData, onPaymentMethodCreated, onError }) => {
+  const stripe = useStripe();
+  const elements = useElements();
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState(null);
+
+  const createPaymentMethod = async () => {
+    if (!stripe || !elements) {
+      setError('Stripe não está disponível');
+      return;
+    }
+
+    setIsCreating(true);
+    setError(null);
+
+    try {
+      console.log('🔍 Criando Payment Method...');
+      
+      const { paymentMethod, error } = await stripe.createPaymentMethod({
+        type: 'card',
+        card: elements.getElement(CardElement),
+        billing_details: {
+          name: `${userData.first_name || userData.name} ${userData.last_name || ''}`.trim(),
+          email: userData.email || userData.email_address || ''
+        }
+      });
+
+      if (error) {
+        console.error('❌ Erro ao criar Payment Method:', error);
+        setError(`Erro ao criar método de pagamento: ${error.message}`);
+        onError?.(error);
+        return;
+      }
+
+      if (paymentMethod) {
+        console.log('✅ Payment Method criado com sucesso:', paymentMethod.id);
+        onPaymentMethodCreated(paymentMethod);
+      }
+
+    } catch (createError) {
+      console.error('❌ Erro inesperado ao criar Payment Method:', createError);
+      setError('Erro inesperado ao criar método de pagamento');
+      onError?.(createError);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="p-4 border border-gray-300 rounded-lg">
+        <label className="block text-sm font-medium text-gray-700 mb-2">
+          Dados do Cartão
+        </label>
+        <CardElement
+          options={{
+            style: {
+              base: {
+                fontSize: '16px',
+                color: '#424770',
+                '::placeholder': {
+                  color: '#aab7c4',
+                },
+              },
+              invalid: {
+                color: '#9e2146',
+              },
+            },
+          }}
+        />
+      </div>
+      
+      <button
+        type="button"
+        onClick={createPaymentMethod}
+        disabled={isCreating}
+        className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded-lg transition-colors"
+      >
+        {isCreating ? 'Criando método de pagamento...' : 'Criar método de pagamento'}
+      </button>
+      
+      {error && (
+        <div className="mt-2 text-red-600 text-sm">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ✅ NOVO: Componente para confirmação do SetupIntent
+const SetupIntentConfirmer = ({ setupIntent, paymentMethod, userData, onSetupIntentConfirmed, onError }) => {
+  const stripe = useStripe();
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [error, setError] = useState(null);
+
+  const confirmSetupIntent = async () => {
+    if (!stripe || !paymentMethod || !setupIntent) {
+      setError('Dados necessários não estão disponíveis');
+      return;
+    }
+
+    setIsConfirming(true);
+    setError(null);
+
+    try {
+      console.log('🔍 Confirmando SetupIntent...');
+      
+      const result = await stripe.confirmCardSetup(setupIntent.client_secret, {
+        payment_method: paymentMethod.id,
+        mandate_data: {
+          customer_acceptance: {
+            type: 'online',
+            online: {
+              ip_address: '127.0.0.1', // ✅ Será substituído pelo IP real
+              user_agent: navigator.userAgent
+            }
+          }
+        }
+      });
+
+      if (result.error) {
+        console.error('❌ Erro ao confirmar SetupIntent:', result.error);
+        setError(`Erro ao confirmar SetupIntent: ${result.error.message}`);
+        onError?.(result.error);
+        return;
+      }
+
+      if (result.setupIntent) {
+        console.log('✅ SetupIntent confirmado com sucesso:', result.setupIntent.id);
+        onSetupIntentConfirmed(result.setupIntent);
+      }
+
+    } catch (confirmError) {
+      console.error('❌ Erro inesperado ao confirmar SetupIntent:', confirmError);
+      setError('Erro inesperado ao confirmar SetupIntent');
+      onError?.(confirmError);
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
+  return (
+    <div className="mt-4">
+      <button
+        type="button"
+        onClick={confirmSetupIntent}
+        disabled={isConfirming}
+        className="w-full bg-green-600 hover:bg-green-700 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded-lg transition-colors"
+      >
+        {isConfirming ? 'Confirmando SetupIntent...' : 'Confirmar SetupIntent'}
+      </button>
+      
+      {error && (
+        <div className="mt-2 text-red-600 text-sm">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ✅ NOVO: Componente para criação da assinatura
+const SubscriptionCreator = ({ setupIntent, paymentMethod, userData, plan, onSubscriptionCreated, onError }) => {
+  const [isCreating, setIsCreating] = useState(false);
+  const [error, setError] = useState(null);
+
+  const createSubscription = async () => {
+    if (!setupIntent || !paymentMethod || !plan) {
+      setError('Dados necessários não estão disponíveis');
+      return;
+    }
+
+    setIsCreating(true);
+    setError(null);
+
+    try {
+      console.log('🔍 Criando assinatura...');
+      
+              const response = await axios.post('/api/stripe/create-subscription', {
+        customerId: userData.id,
+        priceId: plan.price_id,
+        paymentMethodId: paymentMethod.id,
+        setupIntentId: setupIntent.id
+      });
+
+      if (response.data.success) {
+        console.log('✅ Assinatura criada com sucesso:', response.data.subscription);
+        onSubscriptionCreated(response.data.subscription);
+      } else {
+        throw new Error(response.data.error || 'Erro desconhecido ao criar assinatura');
+      }
+
+    } catch (createError) {
+      console.error('❌ Erro ao criar assinatura:', createError);
+      setError(`Erro ao criar assinatura: ${createError.message}`);
+      onError?.(createError);
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
+  return (
+    <div className="mt-4">
+      <button
+        type="button"
+        onClick={createSubscription}
+        disabled={isCreating}
+        className="w-full bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 text-white font-bold py-3 px-4 rounded-lg transition-colors"
+      >
+        {isCreating ? 'Criando assinatura...' : 'Criar assinatura'}
+      </button>
+      
+      {error && (
+        <div className="mt-2 text-red-600 text-sm">
+          {error}
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ✅ NOVO: Componente principal do checkout
+const SubscriptionCheckoutInner = ({ onSuccess, onError }) => {
+  const [step, setStep] = useState('user-creation'); // user-creation, plan-selection, payment-method, confirm, subscription
+  const [userData, setUserData] = useState(null);
+  const [plan, setPlan] = useState(null);
+  const [setupIntent, setSetupIntent] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState(null);
+  const [confirmedSetupIntent, setConfirmedSetupIntent] = useState(null);
+  const [error, setError] = useState(null);
+
+  // ✅ NOVO: Handlers para cada etapa
+  const handleUserCreated = (newUser) => {
+    console.log('✅ Usuário criado no Stripe, avançando para seleção de plano...');
+    setUserData(newUser);
+    setStep('plan-selection');
+  };
+
+  const handleSetupIntentCreated = (newSetupIntent, selectedPlan) => {
+    console.log('✅ SetupIntent criado, avançando para método de pagamento...');
+    setSetupIntent(newSetupIntent);
+    setPlan(selectedPlan);
+    setStep('payment-method');
+  };
+
+  const handlePaymentMethodCreated = (newPaymentMethod) => {
+    console.log('✅ Payment Method criado, avançando para confirmação...');
+    setPaymentMethod(newPaymentMethod);
+    setStep('confirm');
+  };
+
+  const handleSetupIntentConfirmed = (confirmedIntent) => {
+    console.log('✅ SetupIntent confirmado, avançando para criação da assinatura...');
+    setConfirmedSetupIntent(confirmedIntent);
+    setStep('subscription');
+  };
+
+  const handleSubscriptionCreated = (subscription) => {
+    console.log('✅ Assinatura criada com sucesso!');
+      onSuccess?.(subscription);
+  };
+
+  const handleError = (error) => {
+    console.error('❌ Erro em uma das etapas:', error);
+    setError(error.message);
+      onError?.(error);
+  };
+
+  // ✅ NOVO: Renderização baseada na etapa atual
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="text-red-800">
+          <h3 className="font-medium">Erro no checkout</h3>
+          <p className="text-sm mt-1">{error}</p>
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-3 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    );
+  }
+
+  console.log('🔍 SubscriptionCheckoutInner render:', { step, userData, plan, error });
+
+  return (
+    <div className="space-y-6">
+      {/* ✅ Etapa 1: Criação de usuário */}
+      {step === 'user-creation' && (
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="font-medium text-blue-800">Etapa 1: Dados do Cliente</h3>
+            <p className="text-sm text-blue-600 mt-1">
+              Preencha seus dados para criar uma conta no Stripe.
+            </p>
+          </div>
+          
+          <UserCreator
+            onUserCreated={handleUserCreated}
+            onError={handleError}
+          />
+        </div>
+      )}
+
+      {/* ✅ Etapa 2: Seleção de plano e criação de SetupIntent */}
+      {step === 'plan-selection' && (
+        <div className="space-y-4">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <h3 className="font-medium text-green-800">Etapa 2: Seleção de Plano</h3>
+            <p className="text-sm text-green-600 mt-1">
+              Usuário criado com sucesso. Agora selecione um plano para continuar.
+            </p>
+      </div>
+      
+          <PlanSelector
+            userData={userData}
+            onSetupIntentCreated={handleSetupIntentCreated}
+            onError={handleError}
+          />
+        </div>
+      )}
+
+      {/* ✅ Etapa 3: Criar Payment Method */}
+      {step === 'payment-method' && (
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <h3 className="font-medium text-blue-800">Etapa 3: Método de Pagamento</h3>
+            <p className="text-sm text-blue-600 mt-1">
+              SetupIntent criado com sucesso. Agora vamos criar o método de pagamento.
+            </p>
+      </div>
+      
+          <PaymentMethodCreator
+            userData={userData}
+            onPaymentMethodCreated={handlePaymentMethodCreated}
+            onError={handleError}
+          />
+        </div>
+      )}
+
+      {/* ✅ Etapa 4: Confirmar SetupIntent */}
+      {step === 'confirm' && (
+        <div className="space-y-4">
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+            <h3 className="font-medium text-green-800">Etapa 4: Confirmação</h3>
+            <p className="text-sm text-green-600 mt-1">
+              Método de pagamento criado. Agora vamos confirmar o SetupIntent.
+            </p>
+          </div>
+          
+          <SetupIntentConfirmer
+            setupIntent={setupIntent}
+            paymentMethod={paymentMethod}
+            userData={userData}
+            onSetupIntentConfirmed={handleSetupIntentConfirmed}
+            onError={handleError}
+          />
+        </div>
+      )}
+      
+      {/* ✅ Etapa 5: Criar Assinatura */}
+      {step === 'subscription' && (
+        <div className="space-y-4">
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <h3 className="font-medium text-purple-800">Etapa 5: Assinatura</h3>
+            <p className="text-sm text-purple-600 mt-1">
+              SetupIntent confirmado. Agora vamos criar a assinatura.
+            </p>
+          </div>
+          
+          <SubscriptionCreator
+            setupIntent={confirmedSetupIntent}
+            paymentMethod={paymentMethod}
+            userData={userData}
+            plan={plan}
+            onSubscriptionCreated={handleSubscriptionCreated}
+            onError={handleError}
+          />
+        </div>
+      )}
+
+      {/* ✅ Progresso das etapas */}
+      <div className="flex items-center justify-between text-sm text-gray-500">
+        <span className={step === 'user-creation' ? 'text-blue-600 font-medium' : ''}>
+          1. Usuário
+        </span>
+        <span className={step === 'plan-selection' ? 'text-blue-600 font-medium' : ''}>
+          2. Plano
+        </span>
+        <span className={step === 'payment-method' ? 'text-blue-600 font-medium' : ''}>
+          3. Pagamento
+        </span>
+        <span className={step === 'confirm' ? 'text-blue-600 font-medium' : ''}>
+          4. Confirmação
+        </span>
+        <span className={step === 'subscription' ? 'text-blue-600 font-medium' : ''}>
+          5. Assinatura
+        </span>
+      </div>
+    </div>
+  );
+};
+
+// ✅ NOVO: Componente principal do checkout
+const SubscriptionCheckout = ({ onSuccess, onError }) => {
+  const [stripePromise, setStripePromise] = useState(null);
+  const [error, setError] = useState(null);
+
+  // ✅ NOVO: Carregar Stripe
+  useEffect(() => {
+    const loadStripeInstance = async () => {
+      try {
+        const stripe = await loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+        setStripePromise(stripe);
+      } catch (loadError) {
+        console.error('❌ Erro ao carregar Stripe:', loadError);
+        setError('Erro ao carregar Stripe');
+      }
+    };
+
+    loadStripeInstance();
+  }, []);
+
+  // ✅ NOVO: Handler de erro
+  const handleError = (error) => {
+    console.error('❌ Erro no checkout:', error);
+    setError(error.message);
+    onError?.(error);
+  };
+
+  // ✅ NOVO: Handler de sucesso
+  const handleSuccess = (subscription) => {
+    console.log('✅ Checkout concluído com sucesso:', subscription);
+    onSuccess?.(subscription);
+  };
+
+  if (error) {
+    return (
+      <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+        <div className="text-red-800">
+          <h3 className="font-medium">Erro no checkout</h3>
+          <p className="text-sm mt-1">{error}</p>
+        </div>
+        <button
+          onClick={() => window.location.reload()}
+          className="mt-3 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm"
+        >
+          Tentar novamente
+        </button>
+      </div>
+    );
+  }
+
+  if (!stripePromise) {
+    return (
+      <div className="flex items-center justify-center p-8">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+        <span className="ml-2">Carregando Stripe...</span>
       </div>
     );
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {/* ✅ RESUMO DA ASSINATURA */}
-      <div className="bg-gray-800/50 border border-cyan-400/30 rounded-lg p-4">
-        <h3 className="text-lg font-semibold text-white mb-3">Resumo da Assinatura</h3>
-        
-        {/* ✅ PLANO E INTERVALO */}
-        <div className="space-y-2 text-sm mb-4">
-          <div className="flex justify-between">
-            <span className="text-cyan-200">Plano:</span>
-            <span className="text-white font-medium">{selectedPlan}</span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-cyan-200">Intervalo:</span>
-            <span className="text-white font-medium">
-              {selectedInterval === 'monthly' ? 'Mensal' : 'Anual'}
-            </span>
-          </div>
-          <div className="flex justify-between">
-            <span className="text-cyan-200">Email:</span>
-            <span className="text-white font-medium">{userData.email}</span>
-          </div>
-        </div>
+    <div className="max-w-4xl mx-auto">
+      <div className="bg-white shadow-lg rounded-lg p-6">
+        <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">
+          Checkout da Assinatura
+        </h2>
 
-        {/* ✅ FREE TRIAL INFO */}
-        <div className="bg-emerald-500/20 border border-emerald-400/30 rounded-lg p-3">
-          <div className="flex items-center space-x-2 text-emerald-300 mb-2">
-            <Zap className="w-4 h-4" />
-            <span className="font-semibold text-sm">Free Trial de 7 Dias</span>
-          </div>
-          <p className="text-xs text-emerald-200">
-            Teste gratuitamente por 7 dias. Após esse período, será cobrado automaticamente.
-          </p>
-        </div>
+        <Elements stripe={stripePromise}>
+      <SubscriptionCheckoutInner 
+            onSuccess={handleSuccess}
+            onError={handleError}
+      />
+    </Elements>
       </div>
-
-      {/* ✅ CAMPOS DE PAGAMENTO */}
-      <div className="space-y-4">
-        <div>
-          <label className="block text-cyan-200 text-sm font-medium mb-2">
-            Informações do Cartão
-          </label>
-          <div className="bg-gray-800/50 border border-cyan-400/30 rounded-lg p-3">
-            <CardElement options={cardElementOptions} />
-          </div>
-          <p className="text-xs text-cyan-300 mt-2">
-            💳 Seu cartão será validado agora. Nenhuma cobrança será feita durante o free trial.
-          </p>
-        </div>
-
-        {/* ✅ BOTÃO DE ASSINATURA */}
-        <button
-          type="submit"
-          disabled={!stripe || loading || processing}
-          className="w-full px-6 py-3 bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-semibold rounded-lg hover:from-emerald-600 hover:to-cyan-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200 shadow-lg"
-        >
-          {loading ? (
-            <span className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-              Criando assinatura...
-            </span>
-          ) : processing ? (
-            <span className="flex items-center justify-center">
-              <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-              Configurando cartão...
-            </span>
-          ) : (
-            <span className="flex items-center justify-center">
-              <Calendar className="w-5 h-5 mr-2" />
-              Ativar Free Trial
-            </span>
-          )}
-        </button>
-      </div>
-
-      {/* ✅ MENSAGENS DE ERRO */}
-      {error && (
-        <div className="bg-red-500/20 border border-red-400/30 rounded-lg p-3">
-          <p className="text-red-300 text-sm text-center">{error}</p>
-        </div>
-      )}
-
-      {/* ✅ SEGURANÇA E INFORMAÇÕES */}
-      <div className="text-center space-y-3">
-        <div className="flex items-center justify-center space-x-2 text-xs text-cyan-300">
-          <Shield className="w-4 h-4" />
-          <span>Pagamento seguro com Stripe</span>
-        </div>
-        <div className="flex items-center justify-center space-x-2 text-xs text-cyan-300">
-          <CreditCard className="w-4 h-4" />
-          <span>Seus dados nunca são armazenados</span>
-        </div>
-        <div className="flex items-center justify-center space-x-2 text-xs text-emerald-300">
-          <Clock className="w-4 h-4" />
-          <span>Cancelar a qualquer momento</span>
-        </div>
-      </div>
-    </form>
-  );
-};
-
-// ✅ COMPONENTE PRINCIPAL: Checkout de assinatura recorrente
-const SubscriptionCheckout = ({ selectedPlan, selectedInterval, userData, onSuccess, onError }) => {
-  return (
-    <div className="max-w-md mx-auto">
-      <div className="text-center mb-6">
-        <h2 className="text-2xl font-bold text-white mb-2">Ativar Assinatura</h2>
-        <p className="text-cyan-200 text-sm">
-          Comece seu free trial de 7 dias
-        </p>
-      </div>
-
-      <Elements stripe={stripePromise}>
-        <SubscriptionForm
-          selectedPlan={selectedPlan}
-          selectedInterval={selectedInterval}
-          userData={userData}
-          onSuccess={onSuccess}
-          onError={onError}
-        />
-      </Elements>
     </div>
   );
 };
 
 export default SubscriptionCheckout;
+
+/*
+✅ EXEMPLO DE USO DO COMPONENTE:
+
+<SubscriptionCheckout
+  onSuccess={(subscription) => {
+    console.log('Assinatura criada:', subscription);
+    // Redirecionar para página de sucesso
+  }}
+  onError={(error) => {
+    console.error('Erro no checkout:', error);
+    // Mostrar mensagem de erro
+  }}
+/>
+
+✅ NOVO FLUXO:
+1. Etapa 1: Criação de usuário no Stripe (formulário editável)
+2. Etapa 2: Seleção de plano e criação de SetupIntent
+3. Etapa 3: Método de Pagamento (CardElement)
+4. Etapa 4: Confirmação do SetupIntent
+5. Etapa 5: Criação da Assinatura
+
+⚠️ IMPORTANTE: O componente agora gerencia todo o fluxo internamente!
+*/

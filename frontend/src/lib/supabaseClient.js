@@ -10,37 +10,42 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 // Determinar as URLs para redirecionamento
-const siteUrl = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:3000';
+const siteUrl = typeof window !== 'undefined' ? window.location.origin : '';
 const redirectUrl = `${siteUrl}/auth/callback`;
 
 // Classe personalizada para persistência de tokens (SIMPLIFICADA)
 class CustomStorage {
   constructor() {
     this.storage = localStorage;
-    this.KEY_PREFIX = 'supabase.auth.token';
+    this.KEY_PREFIX = 'supabase-auth'; // ✅ CORRIGIDO: Usar mesma chave
   }
 
   getItem(key) {
-    return this.storage.getItem(key);
+    const value = this.storage.getItem(key);
+    console.log(`🔍 CustomStorage.getItem(${key}):`, value ? '✅ Presente' : '❌ Ausente');
+    return value;
   }
 
   setItem(key, value) {
+    console.log(`💾 CustomStorage.setItem(${key}):`, value ? '✅ Definindo' : '❌ Vazio');
     this.storage.setItem(key, value);
     
-    // ✅ SINCRONIZAR: Apenas com localStorage principal para evitar conflitos
+    // ✅ SINCRONIZAR: Token com localStorage principal (SIMPLIFICADO)
     try {
       const parsed = JSON.parse(value);
       if (parsed?.currentSession?.access_token) {
         localStorage.setItem('authToken', parsed.currentSession.access_token);
+        console.log('✅ Token sincronizado com localStorage');
       }
     } catch (e) {
-      console.warn('Erro ao sincronizar token:', e);
+      console.warn('⚠️ Erro ao sincronizar token:', e);
     }
     
     return value;
   }
 
   removeItem(key) {
+    console.log(`🗑️ CustomStorage.removeItem(${key})`);
     this.storage.removeItem(key);
     localStorage.removeItem('authToken');
     return null;
@@ -57,11 +62,15 @@ const supabaseOptions = {
     flowType: 'pkce',
     redirectTo: redirectUrl,
     storage: new CustomStorage(),
-    storageKey: 'supabase.auth.token',
+    storageKey: 'supabase-auth', // ✅ CORRIGIDO: Usar mesma chave do backend
     site_url: siteUrl,
     clearHashAfterLogin: true,
-    debug: process.env.NODE_ENV === 'development',
+    debug: true, // ✅ FORÇAR DEBUG para ver o que está acontecendo
     authTimeout: 30000,
+    // ✅ ADICIONAR: Configurações para garantir criação de sessão
+    autoRefreshToken: true,
+    persistSession: true,
+    storageKey: 'supabase-auth',
   },
   global: {
     headers: {

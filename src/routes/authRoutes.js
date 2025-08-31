@@ -9,15 +9,8 @@ const logger = require('../utils/logger');
 const authService = require('../services/auth');
 const { getSecureJwtSecret } = require('../utils/jwtSecurity');
 
-// ✅ FUNÇÃO: Gerar senha temporária para novos usuários
-const generateTemporaryPassword = () => {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*';
-  let password = '';
-  for (let i = 0; i < 12; i++) {
-    password += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return password;
-};
+// ❌ REMOVIDO: Função de senha temporária (não deve existir)
+// ✅ VALIDAÇÃO: Apenas senhas reais fornecidas pelo usuário são aceitas
 
 // Verificar se todas as funções necessárias existem no controller
 const ensureFunctionExists = (controller, fnName, defaultFn) => {
@@ -79,6 +72,8 @@ ensureFunctionExists(authController, 'verifyToken', (req, res) => {
   res.status(501).json({ success: false, message: 'Função de verificação de token não implementada' });
 });
 
+
+
 // Função para atualizar o token
 const refreshToken = async (req, res) => {
   try {
@@ -135,6 +130,100 @@ const refreshToken = async (req, res) => {
 };
 
 const router = express.Router();
+
+// ✅ ROTA: Verificar se email já existe
+router.post('/check-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email é obrigatório'
+      });
+    }
+
+    // ✅ VALIDAÇÃO: Formato básico do email
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Formato de email inválido'
+      });
+    }
+
+    logger.info('🔍 Verificando disponibilidade do email:', { email });
+    
+    // ✅ ABORDAGEM SIMPLIFICADA: Listar usuários e filtrar
+    let emailExists = false;
+    let users = null;
+    
+    try {
+      // ✅ LISTAR: Todos os usuários (mais confiável)
+      const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+      
+      if (listError) {
+        logger.error('❌ Erro ao listar usuários:', listError);
+        throw new Error(`Erro ao listar usuários: ${listError.message}`);
+      }
+      
+      users = usersData;
+      
+      // ✅ FILTRAR: Usuário pelo email (case-insensitive)
+      const normalizedEmail = email.toLowerCase().trim();
+      const existingUser = users.users.find(u => 
+        u.email && u.email.toLowerCase().trim() === normalizedEmail
+      );
+      
+      emailExists = !!existingUser;
+      
+      if (emailExists) {
+        logger.info('❌ Email já está em uso:', { 
+          email, 
+          userId: existingUser.id,
+          userEmail: existingUser.email,
+          createdAt: existingUser.created_at,
+          rawUserMetaData: existingUser.raw_user_meta_data
+        });
+      } else {
+        logger.info('✅ Email disponível:', { 
+          email,
+          totalUsers: users.users.length,
+          checkedAt: new Date().toISOString()
+        });
+      }
+      
+    } catch (listError) {
+      logger.error('❌ Erro ao verificar email:', listError);
+      throw listError;
+    }
+
+    // ✅ RESPOSTA: Retornar resultado da verificação
+    const response = {
+      success: true,
+      emailExists,
+      message: emailExists ? 'Email já está em uso' : 'Email disponível',
+      timestamp: new Date().toISOString(),
+      debug: {
+        totalUsersChecked: users?.users?.length || 0,
+        emailNormalized: email.toLowerCase().trim(),
+        emailProvided: email
+      }
+    };
+
+    logger.info('📧 Resultado da verificação de email:', response);
+    
+    res.json(response);
+    
+  } catch (error) {
+    logger.error('❌ Erro na verificação de email:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro interno ao verificar email',
+      error: process.env.NODE_ENV === 'development' ? error.message : undefined,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
 
 // Rotas de renderização (páginas web)
 router.get('/login', authController.renderLogin);
@@ -1322,13 +1411,18 @@ router.post('/create-user-after-payment', async (req, res) => {
       let createdUser = null;
       
       try {
-        // ✅ USAR: Senha real fornecida pelo usuário (se disponível)
-        const userPassword = userData?.password || generateTemporaryPassword();
-        const isRealPassword = !!userData?.password;
+        // ✅ VALIDAR: Senha real fornecida pelo usuário (OBRIGATÓRIA)
+        if (!userData?.password) {
+          throw new Error('Senha é obrigatória para criação de usuário');
+        }
+        
+        const userPassword = userData.password;
+        
+        logger.info(`[AUTH] Criando usuário com senha real fornecida pelo usuário: ${userPassword.length} caracteres`);
         
         const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
           email: email,
-          password: userPassword, // ✅ USAR: Senha real ou temporária como fallback
+          password: userPassword, // ✅ SEMPRE senha real
           email_confirm: true,
           user_metadata: {
             planType: planType,
@@ -1343,8 +1437,8 @@ router.post('/create-user-after-payment', async (req, res) => {
             fullName: fullName,
             phone: phone,
             signupSource: 'payment_return_direct',
-            hasRealPassword: isRealPassword, // ✅ FLAG: Indica se é senha real
-            passwordSource: isRealPassword ? 'user_form' : 'temporary_generated' // ✅ ORIGEM: Da onde veio a senha
+            hasRealPassword: true, // ✅ SEMPRE verdadeiro
+            passwordSource: 'user_form' // ✅ SEMPRE do formulário
           }
         });
         
@@ -1368,13 +1462,18 @@ router.post('/create-user-after-payment', async (req, res) => {
         try {
           logger.info(`[AUTH] Tentativa 2: Criando usuário com dados mínimos: ${email}`);
           
-          // ✅ USAR: Senha real ou gerar temporária como fallback
-          const userPassword2 = userData?.password;
-          const isRealPassword2 = !!userData?.password;
+          // ✅ VALIDAR: Senha real fornecida pelo usuário (OBRIGATÓRIA)
+          if (!userData?.password) {
+            throw new Error('Senha é obrigatória para criação de usuário');
+          }
+          
+          const userPassword2 = userData.password;
+          
+          logger.info(`[AUTH] Tentativa 2: Criando usuário com senha real fornecida pelo usuário: ${userPassword2.length} caracteres`);
           
           const { data: newUser2, error: createError2 } = await supabaseAdmin.auth.admin.createUser({
             email: email,
-            password: userPassword2,
+            password: userPassword2, // ✅ SEMPRE senha real
             email_confirm: true,
             user_metadata: {
               planType: planType || 'basic',
@@ -1384,8 +1483,8 @@ router.post('/create-user-after-payment', async (req, res) => {
               signupDate: new Date().toISOString(),
               firstName: firstName || 'Usuário',
               lastName: lastName || 'Cliente',
-              hasRealPassword: isRealPassword2, // ✅ FLAG: Indica se é senha real
-              passwordSource: isRealPassword2 ? 'user_form' : 'temporary_generated' // ✅ ORIGEM: Da onde veio a senha
+              hasRealPassword: true, // ✅ SEMPRE verdadeiro
+              passwordSource: 'user_form' // ✅ SEMPRE do formulário
             }
           });
           

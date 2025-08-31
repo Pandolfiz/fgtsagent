@@ -38,7 +38,7 @@ const StripeCheckout = ({
         // ✅ IMPORTANTE: false para subscription
         usePopup: false,
         // ✅ URLs simples (o session_id será armazenado no localStorage)
-        successUrl: `${window.location.origin}/payment/success?plan=${selectedPlan}&status=success`,
+        successUrl: `${window.location.origin}/signup/success?plan=${selectedPlan}&status=success`,
         cancelUrl: `${window.location.origin}/payment/cancel?plan=${selectedPlan}&status=cancelled`
       };
 

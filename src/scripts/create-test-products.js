@@ -45,7 +45,7 @@ const testProducts = [
         interval: 'year',
         metadata: {
           plan: 'basic',
-          interval: 'annual',
+          interval: 'yearly',
           type: 'test'
         }
       }
@@ -76,7 +76,7 @@ const testProducts = [
         interval: 'year',
         metadata: {
           plan: 'pro',
-          interval: 'annual',
+          interval: 'yearly',
           type: 'test'
         }
       }
@@ -107,7 +107,7 @@ const testProducts = [
         interval: 'year',
         metadata: {
           plan: 'premium',
-          interval: 'annual',
+          interval: 'yearly',
           type: 'test'
         }
       }

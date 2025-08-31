@@ -294,7 +294,7 @@ export default function Signup() {
           <button
             type="submit"
             disabled={loading}
-            className="mt-2 px-6 py-2 text-sm rounded-lg bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950 text-white font-bold shadow-lg hover:from-cyan-800 hover:via-cyan-600 hover:to-blue-700 transition border border-cyan-400/30 drop-shadow-neon disabled:opacity-60 disabled:cursor-not-allowed"
+            className="mt-2 px-6 py-2 text-sm rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-bold shadow-lg hover:from-emerald-400 hover:to-cyan-400 transition border border-emerald-300/30 drop-shadow-neon disabled:opacity-60 disabled:cursor-not-allowed"
           >
             {loading ? 'Criando conta...' : <><i className="fas fa-user-plus mr-2" />Criar Conta</>}
           </button>
