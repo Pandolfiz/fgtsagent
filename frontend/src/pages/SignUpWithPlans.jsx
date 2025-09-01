@@ -201,10 +201,10 @@ const SignUpWithPlans = () => {
     setEmailStatus({ exists: false, message: 'Verificando...' });
     
     try {
-             console.log('📡 Fazendo requisição para:', '/api/auth/check-email');
-       console.log('📧 Dados enviados:', { email: email.trim() });
-       
-       const response = await axios.post('/api/auth/check-email', { 
+                   console.log('📡 Fazendo requisição para:', '/api/check-email');
+      console.log('📧 Dados enviados:', { email: email.trim() });
+      
+      const response = await axios.post('/api/check-email', { 
         email: email.trim() 
       });
       

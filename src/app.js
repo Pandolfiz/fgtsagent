@@ -456,15 +456,107 @@ app.post('/api/health/cache/clear', (req, res) => {
   });
 });
 
-console.log('Rotas de health check registradas com sucesso');
+console.log('Rotas de health check registradas com sucesso')
+// ✅ DEBUG: Verificar configuração do ambiente
+console.log('🔍 [DEBUG] NODE_ENV:', process.env.NODE_ENV);
+console.log('🔍 [DEBUG] Ambiente de desenvolvimento:', process.env.NODE_ENV === 'development');
+console.log('🔍 [DEBUG] Ambiente de produção:', process.env.NODE_ENV === 'production');
 
+// ✅ CORRIGIDO: Rota de verificação de email SEM rate limiting
+// Esta rota deve ser acessível sem autenticação e sem limitações
+app.post('/api/check-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email é obrigatório'
+      });
+    }
+
+    // Validação básica do formato do email
+    if (!/\S+@\S+\.\S+/.test(email)) {
+      return res.status(400).json({
+        success: false,
+        message: 'Formato de email inválido'
+      });
+    }
+
+    // Importar o controller de autenticação para usar a lógica existente
+    const authController = require('./controllers/authController');
+    
+    // Se não existir o controller, usar implementação básica
+    if (!authController || typeof authController.checkEmail !== 'function') {
+      // Implementação básica de verificação
+      const { supabaseAdmin } = require('./services/database');
+      const logger = require('./utils/logger');
+      
+      logger.info('🔍 Verificando disponibilidade do email:', { email });
+      
+      try {
+        const { data: usersData, error: listError } = await supabaseAdmin.auth.admin.listUsers();
+        
+        if (listError) {
+          logger.error('❌ Erro ao listar usuários:', listError);
+          throw new Error(`Erro ao listar usuários: ${listError.message}`);
+        }
+        
+        const normalizedEmail = email.toLowerCase().trim();
+        const existingUser = usersData.users.find(u => 
+          u.email && u.email.toLowerCase().trim() === normalizedEmail
+        );
+        
+        const emailExists = !!existingUser;
+        
+        return res.json({
+          success: true,
+          emailExists,
+          message: emailExists ? 'Email já está em uso' : 'Email disponível',
+          timestamp: new Date().toISOString()
+        });
+        
+      } catch (error) {
+        logger.error('❌ Erro na verificação de email:', error);
+        return res.status(500).json({
+          success: false,
+          message: 'Erro interno ao verificar email'
+        });
+      }
+    } else {
+      // Usar a implementação do controller
+      return authController.checkEmail(req, res);
+    }
+    
+  } catch (error) {
+    const logger = require('./utils/logger');
+    logger.error('❌ Erro na verificação de email:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno ao verificar email'
+    });
+  }
+});
+
+// Rotas API - estas devem vir DEPOIS das rotas específicas
+app.use('/api', apiRoutes);
+
+// Middleware para aplicar tokens renovados na resposta
+app.use(applyRefreshedTokens);
+
+=======
 // Rotas de autenticação DEVEM vir ANTES de apiRoutes
 // Rotas de autenticação com Rate + Speed Limiting (mais permissivo em desenvolvimento)
+console.log('🔍 [DEBUG] Registrando rotas de autenticação...');
+console.log('🔍 [DEBUG] NODE_ENV atual:', process.env.NODE_ENV);
+
 if (process.env.NODE_ENV === 'development') {
+  console.log('🔍 [DEBUG] Usando configuração de DESENVOLVIMENTO (sem rate limiting)');
   // Em desenvolvimento: rate limiting mais permissivo
   app.use('/auth', authRoutes);
   app.use('/api/auth', authRoutes);
 } else {
+  console.log('🔍 [DEBUG] Usando configuração de PRODUÇÃO (com rate limiting)');
   // Em produção: rate limiting completo
   app.use('/auth', authLimiter, authSpeedLimiter, authRoutes);
   app.use('/api/auth', authLimiter, authSpeedLimiter, authRoutes);
@@ -476,6 +568,7 @@ app.use('/api', apiRoutes);
 // Middleware para aplicar tokens renovados na resposta
 app.use(applyRefreshedTokens);
 app.use('/api/whatsapp-credentials', requireAuth, whatsappCredentialRoutes);
+app.use('/api/whatsapp-templates', requireAuth, require('./routes/whatsappTemplateRoutes'));
 app.use('/api/credentials', credentialsRoutes);
 // REMOVIDO: app.use('/api', credentialsRoutes); // Isso sobrescrevia todas as rotas /api/*
 app.use('/api/chat', requireAuth, chatRoutes);
@@ -553,6 +646,232 @@ app.use((err, req, res, next) => {
     message: err.message || 'Ocorreu um erro inesperado',
     error: process.env.NODE_ENV === 'development' ? err : {}
   });
+});
+
+// 🧪 ROTAS DE TESTE: Para testar a funcionalidade de templates do WhatsApp
+// 🧪 ROTA DE TESTE: Listar contas disponíveis para o Pedro
+app.get('/api/test-accounts', async (req, res) => {
+  try {
+    console.log('🧪 Rota de teste de contas acessada!');
+    
+    const { supabaseAdmin } = require('./config/supabase');
+    
+    // Buscar credenciais do Pedro
+    const { data: credentials, error: credentialsError } = await supabaseAdmin
+      .from('whatsapp_credentials')
+      .select('*')
+      .eq('client_id', 'fca00589-06a4-4274-9048-2ec3b2ddd60e')
+      .eq('connection_type', 'ads');
+    
+    if (credentialsError || !credentials || credentials.length === 0) {
+      return res.json({
+        success: false,
+        message: 'Nenhuma conta WhatsApp Business encontrada para o Pedro',
+        userId: 'fca00589-06a4-4274-9048-2ec3b2ddd60e',
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    // Formatar dados das contas
+    const accounts = credentials.map(cred => ({
+      businessAccountId: cred.wpp_business_account_id,
+      phone: cred.phone,
+      agentName: cred.agent_name,
+      status: cred.status,
+      connectionType: cred.connection_type,
+      createdAt: cred.created_at,
+      updatedAt: cred.updated_at,
+      hasMetaData: !!(cred.wpp_number_id && cred.wpp_access_token),
+      metaStatus: cred.metadata?.code_verification_status || 'NÃO_VERIFICADO'
+    }));
+    
+    res.json({
+      success: true,
+      message: `${accounts.length} conta(s) WhatsApp Business encontrada(s) para o Pedro`,
+      timestamp: new Date().toISOString(),
+      user: {
+        id: 'fca00589-06a4-4274-9048-2ec3b2ddd60e',
+        name: 'Pedro Margon',
+        email: 'lorenzonipedro@gmail.com'
+      },
+      data: accounts,
+      total: accounts.length
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao listar contas:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao listar contas',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 🧪 ROTA DE TESTE: Buscar templates salvos no banco para o Pedro
+app.get('/api/test-templates-saved', async (req, res) => {
+  try {
+    console.log('🧪 Rota de teste de templates salvos acessada!');
+    
+    const whatsappTemplateService = require('./services/whatsappTemplateService');
+    
+    // Business Account ID do Pedro
+    const businessAccountId = '507089529147644';
+    
+    console.log(`🔍 Buscando templates salvos para Business Account: ${businessAccountId}`);
+    
+    // Buscar templates salvos no banco
+    const result = await whatsappTemplateService.getSavedTemplates(businessAccountId, {});
+    
+    if (!result.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao buscar templates salvos',
+        error: result.error,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: 'Templates salvos encontrados com sucesso!',
+      timestamp: new Date().toISOString(),
+      businessAccountId: businessAccountId,
+      total: result.total,
+      templates: result.data
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro ao buscar templates salvos:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro ao buscar templates salvos',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
+});
+
+// 🧪 ROTA DE TESTE: Sincronizar templates da Meta API para o Pedro
+app.get('/api/test-sync-templates', async (req, res) => {
+  try {
+    console.log('🧪 Rota de teste de sincronização de templates acessada!');
+    
+    const whatsappTemplateService = require('./services/whatsappTemplateService');
+    const { supabaseAdmin } = require('./config/supabase');
+    
+    // Buscar credenciais do Pedro
+    let { data: credentials, error: credentialsError } = await supabaseAdmin
+      .from('whatsapp_credentials')
+      .select('*')
+      .eq('client_id', 'fca00589-06a4-4274-9048-2ec3b2ddd60e')
+      .eq('connection_type', 'ads')
+      .single();
+    
+    if (credentialsError || !credentials) {
+      // Se não encontrar credenciais diretas, buscar as que têm o nome do Pedro
+      console.log('🔍 Buscando credenciais com nome do Pedro...');
+      
+      const { data: pedroCredentials, error: pedroError } = await supabaseAdmin
+        .from('whatsapp_credentials')
+        .select('*')
+        .eq('connection_type', 'ads')
+        .ilike('instance_name', '%Pedro%')
+        .single();
+      
+      if (pedroError || !pedroCredentials) {
+        return res.json({
+          success: false,
+          message: 'Credenciais do WhatsApp não encontradas para o Pedro',
+          userId: 'fca00589-06a4-4274-9048-2ec3b2ddd60e',
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      credentials = pedroCredentials;
+    }
+    
+    console.log(`🧪 Credenciais encontradas para o Pedro!`);
+    console.log(`🧪 Instance Name: ${credentials.instance_name}`);
+    console.log(`🧪 Business Account ID: ${credentials.wpp_business_account_id}`);
+    
+    // 1. Buscar templates da Meta API
+    console.log('🔍 Buscando templates da Meta API...');
+    const templatesResponse = await whatsappTemplateService.fetchMessageTemplates(
+      credentials.wpp_business_account_id,
+      credentials.wpp_access_token
+    );
+    
+    if (!templatesResponse.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao buscar templates da Meta API',
+        error: templatesResponse.error,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    console.log(`✅ ${templatesResponse.data.length} templates encontrados na Meta API`);
+    
+    // 2. Salvar templates no banco
+    console.log('💾 Salvando templates no banco...');
+    const saveResult = await whatsappTemplateService.saveTemplates(
+      credentials.wpp_business_account_id,
+      templatesResponse.data
+    );
+    
+    if (!saveResult.success) {
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao salvar templates no banco',
+        error: saveResult.error,
+        templatesFromMeta: templatesResponse.data,
+        timestamp: new Date().toISOString()
+      });
+    }
+    
+    console.log(`✅ ${saveResult.saved} templates salvos no banco`);
+    
+    // 3. Buscar templates salvos para confirmar
+    console.log('🔍 Confirmando templates salvos...');
+    const savedTemplates = await whatsappTemplateService.getSavedTemplates(
+      credentials.wpp_business_account_id,
+      {}
+    );
+    
+    res.json({
+      success: true,
+      message: 'Sincronização de templates realizada com sucesso!',
+      timestamp: new Date().toISOString(),
+      user: {
+        id: 'fca00589-06a4-4274-9048-2ec3b2ddd60e',
+        name: 'Pedro Margon',
+        email: 'lorenzonipedro@gmail.com'
+      },
+      credentials: {
+        instanceName: credentials.instance_name,
+        businessAccountId: credentials.wpp_business_account_id,
+        phoneNumberId: credentials.wpp_number_id,
+        status: credentials.status
+      },
+      syncResults: {
+        templatesFromMeta: templatesResponse.data.length,
+        templatesSaved: saveResult.saved,
+        templatesInDatabase: savedTemplates.success ? savedTemplates.total : 0
+      },
+      templates: savedTemplates.success ? savedTemplates.data : []
+    });
+    
+  } catch (error) {
+    console.error('❌ Erro na sincronização de templates:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Erro na sincronização de templates',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
+  }
 });
 
 // Exportar o aplicativo Express

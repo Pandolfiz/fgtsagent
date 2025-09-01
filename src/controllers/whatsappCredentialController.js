@@ -2683,6 +2683,33 @@ class WhatsappCredentialController {
       };
     }
   }
+
+  /**
+   * Ativa número do WhatsApp na Meta API
+   */
+  async activateWhatsAppNumber(req, res) {
+    try {
+      const { id } = req.params;
+      const { pin } = req.body;
+
+      if (!pin) {
+        return res.status(400).json({
+          success: false,
+          message: 'PIN é obrigatório para ativação'
+        });
+      }
+
+      const result = await whatsappService.activateWhatsAppNumber(id, pin);
+      res.json(result);
+    } catch (error) {
+      console.error('Erro ao ativar número do WhatsApp:', error);
+      res.status(500).json({
+        success: false,
+        message: 'Erro interno ao ativar número do WhatsApp',
+        error: error.message
+      });
+    }
+  }
 }
 
 module.exports = new WhatsappCredentialController(); 

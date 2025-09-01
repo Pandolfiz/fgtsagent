@@ -1383,6 +1383,96 @@ class WhatsappService {
       };
     }
   }
+
+  /**
+   * Atualiza status de uma credencial
+   * @param {string} credentialId - ID da credencial
+   * @param {string} status - Novo status
+   * @param {Object} metadata - Metadados adicionais
+   * @returns {Promise<Object>} Resultado da atualização
+   */
+  async updateCredentialStatus(credentialId, status, metadata = {}) {
+    try {
+      const query = `
+        UPDATE whatsapp_credentials 
+        SET status = $1, 
+            metadata = COALESCE(metadata, '{}'::jsonb) || $2::jsonb,
+            updated_at = NOW()
+        WHERE id = $3
+        RETURNING *
+      `;
+
+      const values = [status, JSON.stringify(metadata), credentialId];
+      const result = await db.query(query, values);
+
+      if (result.rows.length === 0) {
+        throw new Error('Credencial não encontrada');
+      }
+
+      console.log(`✅ Status da credencial ${credentialId} atualizado para: ${status}`);
+      return result.rows[0];
+
+    } catch (error) {
+      console.error('❌ Erro ao atualizar status da credencial:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Ativa número do WhatsApp na Meta API
+   * @param {string} credentialId - ID da credencial
+   * @param {string} pin - PIN de ativação
+   * @returns {Promise<Object>} Resultado da ativação
+   */
+  async activateWhatsAppNumber(credentialId, pin) {
+    try {
+      console.log(`🔐 Ativando número do WhatsApp para credencial ${credentialId}`);
+
+      // Buscar credencial
+      const credential = await this.getCredentialById(credentialId);
+      if (!credential) {
+        throw new Error('Credencial não encontrada');
+      }
+
+      if (credential.connection_type !== 'ads') {
+        throw new Error('Apenas credenciais ADS podem ser ativadas via Meta API');
+      }
+
+      if (!credential.wpp_access_token || !credential.wpp_number_id) {
+        throw new Error('Credencial não possui token de acesso ou ID do número');
+      }
+
+      // Fazer chamada para Meta API
+      const response = await this.makeMetaApiCall(
+        `/${credential.wpp_number_id}/register`,
+        'POST',
+        {
+          messaging_product: 'whatsapp',
+          pin: pin
+        },
+        credential.wpp_access_token
+      );
+
+      console.log('✅ Número ativado com sucesso na Meta API:', response);
+
+      // Atualizar status da credencial
+      await this.updateCredentialStatus(credentialId, 'ativo', {
+        last_activation: new Date().toISOString(),
+        activation_pin: pin,
+        meta_response: response
+      });
+
+      return {
+        success: true,
+        message: 'Número ativado com sucesso',
+        data: response
+      };
+
+    } catch (error) {
+      console.error('❌ Erro ao ativar número do WhatsApp:', error);
+      throw error;
+    }
+  }
 }
 
 // Exporta uma instância do serviço
