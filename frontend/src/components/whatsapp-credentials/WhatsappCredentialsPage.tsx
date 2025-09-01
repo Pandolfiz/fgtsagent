@@ -1814,7 +1814,9 @@ export function WhatsappCredentialsPage() {
                         {credential.connection_type === 'ads' && 
                          credential.wpp_number_id && 
                          credential.wpp_access_token && 
-                         credential.metadata?.code_verification_status !== 'VERIFIED' && (
+                         credential.metadata?.code_verification_status !== 'VERIFIED' && 
+                         credential.status !== 'connected' && 
+                         credential.status !== 'verified' && (
                           <div className="mt-2 p-2 rounded-lg bg-blue-800/20 border border-blue-700/30">
                             <p className="text-xs text-blue-200 font-medium mb-1">ℹ️ Número criado com sucesso!</p>
                             <p className="text-xs text-blue-100">
@@ -1924,7 +1926,9 @@ export function WhatsappCredentialsPage() {
                         const shouldShowSMSButton = credential.connection_type === 'ads' && 
                           credential.wpp_number_id && 
                           credential.wpp_access_token && 
-                          credential.metadata?.code_verification_status !== 'VERIFIED';
+                          credential.metadata?.code_verification_status !== 'VERIFIED' && 
+                          credential.status !== 'connected' && 
+                          credential.status !== 'verified';
                         
                         console.log(`🔍 Debug SMS Button para credencial ${credential.id}:`, {
                           connection_type: credential.connection_type,

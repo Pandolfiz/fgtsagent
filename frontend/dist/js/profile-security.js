@@ -78,9 +78,9 @@ function setupPasswordFormHandling(form) {
     }
 
     // Verificar requisitos de senha
-    const passwordRegex = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}$/;
+    const passwordRegex = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[@$!%*?&]).{8,}$/;
     if (!passwordRegex.test(newPasswordInput.value)) {
-      showAlert(false, 'A senha não atende aos requisitos de segurança. Ela deve conter pelo menos 8 caracteres, incluindo uma letra maiúscula, uma letra minúscula e um número.');
+      showAlert(false, 'A senha não atende aos requisitos de segurança. Ela deve conter pelo menos 8 caracteres, incluindo uma letra maiúscula, uma letra minúscula, um número e um caractere especial (@$!%*?&).');
       return false;
     }
 
