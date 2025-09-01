@@ -98,4 +98,6 @@ router.post('/webhook/receivedWhatsApp', async (req, res) => {
 // Rota para processar autenticação da Meta API
 router.post('/facebook/auth', requireAuth, (req, res) => whatsappCredentialController.processFacebookAuth(req, res));
 
+
+
 module.exports = router; 
