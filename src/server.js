@@ -75,14 +75,36 @@ async function startServer() {
       logger.error(`Erro ao aplicar migrações: ${migrationError.message}`);
     }
     
-    // Criar servidor HTTP
-    // Configuração HTTPS
-const httpsOptions = {
-  key: fs.readFileSync(path.join(__dirname, 'certs/key.pem')),
-  cert: fs.readFileSync(path.join(__dirname, 'certs/cert.pem'))
-};
-
-const server = https.createServer(httpsOptions, app);
+    // Verificar se os certificados SSL existem
+    const keyPath = path.join(__dirname, 'certs/key.pem');
+    const certPath = path.join(__dirname, 'certs/cert.pem');
+    const hasCertificates = fs.existsSync(keyPath) && fs.existsSync(certPath);
+    
+    let server;
+    
+    if (hasCertificates && process.env.NODE_ENV === 'production') {
+      // Configuração HTTPS para produção com certificados
+      try {
+        const httpsOptions = {
+          key: fs.readFileSync(keyPath),
+          cert: fs.readFileSync(certPath)
+        };
+        server = https.createServer(httpsOptions, app);
+        logger.info('Servidor HTTPS iniciado com certificados SSL');
+      } catch (sslError) {
+        logger.error(`Erro ao configurar HTTPS: ${sslError.message}`);
+        logger.info('Falhando para HTTP devido a erro nos certificados SSL');
+        server = http.createServer(app);
+      }
+    } else {
+      // Servidor HTTP para desenvolvimento ou quando não há certificados
+      server = http.createServer(app);
+      if (process.env.NODE_ENV === 'development') {
+        logger.info('Servidor HTTP iniciado em modo desenvolvimento');
+      } else {
+        logger.info('Servidor HTTP iniciado (certificados SSL não encontrados)');
+      }
+    }
     
     // Verificar se a porta já está em uso
     server.on('error', (err) => {

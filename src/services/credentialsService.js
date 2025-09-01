@@ -82,14 +82,15 @@ class CredentialsService {
           throw new Error('Credenciais do WhatsApp ADS incompletas. Configure wpp_number_id e wpp_business_account_id.');
         }
         
-        if (!whatsappConfig.accessToken) {
-          logger.error('WHATSAPP_ACCESS_TOKEN não configurado no arquivo .env');
-          throw new Error('Token de acesso do WhatsApp não configurado no .env');
+        // Verificar se o access token está presente na credencial
+        if (!credential.wpp_access_token) {
+          logger.error('Access token não encontrado na credencial do usuário');
+          throw new Error('Access token do WhatsApp não configurado para este usuário');
         }
         
         return {
           connectionType: 'ads',
-          accessToken: whatsappConfig.accessToken,
+          accessToken: credential.wpp_access_token,
           phoneNumberId: credential.wpp_number_id,
           businessAccountId: credential.wpp_business_account_id,
           apiVersion: whatsappConfig.apiVersion,
@@ -102,6 +103,40 @@ class CredentialsService {
     }
   }
   
+  /**
+   * Busca TODAS as credenciais do WhatsApp para um usuário
+   * @param {string} userId - ID do usuário
+   * @returns {Promise<Array>} - Lista de todas as credenciais
+   */
+  async getAllWhatsappCredentials(userId) {
+    try {
+      if (!userId) {
+        logger.error('ID do usuário não fornecido para buscar credenciais do WhatsApp');
+        throw new Error('ID do usuário é obrigatório para obter credenciais do WhatsApp');
+      }
+
+      logger.info(`Buscando TODAS as credenciais do WhatsApp para o usuário: ${userId}`);
+      
+      const { data, error } = await supabaseAdmin
+        .from('whatsapp_credentials')
+        .select('*')
+        .eq('client_id', userId)
+        .order('created_at', { ascending: false });
+      
+      if (error) {
+        logger.error(`Erro na consulta admin ao Supabase: ${error.message}`);
+        throw new Error(`Falha ao consultar tabela whatsapp_credentials: ${error.message}`);
+      }
+      
+      logger.info(`Credenciais encontradas: ${data?.length || 0}`);
+      return data || [];
+      
+    } catch (error) {
+      logger.error(`Erro ao buscar credenciais do WhatsApp: ${error.message}`);
+      throw error;
+    }
+  }
+
   /**
    * Salva ou atualiza os dados do WhatsApp para um usuário
    * @param {string} userId - ID do usuário

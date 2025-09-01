@@ -365,6 +365,63 @@ export const userApi = {
   }
 };
 
+// API para WhatsApp Templates
+export const whatsappTemplatesApi = {
+  // Listar contas disponíveis
+  getAvailableAccounts: async () => {
+    const response = await apiFetch(`${API_URL}/whatsapp-templates/accounts`);
+    return response.json();
+  },
+
+  // Listar templates
+  getAll: async (businessAccountId: string, filters?: { status?: string; language?: string; category?: string }) => {
+    const params = new URLSearchParams();
+    if (businessAccountId) params.append('businessAccountId', businessAccountId);
+    if (filters?.status) params.append('status', filters.status);
+    if (filters?.language) params.append('language', filters.language);
+    if (filters?.category) params.append('category', filters.category);
+    
+    const response = await apiFetch(`${API_URL}/whatsapp-templates?${params.toString()}`);
+    return response.json();
+  },
+
+  // Obter estatísticas
+  getStats: async (businessAccountId: string) => {
+    const response = await apiFetch(`${API_URL}/whatsapp-templates/stats?businessAccountId=${businessAccountId}`);
+    return response.json();
+  },
+
+  // Sincronizar templates
+  sync: async (businessAccountId: string, accessToken: string) => {
+    const response = await apiFetch(`${API_URL}/whatsapp-templates/sync`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ businessAccountId, accessToken }),
+    });
+    return response.json();
+  },
+
+  // Buscar templates da API da Meta
+  fetchFromAPI: async (businessAccountId: string, accessToken: string) => {
+    const response = await apiFetch(`${API_URL}/whatsapp-templates/fetch-api`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ businessAccountId, accessToken }),
+    });
+    return response.json();
+  },
+
+  // Obter template por ID
+  getById: async (templateId: string, businessAccountId: string) => {
+    const response = await apiFetch(`${API_URL}/whatsapp-templates/${templateId}?businessAccountId=${businessAccountId}`);
+    return response.json();
+  }
+};
+
 // Exportar todas as APIs
 export const api = {
   evolution: evolutionCredentialsApi,
@@ -381,9 +438,8 @@ export const api = {
         body: JSON.stringify({ code }),
       });
     },
-
-
-  }
+  },
+  whatsappTemplates: whatsappTemplatesApi
 };
 
 export default api; 

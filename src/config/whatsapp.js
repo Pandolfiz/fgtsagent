@@ -41,9 +41,9 @@ module.exports = {
   
   /**
    * Versão da API do WhatsApp a ser utilizada
-   * Recomendado usar a versão estável mais recente
+   * Recomendado usar a versão v23.0 da API da Meta
    */
-  apiVersion: process.env.WHATSAPP_API_VERSION || 'v16.0',
+  apiVersion: process.env.WHATSAPP_API_VERSION || 'v23.0',
   
   /**
    * URL base da API do WhatsApp
