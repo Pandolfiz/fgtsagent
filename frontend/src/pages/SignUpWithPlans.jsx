@@ -50,7 +50,7 @@ const SignUpWithPlans = () => {
   // ✅ FUNÇÃO: Calcular força da senha em tempo real (simplificada)
   const calculatePasswordStrength = (password) => {
     setPasswordStrength({
-      length: password.length >= 6 && password.length <= 128,
+      length: password.length >= 8 && password.length <= 128,
       lowercase: /[a-z]/.test(password),
       uppercase: /[A-Z]/.test(password),
       number: /\d/.test(password),
@@ -284,15 +284,41 @@ const SignUpWithPlans = () => {
     }
 
     console.log('🔍 Validando comprimento da senha');
-    if (password.length < 6) {
+    if (password.length < 8) {
       console.log('❌ Validação falhou: senha muito curta');
-      setError('Senha deve ter pelo menos 6 caracteres');
+      setError('Senha deve ter pelo menos 8 caracteres');
       return false;
     }
 
     if (password.length > 128) {
       console.log('❌ Validação falhou: senha muito longa');
       setError('Senha deve ter no máximo 128 caracteres');
+      return false;
+    }
+
+    // ✅ CORRIGIDO: Validar requisitos de senha forte
+    console.log('🔍 Validando requisitos de senha forte');
+    if (!/[a-z]/.test(password)) {
+      console.log('❌ Validação falhou: senha sem letra minúscula');
+      setError('Senha deve conter pelo menos 1 letra minúscula');
+      return false;
+    }
+
+    if (!/[A-Z]/.test(password)) {
+      console.log('❌ Validação falhou: senha sem letra maiúscula');
+      setError('Senha deve conter pelo menos 1 letra maiúscula');
+      return false;
+    }
+
+    if (!/\d/.test(password)) {
+      console.log('❌ Validação falhou: senha sem número');
+      setError('Senha deve conter pelo menos 1 número');
+      return false;
+    }
+
+    if (!/[@$!%*?&]/.test(password)) {
+      console.log('❌ Validação falhou: senha sem caractere especial');
+      setError('Senha deve conter pelo menos 1 caractere especial (@$!%*?&)');
       return false;
     }
 
@@ -463,7 +489,7 @@ const SignUpWithPlans = () => {
                 </div>
               )}
               
-              {!emailStatus.checking && !emailStatus.exists && userData.email.length >= 3 && (
+              {!emailStatus.checking && !emailStatus.exists && userData.email.length >= 3 && emailStatus.message === 'Email disponível' && (
                 <div className="flex items-center gap-1 text-xs text-green-400">
                   <div className="w-2 h-2 bg-green-400 rounded-full"></div>
                   Email disponível
@@ -503,25 +529,37 @@ const SignUpWithPlans = () => {
             required
           />
           
-          {/* ✅ INDICADOR: Força da senha - SIMPLIFICADO */}
+          {/* ✅ INDICADOR: Força da senha - COMPLETO */}
           {userData.password && (
             <div className="mt-1">
               <div className="flex items-center gap-1 text-xs">
                 <div className={`w-1.5 h-1.5 rounded-full ${passwordStrength.length ? 'bg-green-400' : 'bg-red-400'}`}></div>
                 <span className={passwordStrength.length ? 'text-green-400' : 'text-red-400'}>
-                  Mín. 6 caracteres
+                  Mín. 8 caracteres
                 </span>
               </div>
               <div className="flex items-center gap-1 text-xs mt-1">
                 <div className={`w-1.5 h-1.5 rounded-full ${passwordStrength.lowercase ? 'bg-green-400' : 'bg-orange-400'}`}></div>
                 <span className={passwordStrength.lowercase ? 'text-green-400' : 'text-orange-400'}>
-                  Recomendado: 1 minúscula
+                  {passwordStrength.lowercase ? '✓' : '✗'} 1 minúscula
+                </span>
+              </div>
+              <div className="flex items-center gap-1 text-xs mt-1">
+                <div className={`w-1.5 h-1.5 rounded-full ${passwordStrength.uppercase ? 'bg-green-400' : 'bg-orange-400'}`}></div>
+                <span className={passwordStrength.uppercase ? 'text-green-400' : 'text-orange-400'}>
+                  {passwordStrength.uppercase ? '✓' : '✗'} 1 maiúscula
                 </span>
               </div>
               <div className="flex items-center gap-1 text-xs mt-1">
                 <div className={`w-1.5 h-1.5 rounded-full ${passwordStrength.number ? 'bg-green-400' : 'bg-orange-400'}`}></div>
                 <span className={passwordStrength.number ? 'text-green-400' : 'text-orange-400'}>
-                  Recomendado: 1 número
+                  {passwordStrength.number ? '✓' : '✗'} 1 número
+                </span>
+              </div>
+              <div className="flex items-center gap-1 text-xs mt-1">
+                <div className={`w-1.5 h-1.5 rounded-full ${passwordStrength.special ? 'bg-green-400' : 'bg-orange-400'}`}></div>
+                <span className={passwordStrength.special ? 'text-green-400' : 'text-orange-400'}>
+                  {passwordStrength.special ? '✓' : '✗'} 1 caractere especial (@$!%*?&)
                 </span>
               </div>
             </div>

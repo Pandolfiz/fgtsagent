@@ -504,12 +504,12 @@ router.post('/profile/change-password', requireAuth, commonViewData, async (req,
     }
     
     // Verificar requisitos de senha
-    const passwordRegex = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{8,}$/;
+    const passwordRegex = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[@$!%*?&]).{8,}$/;
     if (!passwordRegex.test(newPassword)) {
       logger.warn(`Validação falhou [${requestId}]: requisitos de senha não atendidos`);
       return res.status(400).json({
         success: false,
-        message: 'A nova senha não atende aos requisitos de segurança'
+        message: 'A nova senha deve conter pelo menos 8 caracteres, incluindo uma letra maiúscula, uma letra minúscula, um número e um caractere especial (@$!%*?&)'
       });
     }
     
