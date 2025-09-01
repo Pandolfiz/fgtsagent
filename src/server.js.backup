@@ -4,8 +4,6 @@ const config = require('./config');
 const logger = require('./utils/logger');
 const { checkDatabaseSetup } = require('./utils/databaseChecker');
 const http = require('http');
-const https = require('https');
-const fs = require('fs');
 const { applyAllMigrations } = require('./utils/applyMigrations');
 const { validateJwtEnvironment } = require('./utils/jwtSecurity');
 
@@ -76,13 +74,7 @@ async function startServer() {
     }
     
     // Criar servidor HTTP
-    // Configuração HTTPS
-const httpsOptions = {
-  key: fs.readFileSync(path.join(__dirname, 'certs/key.pem')),
-  cert: fs.readFileSync(path.join(__dirname, 'certs/cert.pem'))
-};
-
-const server = https.createServer(httpsOptions, app);
+    const server = http.createServer(app);
     
     // Verificar se a porta já está em uso
     server.on('error', (err) => {

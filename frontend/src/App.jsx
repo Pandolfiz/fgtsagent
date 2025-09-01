@@ -21,6 +21,8 @@ import PaymentCancel from './pages/PaymentCancel.jsx';
 import PaymentSuccess from './pages/PaymentSuccess.jsx';
 import TermsOfUse from './pages/TermsOfUse.jsx';
 import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
+import Terms from './pages/Terms.jsx';
+import Privacy from './pages/Privacy.jsx';
 import AuthRecovery from './pages/AuthRecovery.jsx';
 
 import NotFound from './pages/NotFound.tsx';
@@ -58,6 +60,8 @@ export default function App() {
         {/* Páginas legais */}
         <Route path="/terms-of-use" element={<TermsOfUse />} />
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/terms" element={<Terms />} />
+        <Route path="/privacy" element={<Privacy />} />
 
         {/* Página de diagnóstico do Supabase */}
         <Route path="/supabase-diagnostico" element={<SupabaseTest />} />

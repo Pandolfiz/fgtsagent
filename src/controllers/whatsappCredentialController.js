@@ -1977,6 +1977,8 @@ class WhatsappCredentialController {
     }
   }
 
+
+
   // Processar autenticação da Meta API
   async processFacebookAuth(req, res) {
     try {
@@ -2021,59 +2023,225 @@ class WhatsappCredentialController {
         });
       }
 
-      const { id: whatsappBusinessAccountId, name, phone_numbers } = whatsappData.data;
+      const { id: whatsappBusinessAccountId, name } = whatsappData.data;
 
-      // 3. Verificar se já existe credencial para este cliente
-      const { data: existingCredential, error: checkError } = await supabaseAdmin
-        .from('whatsapp_credentials')
-        .select('*')
-        .eq('client_id', clientId)
-        .eq('connection_type', 'ads')
-        .single();
+      logger.info(`[META-AUTH] Dados da conta WhatsApp Business:`, {
+        id: whatsappBusinessAccountId,
+        name: name
+      });
 
-      if (checkError && checkError.code !== 'PGRST116') {
-        logger.error(`[META-AUTH] Erro ao verificar credencial existente: ${checkError.message}`);
-        return res.status(500).json({
-          success: false,
-          message: 'Erro interno do servidor'
-        });
+      // Buscar números de telefone associados à conta
+      logger.info(`[META-AUTH] Buscando números de telefone para a conta: ${whatsappBusinessAccountId}`);
+      const phoneNumbersResult = await this.getPhoneNumbers(whatsappBusinessAccountId, access_token);
+      
+      let phone_numbers = [];
+      if (phoneNumbersResult.success) {
+        phone_numbers = phoneNumbersResult.data;
+        logger.info(`[META-AUTH] ✅ ${phone_numbers.length} números de telefone encontrados`);
+        logger.info(`[META-AUTH] 📱 Dados dos números: ${JSON.stringify(phone_numbers)}`);
+      } else {
+        logger.warn(`[META-AUTH] ❌ Erro ao buscar números de telefone: ${phoneNumbersResult.error}`);
+      }
+
+      // Debug: Verificar se phone_numbers está vazio
+      logger.info(`[META-AUTH] 🔍 Debug - phone_numbers array: ${JSON.stringify(phone_numbers)}`);
+      logger.info(`[META-AUTH] 🔍 Debug - phone_numbers length: ${phone_numbers ? phone_numbers.length : 'undefined'}`);
+      logger.info(`[META-AUTH] 🔍 Debug - phone_numbers type: ${typeof phone_numbers}`);
+      logger.info(`[META-AUTH] 🔍 Debug - phone_numbers truthy: ${!!phone_numbers}`);
+      logger.info(`[META-AUTH] 🔍 Debug - phone_numbers.length > 0: ${phone_numbers && phone_numbers.length > 0}`);
+
+      // Se não encontrou números na lista, tentar buscar diretamente pelo ID conhecido
+      logger.info(`[META-AUTH] 🔍 Verificando condição: !phone_numbers = ${!phone_numbers}, length === 0 = ${phone_numbers ? phone_numbers.length === 0 : 'N/A'}`);
+      if (!phone_numbers || phone_numbers.length === 0) {
+        logger.info(`[META-AUTH] 🔍 Tentando busca direta pelo phone_number_id conhecido...`);
+        
+        // Buscar diretamente pelo ID do número de telefone
+        const directPhoneResult = await this.getPhoneNumberById('778533548672958', access_token);
+        
+        if (directPhoneResult.success) {
+          logger.info(`[META-AUTH] ✅ Número encontrado diretamente: ${JSON.stringify(directPhoneResult.data)}`);
+          
+          // Criar um objeto de número de telefone com os dados encontrados
+          const directPhoneNumber = {
+            id: directPhoneResult.data.id,
+            phone_number: directPhoneResult.data.display_phone_number || 'N/A',
+            verified_name: directPhoneResult.data.verified_name,
+            quality_rating: directPhoneResult.data.quality_rating,
+            code_verification_status: directPhoneResult.data.code_verification_status,
+            display_phone_number: directPhoneResult.data.display_phone_number
+          };
+          
+          phone_numbers = [directPhoneNumber];
+          logger.info(`[META-AUTH] ✅ Número adicionado à lista: ${JSON.stringify(phone_numbers)}`);
+        } else {
+          logger.warn(`[META-AUTH] ❌ Erro ao buscar número diretamente: ${directPhoneResult.error}`);
+        }
       }
 
       // 4. Preparar dados da credencial
-      const phoneNumber = phone_numbers[0];
+      let phoneNumber = null;
+      let phone = null;
+      let wppNumberId = null;
+      let phoneNumberDetails = null;
+
+      if (phone_numbers && phone_numbers.length > 0) {
+        phoneNumber = phone_numbers[0];
+        phone = phoneNumber.phone_number;
+        wppNumberId = phoneNumber.id;
+        logger.info(`[META-AUTH] Número de telefone encontrado: ${phone} (ID: ${wppNumberId})`);
+
+        // Buscar detalhes completos do número de telefone
+        logger.info(`[META-AUTH] Buscando detalhes completos do número: ${wppNumberId}`);
+        const phoneDetailsResult = await this.getPhoneNumberDetails(wppNumberId, access_token);
+        
+        if (phoneDetailsResult.success) {
+          // Combinar dados da lista (que tem phone_number) com detalhes (que tem outros campos)
+          phoneNumberDetails = {
+            ...phoneNumber, // Dados básicos da lista (inclui phone_number)
+            ...phoneDetailsResult.data // Detalhes adicionais
+          };
+          logger.info(`[META-AUTH] ✅ Detalhes completos do número encontrados: ${JSON.stringify(phoneNumberDetails)}`);
+        } else {
+          logger.warn(`[META-AUTH] ❌ Erro ao buscar detalhes do número: ${phoneDetailsResult.error}`);
+          // Usar dados básicos se não conseguir buscar detalhes
+          phoneNumberDetails = phoneNumber;
+        }
+      } else {
+        logger.warn(`[META-AUTH] Nenhum número de telefone encontrado na conta WhatsApp Business`);
+        phone = 'N/A';
+        wppNumberId = null;
+        phoneNumberDetails = null;
+      }
+
+      // 6. Buscar display_number nos metadados do número de telefone específico
+      if (wppNumberId) {
+        logger.info(`[META-AUTH] 🔍 Buscando display_number nos metadados do número: ${wppNumberId}`);
+        
+        // Primeira tentativa: API Meta direta
+        let apiSuccess = false;
+        try {
+          logger.info(`[META-AUTH] 🚀 Tentativa 1: Buscando da API Meta diretamente...`);
+          const phoneNumberResponse = await axios.get(`https://graph.facebook.com/v23.0/${wppNumberId}`, {
+            params: {
+              access_token: access_token,
+              fields: 'id,display_phone_number,verified_name,quality_rating,code_verification_status'
+            }
+          });
+
+          const phoneNumberData = phoneNumberResponse.data;
+          logger.info(`[META-AUTH] ✅ API Meta: Detalhes do número obtidos: ${JSON.stringify(phoneNumberData)}`);
+
+          // Se encontrou display_phone_number nos metadados do número, usar como phone
+          if (phoneNumberData.display_phone_number) {
+            phone = phoneNumberData.display_phone_number;
+            apiSuccess = true;
+            logger.info(`[META-AUTH] 🎯 API Meta: Display number encontrado: ${phone}`);
+          } else {
+            logger.warn(`[META-AUTH] ⚠️ API Meta: Display number não encontrado nos metadados`);
+          }
+        } catch (error) {
+          logger.warn(`[META-AUTH] ⚠️ API Meta falhou: ${error.message}`);
+          if (error.response) {
+            logger.warn(`[META-AUTH] ⚠️ Status: ${error.response.status}`);
+            if (error.response.data && error.response.data.error) {
+              logger.warn(`[META-AUTH] ⚠️ Erro Meta: ${error.response.data.error.message}`);
+            }
+          }
+        }
+
+        // Segunda tentativa: Fallback com dados já obtidos
+        if (!apiSuccess) {
+          logger.info(`[META-AUTH] 🔄 Tentativa 2: Usando fallback com dados anteriores...`);
+          
+          if (phoneNumberDetails && phoneNumberDetails.display_phone_number) {
+            phone = phoneNumberDetails.display_phone_number;
+            logger.info(`[META-AUTH] ✅ Fallback: Display number encontrado: ${phone}`);
+          } else if (phoneNumberDetails && phoneNumberDetails.phone_number) {
+            phone = phoneNumberDetails.phone_number;
+            logger.info(`[META-AUTH] ✅ Fallback: Phone number encontrado: ${phone}`);
+          } else {
+            logger.warn(`[META-AUTH] ⚠️ Fallback: Nenhum número disponível nos dados anteriores`);
+          }
+        }
+      } else {
+        logger.warn(`[META-AUTH] ⚠️ wppNumberId não disponível, não é possível buscar display_number`);
+      }
+
+      // 5. Verificar se já existe credencial para este número de telefone específico
+      let existingCredential = null;
+      if (wppNumberId) {
+        logger.info(`[META-AUTH] 🔍 Verificando se já existe credencial para o número: ${wppNumberId}`);
+        
+        const { data: existingCreds, error: checkError } = await supabaseAdmin
+          .from('whatsapp_credentials')
+          .select('*')
+          .eq('wpp_number_id', wppNumberId)
+          .eq('connection_type', 'ads')
+          .single();
+
+        if (checkError && checkError.code !== 'PGRST116') {
+          logger.error(`[META-AUTH] Erro ao verificar credencial existente: ${checkError.message}`);
+          return res.status(500).json({
+            success: false,
+            message: 'Erro interno do servidor'
+          });
+        }
+
+        if (existingCreds) {
+          existingCredential = existingCreds;
+          logger.info(`[META-AUTH] 🔍 Credencial existente encontrada para o número ${wppNumberId}: ${existingCredential.id}`);
+        } else {
+          logger.info(`[META-AUTH] ✅ Nenhuma credencial existente encontrada para o número ${wppNumberId}`);
+        }
+      } else {
+        logger.info(`[META-AUTH] ⚠️ wpp_number_id não disponível, não é possível verificar credencial existente`);
+      }
+
       const credentialData = {
         client_id: clientId,
-        phone: phoneNumber.phone_number,
-        instance_name: name,
-        agent_name: name,
+        phone: phone,
+        instance_name: name || 'WhatsApp Business Account',
+        agent_name: name || 'WhatsApp Business Account',
         wpp_access_token: access_token,
         wpp_business_account_id: whatsappBusinessAccountId,
-        wpp_number_id: phoneNumber.id,
+        wpp_number_id: wppNumberId,
         connection_type: 'ads',
-        status: 'connected',
-        status_description: 'Conta conectada via Meta API',
+        status: phoneNumberDetails?.code_verification_status === 'VERIFIED' ? 'verified' : 'connected',
+        status_description: phoneNumberDetails?.code_verification_status === 'VERIFIED' 
+          ? (phoneNumberDetails?.name_status === 'APPROVED' 
+              ? 'Número verificado e nome aprovado - Pronto para uso' 
+              : phoneNumberDetails?.name_status === 'PENDING_REVIEW'
+              ? 'Número verificado - Nome aguardando aprovação da Meta'
+              : phoneNumberDetails?.name_status === 'DECLINED'
+              ? 'Número verificado - Nome rejeitado pela Meta'
+              : 'Número verificado - Aguardando aprovação do nome de exibição')
+          : 'Conta conectada via Meta API',
         metadata: {
           access_token,
           token_type,
           expires_in,
           whatsapp_business_account_id: whatsappBusinessAccountId,
-          phone_number_id: phoneNumber.id,
-          verified_name: phoneNumber.verified_name,
-          quality_rating: phoneNumber.quality_rating,
-          code_verification_status: phoneNumber.code_verification_status,
-          display_phone_number: phoneNumber.display_phone_number,
-          currency: whatsappData.data.currency,
-          timezone_id: whatsappData.data.timezone_id,
-          message_template_namespace: whatsappData.data.message_template_namespace,
-          phone_numbers: phone_numbers,
+          phone_number_id: wppNumberId,
+          verified_name: phoneNumberDetails ? phoneNumberDetails.verified_name : null,
+          quality_rating: phoneNumberDetails ? phoneNumberDetails.quality_rating : null,
+          code_verification_status: phoneNumberDetails ? phoneNumberDetails.code_verification_status : null,
+          display_phone_number: phoneNumberDetails ? phoneNumberDetails.display_phone_number : null,
+          name_status: phoneNumberDetails ? phoneNumberDetails.name_status : null,
+          new_name_status: phoneNumberDetails ? phoneNumberDetails.new_name_status : null,
+          currency: whatsappData.data.currency || null,
+          timezone_id: whatsappData.data.timezone_id || null,
+          message_template_namespace: whatsappData.data.message_template_namespace || null,
+          phone_numbers: phone_numbers || [],
+          phone_number_details: phoneNumberDetails || null,
           last_meta_auth: new Date().toISOString()
         }
       };
 
       let result;
       if (existingCredential) {
-        // 5a. Atualizar credencial existente
-        logger.info(`[META-AUTH] Atualizando credencial existente: ${existingCredential.id}`);
+        // 5a. Atualizar credencial existente (mesmo número, dados atualizados)
+        logger.info(`[META-AUTH] 🔄 Atualizando credencial existente para o número ${wppNumberId}: ${existingCredential.id}`);
+        logger.info(`[META-AUTH] 📱 Atualizando dados: phone=${phone}, access_token=${access_token ? 'SIM' : 'NÃO'}`);
         
         const { data: updateResult, error: updateError } = await supabaseAdmin
           .from('whatsapp_credentials')
@@ -2083,17 +2251,19 @@ class WhatsappCredentialController {
           .single();
 
         if (updateError) {
-          logger.error(`[META-AUTH] Erro ao atualizar credencial: ${updateError.message}`);
+          logger.error(`[META-AUTH] ❌ Erro ao atualizar credencial: ${updateError.message}`);
           return res.status(500).json({
             success: false,
-            message: 'Erro ao atualizar credencial'
+            message: 'Erro ao atualizar credencial existente'
           });
         }
 
         result = updateResult;
+        logger.info(`[META-AUTH] ✅ Credencial atualizada com sucesso: ${result.id}`);
       } else {
-        // 5b. Criar nova credencial
-        logger.info(`[META-AUTH] Criando nova credencial para cliente: ${clientId}`);
+        // 5b. Criar nova credencial (novo número ou primeira vez)
+        logger.info(`[META-AUTH] 🆕 Criando nova credencial para cliente: ${clientId}`);
+        logger.info(`[META-AUTH] 📱 Dados da nova credencial: phone=${phone}, wpp_number_id=${wppNumberId}`);
         
         const { data: createResult, error: createError } = await supabaseAdmin
           .from('whatsapp_credentials')
@@ -2102,14 +2272,15 @@ class WhatsappCredentialController {
           .single();
 
         if (createError) {
-          logger.error(`[META-AUTH] Erro ao criar credencial: ${createError.message}`);
+          logger.error(`[META-AUTH] ❌ Erro ao criar credencial: ${createError.message}`);
           return res.status(500).json({
             success: false,
-            message: 'Erro ao criar credencial'
+            message: 'Erro ao criar nova credencial'
           });
         }
 
         result = createResult;
+        logger.info(`[META-AUTH] ✅ Nova credencial criada com sucesso: ${result.id}`);
       }
 
       logger.info(`[META-AUTH] Autenticação da Meta processada com sucesso para credencial: ${result.id}`);
@@ -2123,7 +2294,7 @@ class WhatsappCredentialController {
           instance_name: result.instance_name,
           status: result.status,
           whatsapp_business_account_id: whatsappBusinessAccountId,
-          phone_number_id: phoneNumber.id
+          phone_number_id: wppNumberId
         }
       });
 
@@ -2139,19 +2310,168 @@ class WhatsappCredentialController {
   // Trocar código de autorização por access token
   async exchangeCodeForToken(code) {
     try {
-      const response = await axios.post('https://graph.facebook.com/v2.2/oauth/access_token', {
+      logger.info(`[META-AUTH] Iniciando troca de código por token...`);
+      logger.info(`[META-AUTH] Código recebido: ${code ? code.substring(0, 10) + '...' : 'NÃO FORNECIDO'}`);
+      
+      // Primeiro, tentar sem redirect_uri (para Config ID)
+      logger.info(`[META-AUTH] Tentativa 1: Sem redirect_uri (Config ID)`);
+      const paramsWithoutRedirect = new URLSearchParams({
+        client_id: process.env.META_APP_ID,
+        client_secret: process.env.META_APP_SECRET,
+        code: code
+      });
+
+      try {
+        const response = await axios.post('https://graph.facebook.com/v23.0/oauth/access_token', paramsWithoutRedirect, {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        });
+
+        logger.info(`[META-AUTH] ✅ Token trocado com sucesso SEM redirect_uri`);
+        logger.info(`[META-AUTH] Resposta: ${JSON.stringify(response.data)}`);
+        
+        return {
+          success: true,
+          data: response.data
+        };
+      } catch (errorWithoutRedirect) {
+        logger.info(`[META-AUTH] ❌ Falha sem redirect_uri: ${errorWithoutRedirect.message}`);
+        
+        // Se falhou sem redirect_uri, tentar com redirect_uri (OAuth tradicional)
+        logger.info(`[META-AUTH] Tentativa 2: Com redirect_uri (OAuth tradicional)`);
+        const paramsWithRedirect = new URLSearchParams({
         client_id: process.env.META_APP_ID,
         client_secret: process.env.META_APP_SECRET,
         redirect_uri: process.env.META_REDIRECT_URI,
         code: code
       });
 
+        const response = await axios.post('https://graph.facebook.com/v23.0/oauth/access_token', paramsWithRedirect, {
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded'
+          }
+        });
+
+        logger.info(`[META-AUTH] ✅ Token trocado com sucesso COM redirect_uri`);
+        logger.info(`[META-AUTH] Resposta: ${JSON.stringify(response.data)}`);
+
       return {
         success: true,
         data: response.data
       };
+      }
     } catch (error) {
       logger.error(`[META-AUTH] Erro ao trocar código por token: ${error.message}`);
+      if (error.response) {
+        logger.error(`[META-AUTH] Resposta do Facebook: ${JSON.stringify(error.response.data)}`);
+      }
+      // Se falhou, tentar endpoint alternativo
+      logger.info(`[META-AUTH] Tentando endpoint alternativo...`);
+      try {
+        // Remover esta tentativa alternativa que usa accessToken não definido
+        logger.warn(`[META-AUTH] Tentativa alternativa removida - accessToken não disponível`);
+      } catch (altError) {
+        logger.error(`[META-AUTH] Erro no endpoint alternativo: ${altError.message}`);
+      }
+      
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Buscar números de telefone de uma conta WhatsApp Business
+  async getPhoneNumbers(wbaId, accessToken) {
+    try {
+      logger.info(`[META-AUTH] Buscando números de telefone para WBA ID: ${wbaId}`);
+      
+      const phoneNumbersResponse = await axios.get(`https://graph.facebook.com/v23.0/${wbaId}/phone_numbers?fields=id,phone_number,verified_name,quality_rating,code_verification_status,display_phone_number`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      
+      logger.info(`[META-AUTH] ✅ Números de telefone encontrados: ${JSON.stringify(phoneNumbersResponse.data)}`);
+      
+      return {
+        success: true,
+        data: phoneNumbersResponse.data.data || []
+      };
+    } catch (error) {
+      logger.warn(`[META-AUTH] Erro ao buscar números de telefone: ${error.message}`);
+      if (error.response) {
+        logger.warn(`[META-AUTH] Resposta do erro: ${JSON.stringify(error.response.data)}`);
+      }
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Buscar detalhes específicos de um número de telefone pelo ID
+  async getPhoneNumberDetails(phoneNumberId, accessToken) {
+    try {
+      logger.info(`[META-AUTH] Buscando detalhes do número de telefone ID: ${phoneNumberId}`);
+      
+      // Campos corretos para WhatsAppBusinessPhoneNumber (sem phone_number)
+      const phoneNumberResponse = await axios.get(`https://graph.facebook.com/v23.0/${phoneNumberId}?fields=id,verified_name,quality_rating,code_verification_status,display_phone_number,name_status,new_name_status`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      
+      logger.info(`[META-AUTH] ✅ Detalhes do número encontrados: ${JSON.stringify(phoneNumberResponse.data)}`);
+      
+      return {
+        success: true,
+        data: phoneNumberResponse.data
+      };
+    } catch (error) {
+      logger.warn(`[META-AUTH] Erro ao buscar detalhes do número: ${error.message}`);
+      if (error.response) {
+        logger.warn(`[META-AUTH] Resposta do erro: ${JSON.stringify(error.response.data)}`);
+      }
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Buscar número de telefone diretamente pelo ID (incluindo o número em si)
+  async getPhoneNumberById(phoneNumberId, accessToken) {
+    try {
+      logger.info(`[META-AUTH] Buscando número de telefone diretamente pelo ID: ${phoneNumberId}`);
+      
+      // Primeiro, buscar detalhes do número
+      const detailsResult = await this.getPhoneNumberDetails(phoneNumberId, accessToken);
+      
+      if (!detailsResult.success) {
+        return detailsResult;
+      }
+      
+      // Agora buscar o número de telefone usando o endpoint correto da Meta
+      // Baseado na documentação: https://developers.facebook.com/docs/whatsapp/phone-numbers
+      const phoneNumberResponse = await axios.get(`https://graph.facebook.com/v23.0/${phoneNumberId}?fields=id,phone_number,verified_name,quality_rating,code_verification_status,display_phone_number,name_status,new_name_status`, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      
+      logger.info(`[META-AUTH] ✅ Número de telefone encontrado: ${JSON.stringify(phoneNumberResponse.data)}`);
+      
+      return {
+        success: true,
+        data: phoneNumberResponse.data
+      };
+    } catch (error) {
+      logger.warn(`[META-AUTH] Erro ao buscar número de telefone: ${error.message}`);
+      if (error.response) {
+        logger.warn(`[META-AUTH] Resposta do erro: ${JSON.stringify(error.response.data)}`);
+      }
       return {
         success: false,
         error: error.message
@@ -2162,18 +2482,201 @@ class WhatsappCredentialController {
   // Buscar dados da conta WhatsApp Business
   async getWhatsAppBusinessAccount(accessToken) {
     try {
-      const response = await axios.get('https://graph.facebook.com/v2.2/me/whatsapp_business_accounts', {
+      logger.info(`[META-AUTH] ==========================================`);
+      logger.info(`[META-AUTH] INICIANDO BUSCA DE DADOS WHATSAPP BUSINESS`);
+      logger.info(`[META-AUTH] ==========================================`);
+      logger.info(`[META-AUTH] Access Token: ${accessToken ? accessToken.substring(0, 20) + '...' : 'NÃO FORNECIDO'}`);
+      
+      // Primeiro, buscar o ID do usuário e permissões
+      logger.info(`[META-AUTH] Buscando ID do usuário e permissões...`);
+      const userResponse = await axios.get('https://graph.facebook.com/v23.0/me?fields=id,name,email,permissions', {
         headers: {
           'Authorization': `Bearer ${accessToken}`
         }
       });
 
+      const userId = userResponse.data.id;
+      logger.info(`[META-AUTH] ID do usuário obtido: ${userId}`);
+      logger.info(`[META-AUTH] Dados do usuário: ${JSON.stringify(userResponse.data)}`);
+      logger.info(`[META-AUTH] Permissões concedidas: ${JSON.stringify(userResponse.data.permissions)}`);
+
+      // NOVA ABORDAGEM: Buscar diretamente WhatsApp Business accounts
+      logger.info(`[META-AUTH] Buscando WhatsApp Business accounts diretamente...`);
+      
+      // 1. Tentativa removida - endpoint /me?fields=whatsapp_business_accounts não existe
+      logger.info(`[META-AUTH] Tentativa 1: Removida - endpoint não existe na Meta API`);
+
+      // 2. Buscar todas as contas do usuário
+      logger.info(`[META-AUTH] Tentativa 2: Buscar todas as contas do usuário`);
+      try {
+        const accountsResponse = await axios.get('https://graph.facebook.com/v23.0/me/accounts?fields=id,name,category,whatsapp_business_accounts{id,name,phone_numbers,currency,timezone_id,message_template_namespace}', {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+
+        logger.info(`[META-AUTH] Contas encontradas: ${accountsResponse.data.data ? accountsResponse.data.data.length : 0}`);
+        logger.info(`[META-AUTH] Dados das contas: ${JSON.stringify(accountsResponse.data)}`);
+        
+        if (accountsResponse.data.data && accountsResponse.data.data.length > 0) {
+          for (const account of accountsResponse.data.data) {
+            logger.info(`[META-AUTH] Verificando conta: ${account.id} (${account.name})`);
+            logger.info(`[META-AUTH] Dados da conta: ${JSON.stringify(account)}`);
+            
+            if (account.whatsapp_business_accounts && account.whatsapp_business_accounts.data && account.whatsapp_business_accounts.data.length > 0) {
+              logger.info(`[META-AUTH] ✅ WhatsApp Business encontrado na conta: ${account.name}`);
+              return {
+                success: true,
+                data: account.whatsapp_business_accounts.data[0]
+              };
+            }
+          }
+        }
+      } catch (accountsError) {
+        logger.warn(`[META-AUTH] Erro ao buscar contas: ${accountsError.message}`);
+        if (accountsError.response) {
+          logger.warn(`[META-AUTH] Resposta do erro: ${JSON.stringify(accountsError.response.data)}`);
+        }
+      }
+
+      // 3. Buscar businesses
+      logger.info(`[META-AUTH] Tentativa 3: Buscar businesses`);
+      try {
+        const businessesResponse = await axios.get('https://graph.facebook.com/v23.0/me/businesses?fields=id,name,whatsapp_business_accounts{id,name,phone_numbers,currency,timezone_id,message_template_namespace}', {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+
+        logger.info(`[META-AUTH] Businesses encontrados: ${businessesResponse.data.data ? businessesResponse.data.data.length : 0}`);
+        
+        if (businessesResponse.data.data && businessesResponse.data.data.length > 0) {
+          for (const business of businessesResponse.data.data) {
+            logger.info(`[META-AUTH] Verificando business: ${business.id} (${business.name})`);
+            
+            if (business.whatsapp_business_accounts && business.whatsapp_business_accounts.data && business.whatsapp_business_accounts.data.length > 0) {
+              logger.info(`[META-AUTH] ✅ WhatsApp Business encontrado no business: ${business.name}`);
+              return {
+                success: true,
+                data: business.whatsapp_business_accounts.data[0]
+              };
+            }
+          }
+        }
+      } catch (businessesError) {
+        logger.warn(`[META-AUTH] ⚠️ Erro ao buscar businesses: ${businessesError.message}`);
+        if (businessesError.response) {
+          logger.warn(`[META-AUTH] ⚠️ Status: ${businessesError.response.status}`);
+          if (businessesError.response.data && businessesError.response.data.error) {
+            logger.warn(`[META-AUTH] ⚠️ Erro Meta: ${businessesError.response.data.error.message}`);
+          }
+        }
+        logger.info(`[META-AUTH] 🔄 Continuando para próxima tentativa...`);
+      }
+
+      // 4. Buscar ad accounts (REMOVIDO - Config ID já fornece os dados necessários)
+      logger.info(`[META-AUTH] ⏭️ Pulando busca de ad accounts - Config ID já fornece dados WhatsApp Business`);
+
+      // 4. Buscar diretamente pelo ID da conta conhecida (Pandolfiz: 754286387300396)
+              logger.info(`[META-AUTH] Tentativa 4: Buscar diretamente pelo ID da conta conhecida`);
+      try {
+        const knownAccountId = '754286387300396';
+        logger.info(`[META-AUTH] Tentando buscar conta: ${knownAccountId}`);
+        
+        // Primeiro, buscar dados básicos da conta
+        const knownAccountResponse = await axios.get(`https://graph.facebook.com/v23.0/${knownAccountId}?fields=id,name,currency,timezone_id,message_template_namespace`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+        
+        logger.info(`[META-AUTH] ✅ Conta conhecida encontrada: ${JSON.stringify(knownAccountResponse.data)}`);
+        
+        // Agora buscar números de telefone associados
+        logger.info(`[META-AUTH] Buscando números de telefone para a conta: ${knownAccountId}`);
+        const phoneNumbersResponse = await axios.get(`https://graph.facebook.com/v23.0/${knownAccountId}/phone_numbers?fields=id,phone_number,verified_name,quality_rating,code_verification_status,display_phone_number`, {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+        
+        logger.info(`[META-AUTH] ✅ Números de telefone encontrados: ${JSON.stringify(phoneNumbersResponse.data)}`);
+        
+        // Combinar dados da conta com números de telefone
+        const accountData = {
+          ...knownAccountResponse.data,
+          phone_numbers: phoneNumbersResponse.data.data || []
+        };
+        
+        return {
+          success: true,
+          data: accountData
+        };
+      } catch (knownAccountError) {
+        logger.warn(`[META-AUTH] Erro ao buscar conta conhecida: ${knownAccountError.message}`);
+        if (knownAccountError.response) {
+          logger.warn(`[META-AUTH] Resposta do erro: ${JSON.stringify(knownAccountError.response.data)}`);
+        }
+      }
+
+      // 6. Buscar todas as páginas do usuário
+      logger.info(`[META-AUTH] Tentativa 6: Buscar todas as páginas do usuário`);
+      try {
+        const pagesResponse = await axios.get('https://graph.facebook.com/v23.0/me/accounts?fields=id,name,category,whatsapp_business_accounts{id,name,phone_numbers,currency,timezone_id,message_template_namespace}', {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`
+          }
+        });
+
+        logger.info(`[META-AUTH] Páginas encontradas: ${pagesResponse.data.data ? pagesResponse.data.data.length : 0}`);
+        
+        if (pagesResponse.data.data && pagesResponse.data.data.length > 0) {
+          for (const page of pagesResponse.data.data) {
+            logger.info(`[META-AUTH] Verificando página: ${page.id} (${page.name})`);
+            
+            if (page.whatsapp_business_accounts && page.whatsapp_business_accounts.data && page.whatsapp_business_accounts.data.length > 0) {
+              logger.info(`[META-AUTH] ✅ WhatsApp Business encontrado na página: ${page.name}`);
+              return {
+                success: true,
+                data: page.whatsapp_business_accounts.data[0]
+              };
+            }
+          }
+        }
+      } catch (pagesError) {
+        logger.warn(`[META-AUTH] ⚠️ Erro ao buscar páginas: ${pagesError.message}`);
+        if (pagesError.response) {
+          logger.warn(`[META-AUTH] ⚠️ Status: ${pagesError.response.status}`);
+          if (pagesError.response.data && pagesError.response.data.error) {
+            logger.warn(`[META-AUTH] ⚠️ Erro Meta: ${pagesError.response.data.error.message}`);
+          }
+        }
+        logger.info(`[META-AUTH] 🔄 Continuando para próxima tentativa...`);
+      }
+
+      // Se chegou aqui, não encontrou WhatsApp Business
+      logger.error(`[META-AUTH] ==========================================`);
+      logger.error(`[META-AUTH] NENHUMA CONTA WHATSAPP BUSINESS ENCONTRADA`);
+      logger.error(`[META-AUTH] ==========================================`);
+      logger.error(`[META-AUTH] Todas as tentativas falharam. Verificar se o Config ID criou a conta corretamente.`);
       return {
-        success: true,
-        data: response.data
+        success: false,
+        error: 'Nenhuma conta WhatsApp Business encontrada. Verifique se o processo de Embedded Signup foi completado corretamente.'
       };
+      
     } catch (error) {
-      logger.error(`[META-AUTH] Erro ao buscar conta WhatsApp Business: ${error.message}`);
+      logger.error(`[META-AUTH] ==========================================`);
+      logger.error(`[META-AUTH] ERRO AO BUSCAR CONTA WHATSAPP BUSINESS`);
+      logger.error(`[META-AUTH] ==========================================`);
+      logger.error(`[META-AUTH] Mensagem: ${error.message}`);
+      logger.error(`[META-AUTH] Stack: ${error.stack}`);
+      
+      if (error.response) {
+        logger.error(`[META-AUTH] Resposta do Facebook: ${JSON.stringify(error.response.data)}`);
+        logger.error(`[META-AUTH] Status: ${error.response.status}`);
+        logger.error(`[META-AUTH] Headers: ${JSON.stringify(error.response.headers)}`);
+      }
+      
       return {
         success: false,
         error: error.message

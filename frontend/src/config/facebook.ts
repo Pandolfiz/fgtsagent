@@ -11,10 +11,11 @@ export const FACEBOOK_CONFIG = {
 
   // Configurações do SDK
   SDK_CONFIG: {
-    autoLogAppEvents: true,
+    autoLogAppEvents: false, // Desabilitar eventos automáticos
     xfbml: true,
     cookie: true, // Habilitar cookies para sessão
-    status: true, // Verificar status de login
+    status: false, // Desabilitar verificação automática de status
+    checkLoginStatus: false, // Desabilitar verificação de status de login
   },
 
   // Configurações do Embedded Signup

@@ -17,14 +17,13 @@ import { FACEBOOK_CONFIG, isFacebookConfigured, FACEBOOK_ERRORS } from '../../co
 //
 // IMPORTANTE: Toda a funcionalidade está preservada, apenas desabilitamos temporariamente
 //
-// Para reativar quando tivermos as permissões:
-// 1. Meta App aprovado e configurado
-// 2. Permissões WhatsApp Business concedidas
-// 3. Produto WhatsApp ativo
-// 4. Alterar para: META_INTEGRATION_ENABLED = true
+// ✅ Meta App aprovado e configurado
+// ✅ Permissões WhatsApp Business concedidas
+// ✅ Produto WhatsApp ativo
+// ✅ Integração Meta habilitada e funcional
 //
 // ==============================================
-const META_INTEGRATION_ENABLED = false; // false = desabilitado, true = ativo
+const META_INTEGRATION_ENABLED = true; // false = desabilitado, true = ativo
 
 export function WhatsappCredentialsPage() {
   const [credentials, setCredentials] = useState<EvolutionCredential[]>([]);
@@ -1774,7 +1773,12 @@ export function WhatsappCredentialsPage() {
                     {/* Lado direito: Tipo e Status */}
                     <div className="flex flex-col items-end space-y-1 ml-3">
                       <ConnectionTypeBadge connectionType={credential.connection_type} />
-                      <StatusBadge status={credential.status} size="sm" />
+                      <StatusBadge 
+                        status={credential.connection_type === 'ads' && credential.metadata?.code_verification_status === 'VERIFIED' 
+                          ? 'verified' 
+                          : credential.status} 
+                        size="sm" 
+                      />
                     </div>
                   </div>
                 </div>
@@ -1787,9 +1791,17 @@ export function WhatsappCredentialsPage() {
                       <div className="flex-1">
                         <p className="text-xs text-cyan-300 font-medium">STATUS DA CONEXÃO</p>
                         <p className="text-white font-medium text-sm">
-                          {credential.status === 'connected' || credential.status === 'open' ? 'Conectado' : 
-                           credential.status === 'connecting' ? 'Conectando...' : 
-                           credential.status === 'disconnected' ? 'Desconectado' : 'Aguardando Conexão'}
+                          {credential.status === 'verified' 
+                            ? (credential.metadata?.name_status === 'APPROVED' 
+                                ? 'Verificado e Nome Aprovado' 
+                                : credential.metadata?.name_status === 'PENDING_REVIEW'
+                                ? 'Verificado - Nome em Revisão'
+                                : credential.metadata?.name_status === 'DECLINED'
+                                ? 'Verificado - Nome Rejeitado'
+                                : 'Verificado - Aguardando Nome')
+                            : credential.status === 'connected' || credential.status === 'open' ? 'Conectado' : 
+                              credential.status === 'connecting' ? 'Conectando...' : 
+                              credential.status === 'disconnected' ? 'Desconectado' : 'Aguardando Conexão'}
                         </p>
                         {/* Exibir status_description quando disponível */}
                         {credential.status_description && (
@@ -1802,10 +1814,7 @@ export function WhatsappCredentialsPage() {
                         {credential.connection_type === 'ads' && 
                          credential.wpp_number_id && 
                          credential.wpp_access_token && 
-                         credential.status !== 'CONNECTED' && 
-                         credential.status !== 'connected' && 
-                         credential.status !== 'VERIFIED' && 
-                         credential.status !== 'verified' && (
+                         credential.metadata?.code_verification_status !== 'VERIFIED' && (
                           <div className="mt-2 p-2 rounded-lg bg-blue-800/20 border border-blue-700/30">
                             <p className="text-xs text-blue-200 font-medium mb-1">ℹ️ Número criado com sucesso!</p>
                             <p className="text-xs text-blue-100">
@@ -1819,14 +1828,25 @@ export function WhatsappCredentialsPage() {
                         {credential.connection_type === 'ads' && 
                          credential.wpp_number_id && 
                          credential.wpp_access_token && 
-                         (credential.status === 'CONNECTED' || 
-                          credential.status === 'connected' || 
-                          credential.status === 'VERIFIED' || 
-                          credential.status === 'verified') && (
+                         credential.metadata?.code_verification_status === 'VERIFIED' && (
                           <div className="mt-2 p-2 rounded-lg bg-green-800/20 border border-green-700/30">
-                            <p className="text-xs text-green-200 font-medium mb-1">✅ Número verificado e pronto!</p>
+                            <p className="text-xs text-green-200 font-medium mb-1">
+                              {credential.metadata?.name_status === 'APPROVED' 
+                                ? '✅ Número verificado e nome aprovado!' 
+                                : credential.metadata?.name_status === 'PENDING_REVIEW'
+                                ? '✅ Número verificado - Nome em revisão'
+                                : credential.metadata?.name_status === 'DECLINED'
+                                ? '✅ Número verificado - Nome rejeitado'
+                                : '✅ Número verificado - Aguardando aprovação do nome'}
+                            </p>
                             <p className="text-xs text-green-100">
-                              O número foi verificado com sucesso na Meta API e está pronto para uso.
+                              {credential.metadata?.name_status === 'APPROVED' 
+                                ? 'O número foi verificado e o nome foi aprovado pela Meta API. Pronto para uso completo!'
+                                : credential.metadata?.name_status === 'PENDING_REVIEW'
+                                ? 'O número foi verificado com sucesso. O nome de exibição está sendo revisado pela Meta.'
+                                : credential.metadata?.name_status === 'DECLINED'
+                                ? 'O número foi verificado, mas o nome de exibição foi rejeitado pela Meta. Considere alterar o nome.'
+                                : 'O número foi verificado com sucesso. Aguardando aprovação do nome de exibição pela Meta.'}
                             </p>
                           </div>
                         )}
@@ -1904,10 +1924,7 @@ export function WhatsappCredentialsPage() {
                         const shouldShowSMSButton = credential.connection_type === 'ads' && 
                           credential.wpp_number_id && 
                           credential.wpp_access_token && 
-                          credential.status !== 'CONNECTED' && 
-                          credential.status !== 'connected' && 
-                          credential.status !== 'VERIFIED' && 
-                          credential.status !== 'verified';
+                          credential.metadata?.code_verification_status !== 'VERIFIED';
                         
                         console.log(`🔍 Debug SMS Button para credencial ${credential.id}:`, {
                           connection_type: credential.connection_type,
