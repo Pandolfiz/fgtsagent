@@ -458,12 +458,7 @@ app.post('/api/health/cache/clear', (req, res) => {
 
 console.log('Rotas de health check registradas com sucesso');
 
-// Rotas API - estas devem vir DEPOIS das rotas específicas
-app.use('/api', apiRoutes);
-
-// Middleware para aplicar tokens renovados na resposta
-app.use(applyRefreshedTokens);
-
+// Rotas de autenticação DEVEM vir ANTES de apiRoutes
 // Rotas de autenticação com Rate + Speed Limiting (mais permissivo em desenvolvimento)
 if (process.env.NODE_ENV === 'development') {
   // Em desenvolvimento: rate limiting mais permissivo
@@ -474,6 +469,12 @@ if (process.env.NODE_ENV === 'development') {
   app.use('/auth', authLimiter, authSpeedLimiter, authRoutes);
   app.use('/api/auth', authLimiter, authSpeedLimiter, authRoutes);
 }
+
+// Rotas API - estas devem vir DEPOIS das rotas específicas
+app.use('/api', apiRoutes);
+
+// Middleware para aplicar tokens renovados na resposta
+app.use(applyRefreshedTokens);
 app.use('/api/whatsapp-credentials', requireAuth, whatsappCredentialRoutes);
 app.use('/api/credentials', credentialsRoutes);
 // REMOVIDO: app.use('/api', credentialsRoutes); // Isso sobrescrevia todas as rotas /api/*
