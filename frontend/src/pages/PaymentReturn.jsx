@@ -100,7 +100,7 @@ export default function PaymentReturn() {
   // ✅ SEGUNDO useEffect: Countdown e redirecionamento
   useEffect(() => {
     if (countdown <= 1) {
-      console.log('🔄 PaymentReturn: Redirecionando para /payment/success');
+      console.log('🔄 PaymentReturn: Redirecionando para /signup/success (rota unificada)');
       setShouldRedirect(true); // Mark for redirection
         return;
     }
@@ -115,7 +115,7 @@ export default function PaymentReturn() {
   // ✅ TERCEIRO useEffect: Redirecionamento efetivo (GARANTE REDIRECIONAMENTO)
   useEffect(() => {
     if (shouldRedirect) {
-      console.log('🔄 PaymentReturn: Executando redirecionamento para /payment/success');
+      console.log('🔄 PaymentReturn: Executando redirecionamento para /signup/success (rota unificada)');
       
       // ✅ PREPARAR: Dados para a página de sucesso (com ou sem userData)
       const successData = {
@@ -217,9 +217,9 @@ export default function PaymentReturn() {
         console.log('🔍 PaymentReturn: paymentStatus.customerEmail:', paymentStatus.customerEmail);
         
         successData.userData = {
-          firstName: paymentStatus.metadata?.firstName || 'Usuário',
-          lastName: paymentStatus.metadata?.lastName || 'Cliente',
-          fullName: paymentStatus.metadata?.fullName || `${paymentStatus.metadata?.firstName || 'Usuário'} ${paymentStatus.metadata?.lastName || 'Cliente'}`.trim(),
+          first_name: paymentStatus.metadata?.firstName || paymentStatus.metadata?.first_name || 'Usuário',
+          last_name: paymentStatus.metadata?.lastName || paymentStatus.metadata?.last_name || 'Cliente',
+          fullName: paymentStatus.metadata?.fullName || `${paymentStatus.metadata?.firstName || paymentStatus.metadata?.first_name || 'Usuário'} ${paymentStatus.metadata?.lastName || paymentStatus.metadata?.last_name || 'Cliente'}`.trim(),
           email: paymentStatus.customerEmail || 'email@exemplo.com',
           phone: paymentStatus.metadata?.phone || '',
           planType: paymentStatus.metadata?.planType || 'basic'
@@ -238,8 +238,8 @@ export default function PaymentReturn() {
             try {
               console.log('🔍 PaymentReturn: Dados para criação:', {
                 email: paymentStatus.customerEmail,
-                firstName: successData.userData.firstName,
-                lastName: successData.userData.lastName,
+                first_name: successData.userData.first_name,
+                last_name: successData.userData.last_name,
                 fullName: successData.userData.fullName,
                 phone: successData.userData.phone,
                 planType: successData.userData.planType,
@@ -248,8 +248,8 @@ export default function PaymentReturn() {
               
               const createUserResponse = await axios.post('/api/auth/create-user-after-payment', {
                 email: paymentStatus.customerEmail,
-                firstName: successData.userData.firstName,
-                lastName: successData.userData.lastName,
+                first_name: successData.userData.first_name,
+                last_name: successData.userData.last_name,
                 fullName: successData.userData.fullName,
                 phone: successData.userData.phone,
                 planType: successData.userData.planType,
@@ -271,8 +271,8 @@ export default function PaymentReturn() {
                   if (!userDataForRegistration) {
                     console.warn('⚠️ PaymentReturn: userData não disponível, criando dados básicos');
                     userDataForRegistration = {
-                      firstName: 'Usuário',
-                      lastName: 'Novo',
+                      first_name: 'Usuário',
+                      last_name: 'Novo',
                       phone: ''
                     };
                   }
@@ -345,7 +345,7 @@ export default function PaymentReturn() {
                   console.log('🔄 PaymentReturn: Criando usuário via /api/auth/register...');
                   
                   const registerResponse = await axios.post('/api/auth/register', {
-                    name: `${userDataForRegistration.firstName || 'Usuário'} ${userDataForRegistration.lastName || 'Novo'}`.trim(),
+                    name: `${userDataForRegistration.first_name || 'Usuário'} ${userDataForRegistration.last_name || 'Novo'}`.trim(),
                     email: paymentStatus.customerEmail,
                     phone: userDataForRegistration.phone || '',
                     password: userPassword,
@@ -409,7 +409,7 @@ export default function PaymentReturn() {
       console.log('🔍 PaymentReturn: searchParams payment_intent:', searchParams.get('payment_intent'));
       
       // ✅ REDIRECIONAR: Para página de sucesso com dados disponíveis
-      navigate('/payment/success', {
+      navigate('/signup/success', {
         state: successData,
         replace: true // Evitar que o usuário volte para esta página
       });
@@ -449,8 +449,8 @@ export default function PaymentReturn() {
           // ✅ METADADOS: Garantir que todos os metadados estejam disponíveis
           metadata: {
             ...paymentData.metadata,
-            firstName: paymentData.metadata?.firstName || paymentData.metadata?.first_name || '',
-            lastName: paymentData.metadata?.lastName || paymentData.metadata?.last_name || '',
+            first_name: paymentData.metadata?.firstName || paymentData.metadata?.first_name || '',
+            last_name: paymentData.metadata?.lastName || paymentData.metadata?.last_name || '',
             fullName: paymentData.metadata?.fullName || paymentData.metadata?.full_name || '',
             planType: paymentData.metadata?.planType || paymentData.metadata?.plan || 'basic',
             phone: paymentData.metadata?.phone || ''
@@ -466,8 +466,8 @@ export default function PaymentReturn() {
           status: enrichedPaymentData.status,
           amount: enrichedPaymentData.amount,
           planType: paymentData.metadata?.planType || paymentData.metadata?.plan || 'basic',
-          firstName: paymentData.metadata?.firstName || '',
-          lastName: paymentData.metadata?.lastName || '',
+          first_name: paymentData.metadata?.firstName || paymentData.metadata?.first_name || '',
+          last_name: paymentData.metadata?.lastName || paymentData.metadata?.last_name || '',
           fullName: paymentData.metadata?.fullName || '',
           email: enrichedPaymentData.customerEmail,
           phone: paymentData.metadata?.phone || ''
@@ -488,23 +488,19 @@ export default function PaymentReturn() {
   // ✅ FUNÇÃO: Redirecionamento manual (sem navegar durante render)
   const handleManualRedirect = () => {
     console.log('🔄 PaymentReturn: Redirecionamento manual');
-    const manualData = {
-      paymentIntentId: 'manual_test',
-      amount: 1000,
-      currency: 'brl',
-      status: 'succeeded',
-      planType: 'basic',
-      // ✅ USAR DADOS REAIS: Do usuário capturado (sem fallback de teste)
+    
+    // ✅ USAR DADOS REAIS: Do usuário capturado
+    const redirectData = {
       customerEmail: userData?.email || null,
-      userName: userData?.fullName || `${userData?.firstName || ''} ${userData?.lastName || ''}`.trim() || null,
-      firstName: userData?.firstName || null,
-      lastName: userData?.lastName || null,
+      userName: userData?.fullName || `${userData?.first_name || ''} ${userData?.last_name || ''}`.trim() || null,
+      first_name: userData?.first_name || null,
+      last_name: userData?.last_name || null,
       timestamp: new Date().toISOString()
     };
     
-    navigate('/payment/success', { 
+            navigate('/signup/success', { 
       replace: true,
-      state: manualData
+      state: redirectData
     });
   };
 
@@ -548,7 +544,7 @@ export default function PaymentReturn() {
                   {userData && (
                     <div className="mb-3 p-2 rounded-lg border border-cyan-500/30 bg-cyan-600/10">
                       <p className="text-cyan-300 text-xs font-medium">
-                        Usuário: <span className="text-cyan-200">{userData.fullName || `${userData.firstName} ${userData.lastName}`.trim()}</span>
+                        Usuário: <span className="text-cyan-200">{userData.fullName || `${userData.first_name} ${userData.last_name}`.trim()}</span>
                       </p>
                       <p className="text-cyan-300 text-xs">
                         Email: <span className="text-cyan-200">{userData.email}</span>

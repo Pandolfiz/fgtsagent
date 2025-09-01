@@ -556,14 +556,3 @@ app.use((err, req, res, next) => {
 
 // Exportar o aplicativo Express
 module.exports = app;
-
-app.get('/api/teste', (req, res) => {
-  res.json({ ok: true });
-});
-
-// Exportar o aplicativo Express
-module.exports = app;
-
-app.get('/api/teste', (req, res) => {
-  res.json({ ok: true });
-});

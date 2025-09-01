@@ -491,29 +491,8 @@ export default function Dashboard() {
 
       const fetchData = async () => {
         try {
-          // Recuperar o token de autenticação do localStorage
-          let authToken = localStorage.getItem('authToken');
-          if (!authToken) {
-            // Tentar obter do supabase.auth.token
-            const storedTokens = localStorage.getItem('supabase.auth.token');
-            if (storedTokens) {
-              try {
-                const tokens = JSON.parse(storedTokens);
-                if (tokens?.currentSession?.access_token) {
-                  authToken = tokens.currentSession.access_token;
-                  localStorage.setItem('authToken', authToken);
-                }
-              } catch (e) {
-                // ignora
-              }
-            }
-          }
-          const headers = { 'Content-Type': 'application/json' };
-          if (authToken) {
-            headers['Authorization'] = `Bearer ${authToken}`;
-          }
-          // ✅ USAR: Instância api configurada (com proxy correto)
-          const res = await api.get(url.replace('/api', ''), { headers });
+          // ✅ USAR: Instância api configurada (com proxy correto e interceptor automático)
+          const res = await api.get(url.replace('/api', ''));
 
           // ✅ VERIFICAR: Status da resposta do axios
           if (res.status === 401) {

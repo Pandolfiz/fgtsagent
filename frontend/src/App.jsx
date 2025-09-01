@@ -7,7 +7,7 @@ import AgentsConfigPage from './pages/AgentsConfigPage';
 import AgentView from './pages/AgentView.jsx';
 import SignUpWithPlans from './pages/SignUpWithPlans.jsx';
 import SignupSuccess from './pages/SignupSuccess.jsx';
-import CheckoutSuccess from './pages/CheckoutSuccess.jsx';
+// ✅ REMOVIDO: CheckoutSuccess import (não é mais necessário)
 import Profile from './pages/Profile.jsx';
 // import Settings from './pages/Settings.jsx';
 import Dashboard from './pages/Dashboard.jsx';
@@ -18,6 +18,7 @@ import PartnerCredentialsRoute from './pages/partner-credentials';
 import AuthCallback from './pages/AuthCallback.jsx';
 import PaymentReturn from './pages/PaymentReturn.jsx';
 import PaymentCancel from './pages/PaymentCancel.jsx';
+import PaymentSuccess from './pages/PaymentSuccess.jsx';
 import TermsOfUse from './pages/TermsOfUse.jsx';
 import PrivacyPolicy from './pages/PrivacyPolicy.jsx';
 import AuthRecovery from './pages/AuthRecovery.jsx';
@@ -41,8 +42,9 @@ export default function App() {
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<SignUpWithPlans />} />
-        <Route path="/signup-success" element={<SignupSuccess />} />
-        <Route path="/payment/success" element={<CheckoutSuccess />} />
+        <Route path="/signup/success" element={<SignupSuccess />} />
+        {/* ✅ UNIFICADO: /payment/success agora redireciona para /signup/success */}
+        <Route path="/payment/success" element={<SignupSuccess />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/leads" element={<Leads />} />
@@ -71,6 +73,9 @@ export default function App() {
         
         {/* Rota de cancelamento do pagamento */}
         <Route path="/payment/cancel" element={<PaymentCancel />} />
+        
+        {/* Rota de sucesso do pagamento após 3DS */}
+        <Route path="/payment-success" element={<PaymentSuccess />} />
 
         {/* Rotas de erro */}
         <Route path="/error" element={<ErrorPage />} />

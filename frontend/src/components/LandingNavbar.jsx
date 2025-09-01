@@ -32,9 +32,9 @@ export default function LandingNavbar({ isLoggedIn = false }) {
           <Link to="/#clientes" className="text-cyan-100 hover:text-cyan-300 transition font-semibold">Clientes</Link>
           <Link to="/#parceiro" className="text-cyan-100 hover:text-cyan-300 transition font-semibold">Parceiro</Link>
           {!isLoggedIn ? (
-            <Link to="/login" className="ml-4 px-5 py-2 rounded-full bg-cyan-400 text-white font-bold shadow-lg hover:bg-cyan-300 transition border-2 border-cyan-300/40">Entrar</Link>
+            <Link to="/login" className="ml-4 px-5 py-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-bold shadow-lg hover:from-emerald-400 hover:to-cyan-400 transition border-2 border-emerald-300/40">Entrar</Link>
           ) : (
-            <Link to="/dashboard" className="ml-4 px-5 py-2 rounded-full bg-cyan-400 text-white font-bold shadow-lg hover:bg-cyan-300 transition border-2 border-cyan-300/40">Dashboard</Link>
+            <Link to="/dashboard" className="ml-4 px-5 py-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-bold shadow-lg hover:from-emerald-400 hover:to-cyan-400 transition border-2 border-emerald-300/40">Dashboard</Link>
           )}
         </div>
         {/* Menu mobile */}
@@ -89,11 +89,11 @@ export default function LandingNavbar({ isLoggedIn = false }) {
               </motion.div>
               {!isLoggedIn ? (
                 <motion.div initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 }}>
-                  <Link to="/login" className="mt-2 px-5 py-2 rounded-full bg-cyan-400 text-white font-bold shadow-lg hover:bg-cyan-300 transition border-2 border-cyan-300/40 block text-center" onClick={() => setMenuOpen(false)}>Entrar</Link>
+                  <Link to="/login" className="mt-2 px-5 py-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-bold shadow-lg hover:from-emerald-400 hover:to-cyan-400 transition border-2 border-emerald-300/40 block text-center" onClick={() => setMenuOpen(false)}>Entrar</Link>
                 </motion.div>
               ) : (
                 <motion.div initial={{ opacity: 0, x: 40 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.5 }}>
-                  <Link to="/dashboard" className="mt-2 px-5 py-2 rounded-full bg-cyan-400 text-white font-bold shadow-lg hover:bg-cyan-300 transition border-2 border-cyan-300/40 block text-center" onClick={() => setMenuOpen(false)}>Dashboard</Link>
+                  <Link to="/dashboard" className="mt-2 px-5 py-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-bold shadow-lg hover:from-emerald-400 hover:to-cyan-400 transition border-2 border-emerald-300/40 block text-center" onClick={() => setMenuOpen(false)}>Dashboard</Link>
                 </motion.div>
               )}
             </motion.div>

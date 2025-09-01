@@ -45,7 +45,7 @@ const supabaseOptions = {
     persistSession: true,
     detectSessionInUrl: false, // Desabilitar detecção de URL para evitar problemas com ngrok
     storageKey: 'supabase-auth', // Chave de armazenamento explícita
-    flowType: isNgrok ? 'pkce' : 'implicit' // Usar PKCE para ngrok
+    flowType: 'pkce' // ✅ CORRIGIDO: Sempre usar PKCE para compatibilidade com frontend
   },
   global: {
     headers: {

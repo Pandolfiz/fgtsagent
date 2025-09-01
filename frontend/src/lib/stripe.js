@@ -1,18 +1,22 @@
 import { loadStripe } from '@stripe/stripe-js';
-import { STRIPE_CONFIG } from '../config/stripe.config.js';
 
-// ✅ DEBUG: Log da chave sendo usada para carregar o Stripe
-console.log('🔍 Stripe.js - Carregando Stripe com chave:', {
-  keyLength: STRIPE_CONFIG.publishableKey.length,
-  keyValue: STRIPE_CONFIG.publishableKey.substring(0, 20) + '...'
+// ✅ CARREGAR STRIPE COM CHAVE PÚBLICA
+const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY);
+
+// ✅ DEBUG: Verificar chave do Stripe
+console.log('🔑 Stripe.js - Configuração:', {
+  hasKey: !!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY,
+  keyLength: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY?.length,
+  isTest: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY?.includes('pk_test_'),
+  isLive: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY?.includes('pk_live_'),
+  key: import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY?.substring(0, 20) + '...'
 });
 
-// ✅ CARREGAR STRIPE COM CONFIGURAÇÕES DE PRODUÇÃO
-// ⚠️ IMPORTANTE: Não recriar o stripePromise
-const stripePromise = loadStripe(STRIPE_CONFIG.publishableKey);
+// ✅ VALIDAÇÃO: Verificar se a chave é válida
+if (!import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY || 
+    import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY === 'pk_test_...' || 
+    import.meta.env.VITE_STRIPE_PUBLISHABLE_KEY.length < 50) {
+  console.error('❌ Chave do Stripe inválida ou não configurada');
+}
 
-// ✅ CONFIGURAÇÕES DE APARÊNCIA PARA PRODUÇÃO
-export const stripeConfig = STRIPE_CONFIG.appearance;
-
-// ✅ EXPORTAR STRIPE PROMISE ESTÁVEL
-export { stripePromise }; 
+export default stripePromise; 

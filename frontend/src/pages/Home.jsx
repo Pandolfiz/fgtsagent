@@ -125,7 +125,7 @@ export default function Home({ isLoggedIn }) {
     window.scrollTo(0, 0);
   }, []);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [selectedInterval, setSelectedInterval] = useState('annual'); // Padrão para maximizar conversão
+  const [selectedInterval, setSelectedInterval] = useState('yearly'); // Padrão para maximizar conversão
 
   // Fecha o menu ao clicar fora
   useEffect(() => {
@@ -155,9 +155,9 @@ export default function Home({ isLoggedIn }) {
             <a href="#clientes" className="text-cyan-100 hover:text-cyan-300 transition font-semibold">Clientes</a>
             <a href="#parceiro" className="text-cyan-100 hover:text-cyan-300 transition font-semibold">Parceiro</a>
             {!isLoggedIn ? (
-              <Link to="/login" className="ml-4 px-5 py-2 rounded-full bg-cyan-400 text-white font-bold shadow-lg hover:bg-cyan-300 transition border-2 border-cyan-300/40">Entrar</Link>
+              <Link to="/login" className="ml-4 px-5 py-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-bold shadow-lg hover:from-emerald-400 hover:to-cyan-400 transition border-2 border-emerald-300/40">Entrar</Link>
             ) : (
-              <Link to="/dashboard" className="ml-4 px-5 py-2 rounded-full bg-cyan-400 text-white font-bold shadow-lg hover:bg-cyan-300 transition border-2 border-cyan-300/40">Dashboard</Link>
+              <Link to="/dashboard" className="ml-4 px-5 py-2 rounded-full bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-bold shadow-lg hover:from-emerald-400 hover:to-cyan-400 transition border-2 border-emerald-300/40">Dashboard</Link>
             )}
           </div>
           {/* Menu mobile */}
@@ -268,7 +268,7 @@ export default function Home({ isLoggedIn }) {
                   >
                     <Link
                       to="/login"
-                      className="w-full px-6 py-3 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold shadow-lg hover:from-cyan-400 hover:to-blue-400 transition border-2 border-cyan-300/50 drop-shadow-neon block text-center"
+                      className="w-full px-6 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-bold shadow-lg hover:from-emerald-400 hover:to-cyan-400 transition border-2 border-emerald-300/50 drop-shadow-neon block text-center"
                       onClick={() => setMenuOpen(false)}
                     >
                       Entrar
@@ -283,7 +283,7 @@ export default function Home({ isLoggedIn }) {
                   >
                     <Link
                       to="/dashboard"
-                      className="w-full px-6 py-3 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-bold shadow-lg hover:from-cyan-400 hover:to-blue-400 transition border-2 border-cyan-300/50 drop-shadow-neon block text-center"
+                      className="w-full px-6 py-3 rounded-lg bg-gradient-to-r from-emerald-500 to-cyan-500 text-white font-bold shadow-lg hover:from-emerald-400 hover:to-cyan-400 transition border-2 border-emerald-300/50 drop-shadow-neon block text-center"
                       onClick={() => setMenuOpen(false)}
                     >
                       Dashboard
@@ -422,9 +422,9 @@ export default function Home({ isLoggedIn }) {
                 
                 {/* Opção Anual (Destacada) */}
                 <button
-                  onClick={() => setSelectedInterval('annual')}
-                  className={`px-8 py-3 rounded-xl font-semibold transition-all duration-300 relative ${
-                    selectedInterval === 'annual'
+                              onClick={() => setSelectedInterval('yearly')}
+            className={`px-8 py-3 rounded-xl font-semibold transition-all duration-300 relative ${
+              selectedInterval === 'yearly'
                       ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white shadow-lg shadow-emerald-500/25 transform scale-105'
                       : 'text-white/70 hover:text-white hover:bg-white/10'
                   }`}
@@ -434,11 +434,11 @@ export default function Home({ isLoggedIn }) {
                     <span className="text-xs opacity-80">Economia garantida</span>
                     
                     {/* Badge de economia */}
-                    {selectedInterval === 'annual' && (
-                      <div className="absolute -top-2 -right-2 bg-emerald-400 text-black text-xs px-2 py-1 rounded-full font-bold animate-pulse">
-                        💰
-                      </div>
-                    )}
+                            {selectedInterval === 'yearly' && (
+          <div className="absolute -top-2 -right-2 bg-emerald-400 text-black text-xs px-2 py-1 rounded-full font-bold animate-pulse">
+            💰
+          </div>
+        )}
                   </div>
                 </button>
               </div>
@@ -446,7 +446,7 @@ export default function Home({ isLoggedIn }) {
           </div>
           
           {/* Dica de economia */}
-          {selectedInterval === 'annual' && (
+          {selectedInterval === 'yearly' && (
             <motion.div
               className="mt-4 max-w-md mx-auto"
               initial={{ opacity: 0, scale: 0.9 }}
@@ -557,7 +557,7 @@ export default function Home({ isLoggedIn }) {
 
               <div className="mt-auto">
                 <Link
-                  to={`/signup?plan=${selectedInterval === 'annual' ? plan.annualPriceId : plan.stripePriceId}&interval=${selectedInterval}`}
+                  to={`/signup?plan=${selectedInterval === 'yearly' ? plan.annualPriceId : plan.stripePriceId}&interval=${selectedInterval}`}
                   className={`w-full py-3 px-6 rounded-lg font-bold shadow-lg transition border-2 ${
                     plan.popular
                       ? 'bg-gradient-to-r from-emerald-500 to-cyan-500 text-white border-emerald-400/50 hover:from-emerald-400 hover:to-cyan-400'
@@ -565,16 +565,16 @@ export default function Home({ isLoggedIn }) {
                       ? 'bg-gradient-to-r from-blue-600 via-cyan-500 to-blue-600 text-white border-cyan-300/80 hover:from-blue-500 hover:via-cyan-400 hover:to-blue-500 shadow-2xl shadow-cyan-400/50 transform hover:scale-105'
                       : 'bg-transparent text-cyan-300 border-cyan-400/50 hover:bg-cyan-900/50'
                   } drop-shadow-neon block text-center`}
-                  data-price-id={selectedInterval === 'annual' ? plan.annualPriceId : plan.stripePriceId}
+                  data-price-id={selectedInterval === 'yearly' ? plan.annualPriceId : plan.stripePriceId}
                   data-product-id={plan.stripeProductId}
                   data-interval={selectedInterval}
                 >
-                  {selectedInterval === 'annual' ? plan.buttonText : 'Começar Agora'}
+                  {selectedInterval === 'yearly' ? plan.buttonText : 'Começar Agora'}
                 </Link>
                 
                 {/* Indicador de economia ou informação */}
                 <div className="mt-2 text-center">
-                  {selectedInterval === 'annual' ? (
+                  {selectedInterval === 'yearly' ? (
                     <span className="text-emerald-400 text-xs font-medium">
                       💰 {plan.annualSavings}
                     </span>
@@ -603,20 +603,20 @@ export default function Home({ isLoggedIn }) {
           {/* Destaque para economia anual */}
           <div className="bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border border-emerald-400/30 rounded-lg p-4 mb-4 max-w-2xl mx-auto">
             <h3 className="text-emerald-300 font-semibold mb-2">
-              {selectedInterval === 'annual' ? '💡 Dica de Economia' : '💡 Flexibilidade Total'}
+              {selectedInterval === 'yearly' ? '💡 Dica de Economia' : '💡 Flexibilidade Total'}
             </h3>
                          <p className="text-white/80 text-sm mb-2">
-               {selectedInterval === 'annual' ? (
-                 <>
-                   Escolha o plano anual e economize até{' '}
-                   <span className="text-emerald-400 font-bold">R$ 600,00 por ano</span>!
-                 </>
-               ) : (
+                               {selectedInterval === 'yearly' ? (
+                  <>
+                    Escolha o plano anual e economize até{' '}
+                    <span className="text-emerald-400 font-bold">R$ 600,00 por ano</span>!
+                  </>
+                ) : (
                  'Comece com o plano mensal e mude para anual quando quiser economizar!'
                )}
              </p>
             <p className="text-cyan-200 text-xs">
-              {selectedInterval === 'annual'
+              {selectedInterval === 'yearly'
                 ? 'Cobrança mensal com desconto automático garantido por 12 meses'
                 : 'Sem compromisso de longo prazo - cancele a qualquer momento'
               }

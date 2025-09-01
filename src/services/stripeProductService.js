@@ -3,12 +3,47 @@
  * Elimina a necessidade de hardcoding IDs
  */
 
+// ✅ VALIDAR: Chave do Stripe
+if (!process.env.STRIPE_SECRET_KEY) {
+  throw new Error('STRIPE_SECRET_KEY não está configurada no arquivo .env');
+}
+
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 
 class StripeProductService {
   constructor() {
     this.cache = new Map();
     this.cacheExpiry = 5 * 60 * 1000; // 5 minutos
+    
+    // ✅ VALIDAR: Configuração do Stripe
+    this.validateStripeConfig();
+  }
+
+  /**
+   * Valida a configuração do Stripe
+   */
+  async validateStripeConfig() {
+    try {
+      console.log('🔍 Validando configuração do Stripe...');
+      
+      // ✅ TESTAR: Conexão com Stripe
+      const account = await stripe.accounts.retrieve();
+      console.log('✅ Stripe configurado corretamente para conta:', account.id);
+      
+      // ✅ LOG: Ambiente atual
+      this.logEnvironment();
+      
+    } catch (error) {
+      console.error('❌ Erro na configuração do Stripe:', error.message);
+      
+      if (error.message.includes('Invalid API key')) {
+        throw new Error('Chave do Stripe inválida. Verifique STRIPE_SECRET_KEY no arquivo .env');
+      } else if (error.message.includes('No such account')) {
+        throw new Error('Conta do Stripe não encontrada. Verifique STRIPE_SECRET_KEY');
+      } else {
+        throw new Error(`Erro na configuração do Stripe: ${error.message}`);
+      }
+    }
   }
 
   /**
@@ -24,10 +59,23 @@ class StripeProductService {
       });
 
       console.log(`✅ ${products.data.length} produtos encontrados`);
+      
+      // ✅ LOG: Detalhes dos produtos
+      products.data.forEach(product => {
+        console.log(`📦 Produto: ${product.name} (${product.id}) - Ativo: ${product.active}`);
+      });
+      
       return products.data;
     } catch (error) {
       console.error('❌ Erro ao buscar produtos:', error);
-      throw error;
+      
+      if (error.message.includes('Invalid API key')) {
+        throw new Error('Chave do Stripe inválida. Verifique STRIPE_SECRET_KEY');
+      } else if (error.message.includes('No such account')) {
+        throw new Error('Conta do Stripe não encontrada');
+      } else {
+        throw new Error(`Erro ao buscar produtos: ${error.message}`);
+      }
     }
   }
 
@@ -45,10 +93,27 @@ class StripeProductService {
       });
 
       console.log(`✅ ${prices.data.length} preços encontrados`);
+      
+      // ✅ LOG: Detalhes dos preços
+      prices.data.forEach(price => {
+        console.log(`💰 Preço: ${price.id} - ${price.unit_amount} ${price.currency} - ${price.recurring?.interval || 'one-time'} - Produto: ${price.product?.name || 'N/A'}`);
+      });
+      
+      // ✅ DEBUG: Verificar intervalos disponíveis
+      const intervals = [...new Set(prices.data.map(p => p.recurring?.interval).filter(Boolean))];
+      console.log(`🔍 Intervalos disponíveis:`, intervals);
+      
       return prices.data;
     } catch (error) {
       console.error('❌ Erro ao buscar preços:', error);
-      throw error;
+      
+      if (error.message.includes('Invalid API key')) {
+        throw new Error('Chave do Stripe inválida. Verifique STRIPE_SECRET_KEY');
+      } else if (error.message.includes('No such account')) {
+        throw new Error('Conta do Stripe não encontrada');
+      } else {
+        throw new Error(`Erro ao buscar preços: ${error.message}`);
+      }
     }
   }
 
@@ -60,7 +125,8 @@ class StripeProductService {
       const cacheKey = 'products_with_prices';
       const cached = this.getFromCache(cacheKey);
       
-      if (cached) {
+      // ✅ FORÇAR REFRESH: Sempre buscar dados frescos para debug
+      if (false && cached) {
         console.log('📋 Usando cache de produtos');
         return cached;
       }
@@ -72,24 +138,61 @@ class StripeProductService {
         this.getAllPrices()
       ]);
 
+      console.log(`📦 Produtos encontrados: ${products.length}`);
+      console.log(`💰 Preços encontrados: ${prices.length}`);
+
       // ✅ ORGANIZAR PRODUTOS COM PREÇOS
       const productsWithPrices = products.map(product => {
         const productPrices = prices.filter(price => 
           price.product.id === product.id
         );
 
+        console.log(`🔗 Produto ${product.name}: ${productPrices.length} preços encontrados`);
+        
+        // ✅ DEBUG: Verificar detalhes dos preços de cada produto
+        productPrices.forEach(price => {
+          console.log(`  💰 ${product.name}: ${price.unit_amount} ${price.currency} - ${price.recurring?.interval || 'one-time'}`);
+        });
+        
+        // ✅ DEBUG: Verificar intervalos disponíveis para este produto
+        const productIntervals = [...new Set(productPrices.map(p => p.recurring?.interval).filter(Boolean))];
+        console.log(`  🔍 ${product.name} - Intervalos disponíveis:`, productIntervals);
+
         return {
           id: product.id,
           name: product.name,
           description: product.description,
           metadata: product.metadata,
-          prices: productPrices.map(price => ({
-            id: price.id,
-            amount: price.unit_amount,
-            currency: price.currency,
-            interval: price.recurring?.interval,
-            metadata: price.metadata
-          }))
+          prices: productPrices.map(price => {
+            // ✅ DEBUG: Log detalhado de cada preço
+            console.log(`🔍 Mapeando preço para ${product.name}:`, {
+              id: price.id,
+              amount: price.unit_amount,
+              currency: price.currency,
+              interval: price.recurring?.interval,
+              recurring: price.recurring,
+              metadata: price.metadata
+            });
+            
+            // ✅ CORRIGIR MAPEAMENTO: Normalizar intervalos
+            let normalizedInterval = price.recurring?.interval;
+            
+            // ✅ Mapear intervalos do Stripe para nossos padrões
+            if (normalizedInterval === 'month' || normalizedInterval === 'monthly') {
+              normalizedInterval = 'month';
+            } else if (normalizedInterval === 'year' || normalizedInterval === 'yearly') {
+              normalizedInterval = 'year';
+            }
+            
+            return {
+              id: price.id,
+              amount: price.unit_amount,
+              currency: price.currency,
+              interval: normalizedInterval,
+              metadata: price.metadata,
+              amountFormatted: `R$ ${(price.unit_amount / 100).toFixed(2)}`
+            };
+          })
         };
       });
 
@@ -99,6 +202,16 @@ class StripeProductService {
       );
 
       console.log(`✅ ${validProducts.length} produtos válidos com preços`);
+      
+      // ✅ DEBUG: Verificar estrutura final dos preços
+      validProducts.forEach(product => {
+        console.log(`🎯 ${product.name} - Preços finais:`, {
+          total: product.prices.length,
+          intervals: product.prices.map(p => p.interval),
+          monthly: product.prices.find(p => p.interval === 'month'),
+          yearly: product.prices.find(p => p.interval === 'year')
+        });
+      });
       
       // ✅ SALVAR NO CACHE
       this.setCache(cacheKey, validProducts);
@@ -272,7 +385,7 @@ class StripeProductService {
           amount: price.amount,
           currency: price.currency,
           interval: price.interval,
-          formattedAmount: `R$ ${(price.amount / 100).toFixed(2)}`,
+          amountFormatted: `R$ ${(price.amount / 100).toFixed(2)}`,
           intervalText: price.interval === 'month' ? 'mensal' : 'anual'
         }))
       }));
