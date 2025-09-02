@@ -92,3 +92,4 @@ async function checkCredentials() {
 // Executar verificação
 checkCredentials();
 
+

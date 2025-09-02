@@ -68,3 +68,4 @@ echo "=================================================="
 echo "Agora todas as verificações de status atualizam automaticamente"
 echo "as credenciais no Supabase com informações completas da Meta API"
 
+

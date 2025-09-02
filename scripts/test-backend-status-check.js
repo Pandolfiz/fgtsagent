@@ -135,3 +135,4 @@ async function testBackendStatusCheck() {
 // Executar o teste
 testBackendStatusCheck();
 
+

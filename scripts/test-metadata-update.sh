@@ -40,3 +40,4 @@ echo "- Verifique os logs do backend para erros"
 echo "- Confirme se a Meta API está retornando os campos corretos"
 echo "- Verifique se há erros de permissão no Supabase"
 
+

@@ -52,3 +52,4 @@ echo "=================="
 echo "Agora o botão 'Verificar Status' deve funcionar sem erros"
 echo "e atualizar corretamente todas as credenciais no Supabase"
 
+

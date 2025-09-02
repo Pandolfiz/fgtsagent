@@ -122,3 +122,4 @@ async function testMetaAPISimple() {
 // Executar o teste
 testMetaAPISimple();
 
+

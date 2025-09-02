@@ -294,3 +294,4 @@ Para dúvidas ou problemas com a API, consulte:
 - [Documentação da Meta WhatsApp Business API](https://developers.facebook.com/docs/whatsapp/business-management-api/message-templates/)
 - [Guia de Categorização de Templates](https://developers.facebook.com/docs/whatsapp/updates-to-pricing/new-template-guidelines)
 - [Suporte da Meta para Desenvolvedores](https://developers.facebook.com/support/)
+
