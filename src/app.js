@@ -539,14 +539,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/admin', requireAuth, adminRoutes);
 app.use('/api/stripe', stripeRoutes);
 
-// ✅ CORRIGIDO: Rota genérica /api por ÚLTIMO
-app.use('/api', apiRoutes);
-
-// Middleware para aplicar tokens renovados na resposta
-app.use(applyRefreshedTokens);
-
-=======
-// Rotas de autenticação DEVEM vir ANTES de apiRoutes
+// ✅ CORRIGIDO: Rotas de autenticação ANTES da rota genérica /api
 // Rotas de autenticação com Rate + Speed Limiting (mais permissivo em desenvolvimento)
 console.log('🔍 [DEBUG] Registrando rotas de autenticação...');
 console.log('🔍 [DEBUG] NODE_ENV atual:', process.env.NODE_ENV);
@@ -562,19 +555,12 @@ if (process.env.NODE_ENV === 'development') {
   app.use('/auth', authLimiter, authSpeedLimiter, authRoutes);
   app.use('/api/auth', authLimiter, authSpeedLimiter, authRoutes);
 }
-app.use('/api/whatsapp-credentials', requireAuth, whatsappCredentialRoutes);
-app.use('/api/whatsapp-templates', requireAuth, require('./routes/whatsappTemplateRoutes'));
-app.use('/api/credentials', credentialsRoutes);
-// REMOVIDO: app.use('/api', credentialsRoutes); // Isso sobrescrevia todas as rotas /api/*
-app.use('/api/chat', requireAuth, chatRoutes);
-app.use('/api/admin', requireAuth, requireAdmin, adminRoutes);
 
-// Rotas de leads
-app.use('/api/leads', requireAuth, require('./routes/leadRoutes'));
+// ✅ CORRIGIDO: Rota genérica /api por ÚLTIMO
+app.use('/api', apiRoutes);
 
-// Novas rotas para gerenciamento de contatos e mensagens
-// app.use('/api/contacts', requireAuth, contactsRoutes); // Moved up
-// app.use('/api/messages', requireAuth, messagesRoutes); // Moved up
+// Middleware para aplicar tokens renovados na resposta
+app.use(applyRefreshedTokens);
 
 // Rotas específicas do backend com renderização de template
 app.use('/admin', webRoutes.router);
