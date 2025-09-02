@@ -65,3 +65,4 @@ echo "============================"
 echo "Agora o sistema pode ativar números WhatsApp Business pendentes"
 echo "usando a API oficial da Meta com o endpoint /register"
 
+

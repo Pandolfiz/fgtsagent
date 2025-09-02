@@ -181,3 +181,4 @@ async function testMetaAPIDirectly() {
 // Executar o teste
 testMetaAPIDirectly();
 
+

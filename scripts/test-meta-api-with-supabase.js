@@ -213,3 +213,4 @@ async function testMetaAPIWithValidToken() {
 // Executar o teste
 testMetaAPIWithValidToken();
 
+

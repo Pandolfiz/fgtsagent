@@ -116,3 +116,4 @@ async function testMetaAPIDebug() {
 // Executar o teste
 testMetaAPIDebug();
 
+

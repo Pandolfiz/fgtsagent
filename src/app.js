@@ -406,19 +406,6 @@ app.use('/api/webhooks/evolution', webhookAuth, chatWebhookRoutes);
 app.use('/api/messages', requireAuth, messagesRoutes);
 app.use('/api/contacts', requireAuth, contactsRoutes);
 
-// Rotas específicas do Stripe (deve vir ANTES da rota genérica /api)
-app.use('/api/stripe', stripeRoutes);
-
-// Rota de health direta para debug (deve vir ANTES da rota genérica /api)
-app.get('/api/health/direct', (req, res) => {
-  console.log('Rota de health direta acessada!');
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    message: 'Health check direto funcionando!'
-  });
-});
-
 // Rotas de health check (deve vir ANTES da rota genérica /api)
 console.log('Registrando rotas de health check...');
 
@@ -462,9 +449,12 @@ console.log('🔍 [DEBUG] NODE_ENV:', process.env.NODE_ENV);
 console.log('🔍 [DEBUG] Ambiente de desenvolvimento:', process.env.NODE_ENV === 'development');
 console.log('🔍 [DEBUG] Ambiente de produção:', process.env.NODE_ENV === 'production');
 
-// ✅ CORRIGIDO: Rota de verificação de email SEM rate limiting
+// ✅ CORRIGIDO: Rota específica ANTES da rota genérica
 // Esta rota deve ser acessível sem autenticação e sem limitações
 app.post('/api/check-email', async (req, res) => {
+  console.log('✅ Rota /api/check-email acessada com sucesso');
+  console.log('✅ req.body disponível:', req.body);
+  
   try {
     const { email } = req.body;
     
@@ -538,7 +528,18 @@ app.post('/api/check-email', async (req, res) => {
   }
 });
 
-// Rotas API - estas devem vir DEPOIS das rotas específicas
+console.log('✅ Rota /api/check-email registrada com sucesso ANTES do apiRoutes');
+
+// ✅ CORRIGIDO: Rotas específicas ANTES das rotas genéricas
+// Apenas rotas com variáveis definidas
+app.use('/api/whatsapp-credentials', requireAuth, whatsappCredentialRoutes);
+app.use('/api/credentials', credentialsRoutes);
+app.use('/api/contacts', requireAuth, contactsRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/admin', requireAuth, adminRoutes);
+app.use('/api/stripe', stripeRoutes);
+
+// ✅ CORRIGIDO: Rota genérica /api por ÚLTIMO
 app.use('/api', apiRoutes);
 
 // Middleware para aplicar tokens renovados na resposta
@@ -561,12 +562,6 @@ if (process.env.NODE_ENV === 'development') {
   app.use('/auth', authLimiter, authSpeedLimiter, authRoutes);
   app.use('/api/auth', authLimiter, authSpeedLimiter, authRoutes);
 }
-
-// Rotas API - estas devem vir DEPOIS das rotas específicas
-app.use('/api', apiRoutes);
-
-// Middleware para aplicar tokens renovados na resposta
-app.use(applyRefreshedTokens);
 app.use('/api/whatsapp-credentials', requireAuth, whatsappCredentialRoutes);
 app.use('/api/whatsapp-templates', requireAuth, require('./routes/whatsappTemplateRoutes'));
 app.use('/api/credentials', credentialsRoutes);
@@ -646,232 +641,6 @@ app.use((err, req, res, next) => {
     message: err.message || 'Ocorreu um erro inesperado',
     error: process.env.NODE_ENV === 'development' ? err : {}
   });
-});
-
-// 🧪 ROTAS DE TESTE: Para testar a funcionalidade de templates do WhatsApp
-// 🧪 ROTA DE TESTE: Listar contas disponíveis para o Pedro
-app.get('/api/test-accounts', async (req, res) => {
-  try {
-    console.log('🧪 Rota de teste de contas acessada!');
-    
-    const { supabaseAdmin } = require('./config/supabase');
-    
-    // Buscar credenciais do Pedro
-    const { data: credentials, error: credentialsError } = await supabaseAdmin
-      .from('whatsapp_credentials')
-      .select('*')
-      .eq('client_id', 'fca00589-06a4-4274-9048-2ec3b2ddd60e')
-      .eq('connection_type', 'ads');
-    
-    if (credentialsError || !credentials || credentials.length === 0) {
-      return res.json({
-        success: false,
-        message: 'Nenhuma conta WhatsApp Business encontrada para o Pedro',
-        userId: 'fca00589-06a4-4274-9048-2ec3b2ddd60e',
-        timestamp: new Date().toISOString()
-      });
-    }
-    
-    // Formatar dados das contas
-    const accounts = credentials.map(cred => ({
-      businessAccountId: cred.wpp_business_account_id,
-      phone: cred.phone,
-      agentName: cred.agent_name,
-      status: cred.status,
-      connectionType: cred.connection_type,
-      createdAt: cred.created_at,
-      updatedAt: cred.updated_at,
-      hasMetaData: !!(cred.wpp_number_id && cred.wpp_access_token),
-      metaStatus: cred.metadata?.code_verification_status || 'NÃO_VERIFICADO'
-    }));
-    
-    res.json({
-      success: true,
-      message: `${accounts.length} conta(s) WhatsApp Business encontrada(s) para o Pedro`,
-      timestamp: new Date().toISOString(),
-      user: {
-        id: 'fca00589-06a4-4274-9048-2ec3b2ddd60e',
-        name: 'Pedro Margon',
-        email: 'lorenzonipedro@gmail.com'
-      },
-      data: accounts,
-      total: accounts.length
-    });
-    
-  } catch (error) {
-    console.error('❌ Erro ao listar contas:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro ao listar contas',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-// 🧪 ROTA DE TESTE: Buscar templates salvos no banco para o Pedro
-app.get('/api/test-templates-saved', async (req, res) => {
-  try {
-    console.log('🧪 Rota de teste de templates salvos acessada!');
-    
-    const whatsappTemplateService = require('./services/whatsappTemplateService');
-    
-    // Business Account ID do Pedro
-    const businessAccountId = '507089529147644';
-    
-    console.log(`🔍 Buscando templates salvos para Business Account: ${businessAccountId}`);
-    
-    // Buscar templates salvos no banco
-    const result = await whatsappTemplateService.getSavedTemplates(businessAccountId, {});
-    
-    if (!result.success) {
-      return res.status(500).json({
-        success: false,
-        message: 'Erro ao buscar templates salvos',
-        error: result.error,
-        timestamp: new Date().toISOString()
-      });
-    }
-    
-    res.json({
-      success: true,
-      message: 'Templates salvos encontrados com sucesso!',
-      timestamp: new Date().toISOString(),
-      businessAccountId: businessAccountId,
-      total: result.total,
-      templates: result.data
-    });
-    
-  } catch (error) {
-    console.error('❌ Erro ao buscar templates salvos:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro ao buscar templates salvos',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
-});
-
-// 🧪 ROTA DE TESTE: Sincronizar templates da Meta API para o Pedro
-app.get('/api/test-sync-templates', async (req, res) => {
-  try {
-    console.log('🧪 Rota de teste de sincronização de templates acessada!');
-    
-    const whatsappTemplateService = require('./services/whatsappTemplateService');
-    const { supabaseAdmin } = require('./config/supabase');
-    
-    // Buscar credenciais do Pedro
-    let { data: credentials, error: credentialsError } = await supabaseAdmin
-      .from('whatsapp_credentials')
-      .select('*')
-      .eq('client_id', 'fca00589-06a4-4274-9048-2ec3b2ddd60e')
-      .eq('connection_type', 'ads')
-      .single();
-    
-    if (credentialsError || !credentials) {
-      // Se não encontrar credenciais diretas, buscar as que têm o nome do Pedro
-      console.log('🔍 Buscando credenciais com nome do Pedro...');
-      
-      const { data: pedroCredentials, error: pedroError } = await supabaseAdmin
-        .from('whatsapp_credentials')
-        .select('*')
-        .eq('connection_type', 'ads')
-        .ilike('instance_name', '%Pedro%')
-        .single();
-      
-      if (pedroError || !pedroCredentials) {
-        return res.json({
-          success: false,
-          message: 'Credenciais do WhatsApp não encontradas para o Pedro',
-          userId: 'fca00589-06a4-4274-9048-2ec3b2ddd60e',
-          timestamp: new Date().toISOString()
-        });
-      }
-      
-      credentials = pedroCredentials;
-    }
-    
-    console.log(`🧪 Credenciais encontradas para o Pedro!`);
-    console.log(`🧪 Instance Name: ${credentials.instance_name}`);
-    console.log(`🧪 Business Account ID: ${credentials.wpp_business_account_id}`);
-    
-    // 1. Buscar templates da Meta API
-    console.log('🔍 Buscando templates da Meta API...');
-    const templatesResponse = await whatsappTemplateService.fetchMessageTemplates(
-      credentials.wpp_business_account_id,
-      credentials.wpp_access_token
-    );
-    
-    if (!templatesResponse.success) {
-      return res.status(500).json({
-        success: false,
-        message: 'Erro ao buscar templates da Meta API',
-        error: templatesResponse.error,
-        timestamp: new Date().toISOString()
-      });
-    }
-    
-    console.log(`✅ ${templatesResponse.data.length} templates encontrados na Meta API`);
-    
-    // 2. Salvar templates no banco
-    console.log('💾 Salvando templates no banco...');
-    const saveResult = await whatsappTemplateService.saveTemplates(
-      credentials.wpp_business_account_id,
-      templatesResponse.data
-    );
-    
-    if (!saveResult.success) {
-      return res.status(500).json({
-        success: false,
-        message: 'Erro ao salvar templates no banco',
-        error: saveResult.error,
-        templatesFromMeta: templatesResponse.data,
-        timestamp: new Date().toISOString()
-      });
-    }
-    
-    console.log(`✅ ${saveResult.saved} templates salvos no banco`);
-    
-    // 3. Buscar templates salvos para confirmar
-    console.log('🔍 Confirmando templates salvos...');
-    const savedTemplates = await whatsappTemplateService.getSavedTemplates(
-      credentials.wpp_business_account_id,
-      {}
-    );
-    
-    res.json({
-      success: true,
-      message: 'Sincronização de templates realizada com sucesso!',
-      timestamp: new Date().toISOString(),
-      user: {
-        id: 'fca00589-06a4-4274-9048-2ec3b2ddd60e',
-        name: 'Pedro Margon',
-        email: 'lorenzonipedro@gmail.com'
-      },
-      credentials: {
-        instanceName: credentials.instance_name,
-        businessAccountId: credentials.wpp_business_account_id,
-        phoneNumberId: credentials.wpp_number_id,
-        status: credentials.status
-      },
-      syncResults: {
-        templatesFromMeta: templatesResponse.data.length,
-        templatesSaved: saveResult.saved,
-        templatesInDatabase: savedTemplates.success ? savedTemplates.total : 0
-      },
-      templates: savedTemplates.success ? savedTemplates.data : []
-    });
-    
-  } catch (error) {
-    console.error('❌ Erro na sincronização de templates:', error);
-    res.status(500).json({
-      success: false,
-      message: 'Erro na sincronização de templates',
-      error: error.message,
-      timestamp: new Date().toISOString()
-    });
-  }
 });
 
 // Exportar o aplicativo Express

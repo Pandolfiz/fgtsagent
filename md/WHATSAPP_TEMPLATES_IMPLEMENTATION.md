@@ -350,3 +350,4 @@ logger.error(`[TEMPLATES] ❌ Erro ao buscar templates: ${error.message}`);
 - **Frontend**: Console do navegador
 - **Banco**: Supabase dashboard
 - **Meta**: Facebook Developer Console
+
