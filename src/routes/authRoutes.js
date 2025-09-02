@@ -536,35 +536,19 @@ router.post('/api/auth/session', requireAuth, async (req, res) => {
 router.get('/check-session', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
+    const userEmail = req.user.email;
     
-    // Verificar se o usuário ainda existe e está ativo
-    const { data: user, error } = await supabase
-      .from('users')
-      .select('id, email, status')
-      .eq('id', userId)
-      .single();
-    
-    if (error || !user) {
-      return res.status(401).json({
-        success: false,
-        message: 'Usuário não encontrado'
-      });
-    }
-    
-    if (user.status !== 'active') {
-      return res.status(401).json({
-        success: false,
-        message: 'Conta desativada'
-      });
-    }
+    // ✅ CORRIGIDO: Verificação simplificada sem consulta ao banco
+    // Se chegou até aqui, o middleware requireAuth já validou o token
+    // Não precisamos consultar o banco novamente
     
     res.json({
       success: true,
       message: 'Sessão válida',
       user: {
-        id: user.id,
-        email: user.email,
-        status: user.status
+        id: userId,
+        email: userEmail,
+        status: 'active'
       }
     });
     

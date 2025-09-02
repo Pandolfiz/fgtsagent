@@ -1013,12 +1013,8 @@ const isAuthenticatedApi = async (req, res, next) => {
       const userId = tokenPayload.sub;
       
       try {
-        // Buscar dados completos do usuário
-        const { data: user, error: userError } = await supabaseAdmin
-          .from('users')
-          .select('*, organizations(*)')
-          .eq('id', userId)
-          .single();
+        // Buscar dados do usuário usando a função auth.getUser() do Supabase
+        const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
         
         if (userError) {
           logger.error('API: Erro ao buscar usuário:', userError.message);
@@ -1101,10 +1097,11 @@ const prepareUserData = async (req, res, next) => {
     } else if (req.userId) {
       // Se temos apenas o ID do usuário, buscar dados completos
       try {
-        // Buscar dados completos do usuário
+        // Buscar dados do usuário usando a função auth.getUser() do Supabase
+        // Como não temos o token aqui, vamos usar uma abordagem diferente
         const { data: user, error: userError } = await supabaseAdmin
-          .from('users')
-          .select('*, organizations(*)')
+          .from('user_profiles')
+          .select('id, email, first_name, last_name, full_name, role')
           .eq('id', req.userId)
           .single();
         

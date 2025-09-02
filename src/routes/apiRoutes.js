@@ -81,80 +81,9 @@ router.get('/auth/csrf-token', (req, res) => {
   }
 });
 
-// Rota para verificar status da sessão
-router.get('/auth/check-session', async (req, res) => {
-  try {
-    const token = req.headers.authorization?.split(' ')[1] || req.cookies.authToken;
-    logger.info(`Verificando status da sessão: ${token ? 'Token fornecido' : 'Token não fornecido'}`);
-    
-    if (!token) {
-      return res.status(401).json({
-        valid: false,
-        message: 'Token não fornecido'
-      });
-    }
-    
-    // Verificar o token com o Supabase
-    const { data: { user }, error } = await supabase.auth.getUser(token);
-    
-    if (error || !user) {
-      logger.warn(`Token inválido durante verificação de sessão: ${error ? error.message : 'Usuário não encontrado'}`);
-      return res.status(401).json({
-        valid: false,
-        message: 'Token inválido ou expirado'
-      });
-    }
-    
-    // Verificar expiração do token
-    try {
-      const [headerEncoded, payloadEncoded] = token.split('.');
-      if (headerEncoded && payloadEncoded) {
-        const payload = JSON.parse(Buffer.from(payloadEncoded, 'base64').toString('utf8'));
-        if (payload && payload.exp) {
-          const expiryTime = payload.exp * 1000; // Converter para milissegundos
-          const currentTime = Date.now();
-          
-          if (expiryTime <= currentTime) {
-            logger.warn(`Token expirado durante verificação de sessão para o usuário ${user.id}`);
-            return res.status(401).json({
-              valid: false,
-              message: 'Token expirado'
-            });
-          }
-          
-          // Informar quanto tempo resta até a expiração (em segundos)
-          const timeRemaining = Math.floor((expiryTime - currentTime) / 1000);
-          
-          return res.json({
-            valid: true,
-            user: {
-              id: user.id,
-              email: user.email
-            },
-            expiresIn: timeRemaining
-          });
-        }
-      }
-    } catch (parseError) {
-      logger.warn(`Erro ao analisar JWT durante verificação de sessão: ${parseError.message}`);
-    }
-    
-    // Se não conseguiu analisar o token, mas o Supabase validou, consideramos válido
-    return res.json({
-      valid: true,
-      user: {
-        id: user.id,
-        email: user.email
-      }
-    });
-  } catch (err) {
-    logger.error(`Erro na verificação de sessão: ${err.message}`);
-    return res.status(500).json({
-      valid: false,
-      message: 'Erro interno ao verificar sessão'
-    });
-  }
-});
+// ✅ REMOVIDO: Rota duplicada /auth/check-session
+// Esta rota já existe em authRoutes.js e está sendo registrada via app.use('/api/auth', authRoutes)
+// Removida para evitar conflitos após reorganização das rotas
 
 // Rota de Dashboard FGTS/propostas
 router.get('/dashboard/stats', requireAuth, require('../controllers/dashboardController').getApiDashboardStats);
