@@ -30,6 +30,7 @@ const {
 const adminRoutes = require('./routes/adminRoutes');
 const apiRoutes = require('./routes/apiRoutes');
 const whatsappCredentialRoutes = require('./routes/whatsappCredentialRoutes');
+const whatsappTemplateRoutes = require('./routes/whatsappTemplateRoutes');
 const chatWebhookRoutes = require('./routes/chatWebhookRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const contactsRoutes = require('./routes/contacts');
@@ -533,6 +534,7 @@ console.log('✅ Rota /api/check-email registrada com sucesso ANTES do apiRoutes
 // ✅ CORRIGIDO: Rotas específicas ANTES das rotas genéricas
 // Apenas rotas com variáveis definidas
 app.use('/api/whatsapp-credentials', requireAuth, whatsappCredentialRoutes);
+app.use('/api/whatsapp-templates', requireAuth, whatsappTemplateRoutes);
 app.use('/api/credentials', credentialsRoutes);
 app.use('/api/contacts', requireAuth, contactsRoutes);
 app.use('/api/chat', chatRoutes);
