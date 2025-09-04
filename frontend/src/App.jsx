@@ -13,6 +13,7 @@ import Profile from './pages/Profile.jsx';
 import Dashboard from './pages/Dashboard.jsx';
 import Chat from './pages/Chat.jsx';
 import Leads from './pages/Leads.jsx';
+import Ads from './pages/Ads.jsx';
 import EvolutionCredentialsRoute from './pages/whatsapp-credentials';
 import PartnerCredentialsRoute from './pages/partner-credentials';
 import AuthCallback from './pages/AuthCallback.jsx';
@@ -28,6 +29,7 @@ import AuthRecovery from './pages/AuthRecovery.jsx';
 import NotFound from './pages/NotFound.tsx';
 import ErrorPage from './components/ErrorPage.tsx';
 import SupabaseTest from './pages/SupabaseTest.jsx';
+
 import CookieConsent from './components/CookieConsent.jsx';
 import { setupAxiosAuthInterceptor } from './utils/authUtils';
 
@@ -50,6 +52,7 @@ export default function App() {
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/leads" element={<Leads />} />
+        <Route path="/ads" element={<Ads />} />
         <Route path="/whatsapp-credentials" element={<EvolutionCredentialsRoute />} />
         <Route path="/partner-credentials" element={<PartnerCredentialsRoute />} />
         <Route path="/agents" element={<AgentsConfigPage />} />
@@ -65,6 +68,8 @@ export default function App() {
 
         {/* Página de diagnóstico do Supabase */}
         <Route path="/supabase-diagnostico" element={<SupabaseTest />} />
+        
+
 
         {/* Rota de callback para compatibilidade (agora apenas redireciona para login) */}
         <Route path="/auth/callback" element={<AuthCallback />} />

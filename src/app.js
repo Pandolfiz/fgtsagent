@@ -15,7 +15,7 @@ const session = require('express-session');
 const flash = require('connect-flash');
 const config = require('./config');
 const userApiKeyMiddleware = require('./middleware/userApiKeyMiddleware');
-const { requireAuth, requireAdmin } = require('./middleware/unifiedAuthMiddleware');
+const { requireAuth, requireAdmin } = require('./middleware/authMiddleware');
 const { refreshTokens, applyRefreshedTokens } = require('./middleware/tokenRefresh');
 const tokenProtectionMiddleware = require('./middleware/tokenProtectionMiddleware');
 const { 
@@ -316,12 +316,11 @@ app.use(sanitizeRequest(['body', 'query', 'params']));
 // ✅ ADICIONAR: Middleware de proteção contra limpeza automática de tokens
 app.use(tokenProtectionMiddleware.middleware());
 
-// Middleware de renovação automática de tokens
-app.use(refreshTokens);
-
 // Middleware de segurança cibernética (apenas headers e detecção de atividades suspeitas)
 app.use(securityHeaders);
 app.use(detectSuspiciousActivity);
+
+// Middleware de renovação automática de tokens será aplicado especificamente nas rotas da API
 
 // Rate limiting personalizado removido - agora usando estratégia híbrida (Rate + Speed Limiting)
 // Aplicado de forma mais granular nos locais específicos
@@ -541,6 +540,32 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/admin', requireAuth, adminRoutes);
 app.use('/api/stripe', stripeRoutes);
 
+// ✅ ADICIONADO: Rotas de leads (necessário para /api/leads/:id/proposals)
+const leadRoutes = require('./routes/leadRoutes');
+app.use('/api/leads', requireAuth, leadRoutes);
+
+// ✅ ADICIONADO: Rotas de clientes
+const clientRoutes = require('./routes/clientRoutes');
+app.use('/api/clients', requireAuth, clientRoutes);
+
+// ✅ ADICIONADO: Rotas de consentimentos LGPD
+const consentRoutes = require('./routes/consentRoutes');
+app.use('/api/consent', requireAuth, consentRoutes);
+
+// ✅ ADICIONADO: Rotas de configurações
+const settingsRoutes = require('./routes/settingsRoutes');
+app.use('/api/settings', requireAuth, settingsRoutes);
+
+// ✅ ADICIONADO: Rotas de webhooks
+const webhookRoutes = require('./routes/webhookRoutes');
+app.use('/api/webhooks', webhookRoutes);
+
+// ✅ ADICIONADO: Rotas de teste (apenas em desenvolvimento)
+if (process.env.NODE_ENV === 'development') {
+  const testRoutes = require('./routes/testRoutes');
+  app.use('/api/test', testRoutes);
+}
+
 // ✅ CORRIGIDO: Rotas de autenticação ANTES da rota genérica /api
 // Rotas de autenticação com Rate + Speed Limiting (mais permissivo em desenvolvimento)
 console.log('🔍 [DEBUG] Registrando rotas de autenticação...');
@@ -558,11 +583,11 @@ if (process.env.NODE_ENV === 'development') {
   app.use('/api/auth', authLimiter, authSpeedLimiter, authRoutes);
 }
 
-// ✅ CORRIGIDO: Rota genérica /api por ÚLTIMO
-app.use('/api', apiRoutes);
-
-// Middleware para aplicar tokens renovados na resposta
+// Middleware para aplicar tokens renovados na resposta (ANTES das rotas)
 app.use(applyRefreshedTokens);
+
+// ✅ CORRIGIDO: Rota genérica /api por ÚLTIMO com middleware de refresh
+app.use('/api', refreshTokens, apiRoutes);
 
 // Rotas específicas do backend com renderização de template
 app.use('/admin', webRoutes.router);

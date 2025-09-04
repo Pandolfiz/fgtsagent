@@ -99,6 +99,13 @@ export async function cachedFetch(url, options = {}) {
       authCache.setCache(key, data);
       return data;
     }
+    
+    // ✅ CORRIGIDO: Não fazer cache de erros 401 para evitar loops
+    if (response.status === 401) {
+      console.log('[AuthCache] Erro 401 - não fazendo cache para evitar loops');
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+    
     throw new Error(`HTTP ${response.status}: ${response.statusText}`);
   });
 

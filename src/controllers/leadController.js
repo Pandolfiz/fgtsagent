@@ -285,9 +285,10 @@ class LeadController {
   async repeatQuery(req, res) {
     try {
       const { id } = req.params;
+      const { provider = 'cartos', bankId } = req.body;
       const clientId = req.user.id;
       
-      logger.info(`[LEADS] Repetindo consulta para lead ${id} do cliente ${clientId}`);
+      logger.info(`[LEADS] Repetindo consulta para lead ${id} do cliente ${clientId} com provedor ${provider} e banco ${bankId}`);
 
       // Verificar se o lead existe e pertence ao cliente
       const { data: lead, error: leadError } = await supabaseAdmin
@@ -301,11 +302,26 @@ class LeadController {
         return res.status(404).json({ success: false, message: 'Lead não encontrado' });
       }
 
-      // Aqui você pode implementar a lógica para repetir a consulta
-      // Por exemplo, chamar a API da V8 ou outro serviço
-      // Por enquanto, vamos apenas simular uma atualização
-      
+      // Se bankId foi fornecido, buscar dados da credencial do banco
+      let bankData = null;
+      if (bankId) {
+        try {
+          const partnerCredentialsService = require('../services/partnerCredentialsService');
+          bankData = await partnerCredentialsService.getPartnerCredentialById(bankId, clientId);
+          
+          if (!bankData) {
+            return res.status(404).json({ success: false, message: 'Credencial do banco não encontrada' });
+          }
+          
+          logger.info(`[LEADS] Dados do banco obtidos: ${bankData.name} (${bankData.partner_type})`);
+        } catch (bankError) {
+          logger.error(`Erro ao buscar dados do banco: ${bankError.message}`);
+          return res.status(500).json({ success: false, message: 'Erro ao buscar dados do banco' });
+        }
+      }
+
       // Criar um novo registro de balance com timestamp atual
+      const now = new Date().toISOString();
       const { error: balanceError } = await supabaseAdmin
         .from('balance')
         .insert([{
@@ -314,7 +330,8 @@ class LeadController {
           balance: null, // Será preenchido pela consulta real
           simulation: null, // Será preenchido pela consulta real
           error_reason: null,
-          updated_at: new Date().toISOString()
+          created_at: now,
+          updated_at: now
         }]);
 
       if (balanceError) {
@@ -322,8 +339,76 @@ class LeadController {
         return res.status(500).json({ success: false, message: 'Erro ao processar consulta' });
       }
 
+      // Enviar webhook para o n8n se bankId foi fornecido
+      if (bankId && bankData) {
+        try {
+          // Verificar se o banco tem oauth_config
+          if (!bankData.oauth_config) {
+            logger.warn(`[LEADS] Banco ${bankId} não tem oauth_config, usando valores padrão`);
+            bankData.oauth_config = {};
+          }
+
+          // Verificar se o user_id está presente na credencial do banco
+          if (!bankData.user_id) {
+            throw new Error('user_id não encontrado na credencial do banco');
+          }
+
+          const webhookPayload = [
+            {
+              cpf: lead.cpf || '',
+              provider: provider,
+              nome: lead.name || '',
+              grant_type: bankData.oauth_config.grant_type || 'password',
+              username: bankData.oauth_config.username || '',
+              password: bankData.oauth_config.password || '',
+              audience: bankData.oauth_config.audience || '',
+              scope: bankData.oauth_config.scope || '',
+              client_id: bankData.oauth_config.client_id || '',
+              user_id: bankData.user_id || '',
+              phone: lead.phone || ''
+            }
+          ];
+
+          logger.info(`[LEADS] Enviando webhook para n8n com payload:`, JSON.stringify(webhookPayload, null, 2));
+
+          // Enviar webhook para o n8n de forma assíncrona (fire and forget)
+          const webhookUrl = 'https://n8n-n8n.8cgx4t.easypanel.host/webhook/consulta_app';
+          
+          fetch(webhookUrl, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(webhookPayload)
+          }).then((webhookResponse) => {
+            logger.info(`[LEADS] Status da resposta do webhook: ${webhookResponse.status}`);
+            
+            if (webhookResponse.status >= 200 && webhookResponse.status < 300) {
+              logger.info(`[LEADS] Webhook enviado com sucesso para o n8n`);
+            } else {
+              logger.error(`[LEADS] Erro na resposta do webhook: ${webhookResponse.status}`);
+            }
+          }).catch((error) => {
+            logger.error(`[LEADS] Erro ao enviar webhook:`, error);
+          });
+
+        } catch (webhookError) {
+          logger.error(`[LEADS] Erro ao preparar webhook: ${webhookError.message}`);
+          // Não falhar a operação por causa do webhook
+        }
+      }
+
       logger.info(`[LEADS] Consulta repetida com sucesso para lead ${id}`);
-      return res.json({ success: true, message: 'Consulta iniciada com sucesso' });
+      return res.json({ 
+        success: true, 
+        message: 'Consulta iniciada com sucesso',
+        data: {
+          leadId: id,
+          provider: provider,
+          bankId: bankId,
+          bankName: bankData?.name || null
+        }
+      });
     } catch (err) {
       logger.error('LeadController.repeatQuery error:', err.message || err);
       return res.status(500).json({ success: false, message: err.message });

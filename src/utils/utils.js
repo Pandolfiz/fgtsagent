@@ -25,6 +25,26 @@ function normalizeName(name) {
   }
 }
 
+/**
+ * Formata um número de telefone removendo todos os caracteres não numéricos
+ * @param {string} phoneNumber - Número de telefone a ser formatado
+ * @returns {string} Número de telefone apenas com dígitos
+ */
+function formatPhoneNumber(phoneNumber) {
+  if (!phoneNumber) return '';
+  
+  try {
+    // Remover todos os caracteres não numéricos
+    const cleaned = phoneNumber.replace(/\D/g, '');
+    
+    return cleaned;
+  } catch (error) {
+    console.error(`Erro ao formatar número de telefone: ${error.message}`);
+    return phoneNumber || '';
+  }
+}
+
 module.exports = {
-  normalizeName
+  normalizeName,
+  formatPhoneNumber
 }; 

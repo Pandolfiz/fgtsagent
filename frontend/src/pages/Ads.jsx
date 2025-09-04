@@ -115,6 +115,7 @@ const Ads = () => {
     }
   ]);
   const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+
   
   // Debug: Log quando campaignStats muda
   useEffect(() => {
@@ -565,12 +566,29 @@ const Ads = () => {
 
   // Função para atualizar a posição do calendário
   const updateCalendarPosition = () => {
-    const periodButton = document.querySelector('button[type="button"]');
+    // Buscar especificamente o botão do período usando um ID único
+    const periodButton = document.getElementById('period-button');
     if (periodButton) {
       const rect = periodButton.getBoundingClientRect();
+      const portalWidth = 650; // Largura do portal com 2 meses
+      const viewportWidth = window.innerWidth;
+      
+      // Calcular posição horizontal para centralizar ou ajustar se necessário
+      let left = rect.left + window.scrollX;
+      
+      // Se o portal não cabe à direita, ajustar para a esquerda
+      if (left + portalWidth > viewportWidth) {
+        left = viewportWidth - portalWidth - 20; // 20px de margem
+      }
+      
+      // Se ainda não cabe, centralizar
+      if (left < 20) {
+        left = (viewportWidth - portalWidth) / 2;
+      }
+      
       calendarPositionRef.current = {
         top: rect.bottom + window.scrollY + 4,
-        left: rect.left + window.scrollX,
+        left: Math.max(20, left), // Mínimo 20px da borda
         right: window.innerWidth - rect.right - window.scrollX
       };
     }
@@ -584,9 +602,9 @@ const Ads = () => {
     loadChartData();
   }, []);
 
-  // Carregar dados automaticamente quando o usuário completar a seleção de período
+  // OTIMIZADO: Debounce simplificado igual ao Dashboard
   useEffect(() => {
-    console.log('[DEBUG] === USEEFFECT dateRange ===');
+    console.log('[DEBUG] === USEEFFECT dateRange (OTIMIZADO) ===');
     console.log('[DEBUG] dateRange[0]:', dateRange[0]);
     
     // Só carregar se:
@@ -599,17 +617,28 @@ const Ads = () => {
       
       // Verificar se é um intervalo válido (não o mesmo dia)
       if (startDate.getTime() !== endDate.getTime()) {
-        console.log('[DEBUG] Intervalo válido detectado, carregando dados automaticamente...');
-        console.log('[DEBUG] Período:', startDate.toISOString(), 'até', endDate.toISOString());
+        console.log('[DEBUG] Intervalo válido detectado, aguardando 300ms antes de carregar...');
         
-        setIsPeriodChanging(true);
-        Promise.all([
-          loadAdsRanking(false, 'custom'),
-          loadCampaignStats('custom'),
-          loadChartData('custom')
-        ]).finally(() => {
-          setIsPeriodChanging(false);
-        });
+        // Debounce de 300ms para evitar múltiplas requisições (otimizado igual ao Dashboard)
+        const timer = setTimeout(() => {
+          console.log('[DEBUG] Carregando dados após debounce...');
+          console.log('[DEBUG] Período:', startDate.toISOString(), 'até', endDate.toISOString());
+          
+          setIsPeriodChanging(true);
+          Promise.all([
+            loadAdsRanking(false, 'custom'),
+            loadCampaignStats('custom'),
+            loadChartData('custom')
+          ]).finally(() => {
+            setIsPeriodChanging(false);
+          });
+        }, 300);
+        
+        // Cleanup do timer se o componente desmontar ou dependências mudarem
+        return () => {
+          console.log('[DEBUG] Limpando timer de debounce');
+          clearTimeout(timer);
+        };
       } else {
         console.log('[DEBUG] Mesmo dia selecionado, aguardando seleção de intervalo...');
       }
@@ -742,6 +771,7 @@ const Ads = () => {
                     </label>
                     <div className="relative">
                       <button
+                        id="period-button"
                         type="button"
                         className={`w-full px-3 py-2 rounded-lg border text-sm transition-colors duration-200 bg-white/5 border-cyan-500 text-cyan-100 ${
                           isPeriodChanging ? 'opacity-50 cursor-not-allowed' : ''
@@ -752,11 +782,13 @@ const Ads = () => {
                         }}
                         disabled={isPeriodChanging}
                       >
-                        {dateRange[0].startDate && dateRange[0].endDate ?
-                          (dateRange[0].startDate.getTime() === dateRange[0].endDate.getTime() ?
-                            formatSingleDate(dateRange[0].startDate) :
-                            `${format(dateRange[0].startDate, 'dd/MM')} a ${format(dateRange[0].endDate, 'dd/MM/yyyy')}`)
-                          : 'Selecionar período'
+                        {isPeriodChanging 
+                          ? 'Carregando...' 
+                          : dateRange[0].startDate && dateRange[0].endDate ?
+                            (dateRange[0].startDate.getTime() === dateRange[0].endDate.getTime() ?
+                              formatSingleDate(dateRange[0].startDate) :
+                              `${format(dateRange[0].startDate, 'dd/MM')} a ${format(dateRange[0].endDate, 'dd/MM/yyyy')}`)
+                            : 'Selecionar período'
                         }
                       </button>
                       
@@ -1514,7 +1546,8 @@ const Ads = () => {
              <div id="calendar-dropdown" className="absolute z-[999] bg-cyan-950 border border-cyan-700 rounded-lg shadow-xl" style={{
                top: calendarPositionRef.current.top,
                left: calendarPositionRef.current.left || 'auto',
-               width: '350px'
+               width: '650px',
+               minWidth: '600px'
              }}>
                <div className="p-3 border-b border-cyan-700/30">
                  <div className="flex items-center justify-between">
@@ -1531,20 +1564,29 @@ const Ads = () => {
                  </div>
                </div>
                
-               <div className="p-3">
+               <div className="p-3 min-w-[600px]">
                  <DateRange
                    editableDateInputs={true}
-                   onChange={(item) => setDateRange([item.selection])}
-                   moveRangeOnFirstSelection={true}
+                   onChange={(item) => {
+                     console.log('[DEBUG] DateRange onChange:', item.selection);
+                     setDateRange([item.selection]);
+                   }}
+                   moveRangeOnFirstSelection={false}
                    ranges={dateRange}
                    locale={ptBR}
                    className="date-range-picker"
+                   showMonthAndYearPickers={true}
                    showSelectionPreview={true}
                    showDateDisplay={false}
-                   months={1}
+                   months={2}
                    direction="horizontal"
                    rangeColors={['#06b6d4']}
                    color="#06b6d4"
+                   staticRanges={[]}
+                   inputRanges={[]}
+                   preventSnapRefocus={true}
+                   retainScrollPosition={true}
+                   showPreview={false}
                  />
                </div>
                

@@ -8,6 +8,7 @@ const { createClient } = require('@supabase/supabase-js');
 const EvolutionService = require('../services/evolutionService');
 const evolutionCredentialController = require('../controllers/evolutionCredentialController');
 const chatService = require('../services/chatService');
+const { formatPhoneNumber } = require('../utils/utils');
 const contactService = require('../services/contactService');
 const chatController = require('../controllers/chatController');
 const partnerCredentialsController = require('../controllers/partnerCredentialsController');
@@ -907,16 +908,29 @@ router.post('/whatsapp-credentials', requireAuth, commonViewData, async (req, re
     const metadata = { evolution: apiRes };
 
     // Salvar credencial no banco local com id da instância
-    const cred = new EvolutionService({
+    const credentialPayload = {
       id: instanceId,
       client_id: req.user.id,
-      phone,
+      phone: formatPhoneNumber(phone), // Formatar número removendo caracteres especiais
       instance_name: instanceNameRes,
       partner_secret: partnerSecret,
-      metadata,
-      agent_name: instance_name
-    });
-    await cred.save();
+      metadata: {
+        ...metadata,
+        original_phone: phone // Salvar número original para referência
+      },
+      agent_name: instance_name,
+      connection_type: 'whatsapp_business'
+    };
+    
+    const { data: cred, error: saveError } = await supabaseAdmin
+      .from('whatsapp_credentials')
+      .insert(credentialPayload)
+      .select()
+      .single();
+    
+    if (saveError) {
+      throw new Error(`Erro ao salvar credencial: ${saveError.message}`);
+    }
     // Atribuir status retornado pela API para exibição imediata
     cred.status = apiRes.instance.state; // ✅ Corrigido: usa 'state' em vez de 'status'
     

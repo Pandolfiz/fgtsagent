@@ -3,7 +3,7 @@
  */
 const express = require('express');
 const router = express.Router();
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/authMiddleware');
 const credentialsController = require('../controllers/credentialsController');
 const credentialsService = require('../services/credentialsService');
 const logger = require('../utils/logger');

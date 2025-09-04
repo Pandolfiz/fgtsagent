@@ -56,6 +56,15 @@ router.get('/:id/qrcode', whatsappCredentialController.fetchQrCode);
 router.get('/:id/check-status', whatsappCredentialController.checkPhoneNumberStatus);
 router.get('/:id/check-evolution-status', whatsappCredentialController.checkEvolutionStatus);
 
+// Webhook para receber mensagens enviadas do n8n - REMOVIDO
+// Funcionalidade coberta pelo webhook Evolution API em /api/webhooks/evolution
+
+// Rota para processar autenticação da Meta API
+router.post('/facebook/auth', requireAuth, (req, res) => whatsappCredentialController.processFacebookAuth(req, res));
+
+
+
+module.exports = router; 
 // Webhook para receber mensagens enviadas do n8n
 router.post('/webhook/receivedWhatsApp', async (req, res) => {
   try {

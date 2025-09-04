@@ -1,208 +1,107 @@
-// Middleware para autenticação
+/**
+ * Middleware unificado de autenticação
+ * Suporta JWT tokens, API keys e múltiplas fontes de token
+ */
 const { supabase, supabaseAdmin } = require('../config/supabase');
-const logger = require('../config/logger');
-
-// Cache para evitar condições de corrida na criação de perfis
-const userProfileLocks = new Map();
+const logger = require('../utils/logger');
 
 /**
- * Cria um lock para operações de perfil de usuário
- * @param {string} userId - ID do usuário
- * @returns {Promise} Promise que resolve quando o lock é liberado
+ * Extrai token de autenticação de múltiplas fontes
  */
-async function acquireUserProfileLock(userId) {
-  // Se já existe um lock para este usuário, aguardar
-  if (userProfileLocks.has(userId)) {
-    logger.debug(`Aguardando lock para usuário ${userId}`);
-    await userProfileLocks.get(userId);
+const extractTokenFromRequest = (req) => {
+  // 1. Header Authorization (prioridade máxima)
+  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
+    return req.headers.authorization.split(' ')[1];
   }
-
-  // Criar novo lock
-  let resolveLock;
-  const lockPromise = new Promise(resolve => {
-    resolveLock = resolve;
-  });
   
-  userProfileLocks.set(userId, lockPromise);
+  // 2. Cookies (prioridade média)
+  const cookieNames = ['authToken', 'supabase-auth-token', 'js-auth-token'];
+  for (const name of cookieNames) {
+    if (req.cookies && req.cookies[name]) {
+      return req.cookies[name];
+    }
+  }
   
-  // Retornar função para liberar o lock
-  return () => {
-    userProfileLocks.delete(userId);
-    resolveLock();
-  };
-}
+  // 3. Query parameter (para casos especiais)
+  if (req.query.token) {
+    return req.query.token;
+  }
+  
+  // 4. Body parameter (para APIs)
+  if (req.body && req.body.token) {
+    return req.body.token;
+  }
+  
+  return null;
+};
 
 /**
- * Verifica e cria o perfil do usuário no banco de dados se não existir
- * @param {Object} user - Objeto do usuário autenticado
+ * Extrai refresh token de múltiplas fontes
  */
-async function ensureUserProfile(user) {
-  if (!user || !user.id) {
-    logger.error('ensureUserProfile: Usuário inválido');
-    return false;
+const extractRefreshToken = (req) => {
+  // 1. Cookies específicos para refresh token
+  const refreshCookieNames = ['refreshToken', 'supabase-refresh-token', 'sb-refresh-token'];
+  for (const name of refreshCookieNames) {
+    if (req.cookies && req.cookies[name]) {
+      return req.cookies[name];
+    }
   }
+  
+  // 2. Cookie header manual para refresh token
+  if (req.headers.cookie) {
+    for (const name of refreshCookieNames) {
+      const safeName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const match = new RegExp(`${safeName}=([^;]+)`).exec(req.headers.cookie);
+      if (match) {
+        return match[1];
+      }
+    }
+  }
+  
+  return null;
+};
 
-  // Adquirir lock para evitar condições de corrida
-  const releaseLock = await acquireUserProfileLock(user.id);
-
+/**
+ * Autentica usuário usando API key
+ */
+const authenticateWithApiKey = async (req, res, next, apiKey) => {
   try {
-    logger.info(`[ensureUserProfile] Verificando perfil de usuário para ${user.id}`);
-    
-    // Verificar se o perfil já existe (usando transação para consistência)
-    const { data: existingProfile, error: profileError } = await supabaseAdmin
-      .from('user_profiles')
-      .select('id')
-      .eq('id', user.id)
-      .maybeSingle();
-    
-    if (profileError) {
-      logger.error(`Erro ao verificar perfil: ${profileError.message}`);
-      return false;
+    // TODO: Implementar validação real de API key
+    // Por enquanto, aceitar qualquer API key para desenvolvimento
+    if (process.env.NODE_ENV === 'development') {
+      req.apiKey = apiKey;
+      req.user = { id: 'api-user', email: 'api@example.com', full_name: 'API User' };
+      logger.info('[AUTH] Autenticação por API key bem-sucedida (desenvolvimento)');
+      return next();
     }
     
-    // Verificar se o cliente já existe
-    const { data: existingClient, error: clientError } = await supabaseAdmin
-      .from('clients')
-      .select('id')
-      .eq('id', user.id)
-      .maybeSingle();
+    // Em produção, validar a API key
+    // const { data: keyData, error } = await supabase
+    //   .from('user_api_keys')
+    //   .select('*')
+    //   .eq('key', apiKey)
+    //   .eq('active', true)
+    //   .single();
     
-    if (clientError) {
-      logger.error(`Erro ao verificar cliente: ${clientError.message}`);
-    }
+    return res.status(401).json({
+      success: false,
+      message: 'API key inválida'
+    });
     
-    const needsProfile = !existingProfile;
-    const needsClient = !existingClient;
-    
-
-    
-    if (needsProfile || needsClient) {
-      // logger.info(`Usuário ${user.id} precisa: ${needsProfile ? 'perfil' : ''} ${needsProfile && needsClient ? 'e' : ''} ${needsClient ? 'cliente' : ''}`);
-      
-      // Extrair informações do usuário uma única vez
-      const userMetadata = user.user_metadata || {};
-      const fullName = userMetadata.full_name || 
-                      userMetadata.name || 
-                      `${userMetadata.first_name || userMetadata.given_name || ''} ${userMetadata.last_name || userMetadata.family_name || ''}`.trim();
-      
-
-      
-      // Preparar dados
-      const profileData = needsProfile ? {
-        id: user.id,
-        email: user.email,
-        first_name: userMetadata.first_name || userMetadata.given_name || '',
-        last_name: userMetadata.last_name || userMetadata.family_name || '',
-        full_name: fullName,
-        avatar_url: userMetadata.avatar_url || userMetadata.picture || null,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      } : null;
-      
-      const clientData = needsClient ? {
-        id: user.id,
-        name: fullName || user.email,
-        email: user.email,
-        status: 'active',
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      } : null;
-      
-      if (needsProfile) {
-        logger.info(`[ensureUserProfile] Criando perfil com dados:`, profileData);
-      }
-      
-      if (needsClient) {
-        logger.info(`[ensureUserProfile] Criando cliente com dados:`, clientData);
-      }
-      
-      // Executar operações em paralelo (agora que temos lock)
-      const operations = [];
-      
-      if (needsProfile) {
-        operations.push(
-          supabaseAdmin
-            .from('user_profiles')
-            .upsert(profileData, { onConflict: 'id' })
-            .then(result => ({ type: 'profile', result }))
-        );
-      }
-      
-      if (needsClient) {
-        operations.push(
-          supabaseAdmin
-            .from('clients')
-            .upsert(clientData, { onConflict: 'id' })
-            .then(result => ({ type: 'client', result }))
-        );
-      }
-      
-      // Aguardar todas as operações
-      const results = await Promise.allSettled(operations);
-      
-      // Verificar resultados
-      let hasErrors = false;
-      for (const { status, value, reason } of results) {
-        if (status === 'rejected') {
-          logger.error(`Erro na operação: ${reason.message}`);
-          hasErrors = true;
-        } else if (value.result.error) {
-          logger.error(`Erro ao criar ${value.type}: ${value.result.error.message}`);
-          hasErrors = true;
-        } else {
-          logger.info(`[ensureUserProfile] ${value.type} criado/atualizado com sucesso`);
-        }
-      }
-      
-      if (hasErrors) {
-        logger.error(`[ensureUserProfile] Erros encontrados durante criação de perfil/cliente`);
-        return false;
-      }
-      
-      // Atualizar o objeto user com os dados do perfil criado
-      if (needsProfile && profileData) {
-        user.profile = profileData;
-        logger.info(`[ensureUserProfile] Perfil adicionado ao objeto user:`, profileData);
-      }
-      
-      return true;
-    } else {
-      logger.info(`[ensureUserProfile] Usuário ${user.id} já possui perfil e cliente`);
-      return true;
-    }
   } catch (error) {
-    logger.error(`[ensureUserProfile] Erro geral: ${error.message}`);
-    return false;
-  } finally {
-    // Sempre liberar o lock
-    releaseLock();
+    logger.error(`[AUTH] Erro na verificação de API key: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno de autenticação'
+    });
   }
-}
-
-// Função auxiliar para determinar a URL de login correta para o frontend React
-function getReactLoginUrl(req, redirectPath, message) {
-  const redirectUrl = encodeURIComponent(redirectPath);
-  const clientAppUrl = req.headers['referer'] || '/';
-  const baseUrl = clientAppUrl.split('?')[0].replace(/\/+$/, '');
-  
-  // Verificar se estamos usando Hash Router ou Browser Router
-  // Por padrão, assumimos Browser Router no React moderno
-  const isHashRouter = process.env.REACT_ROUTER_TYPE === 'hash';
-  
-  if (isHashRouter) {
-    // Hash Router (#/login)
-    return `${baseUrl}/#/login?redirect=${redirectUrl}&message=${encodeURIComponent(message)}`;
-  } else {
-    // Browser Router (/login)
-    return `${baseUrl}/login?redirect=${redirectUrl}&message=${encodeURIComponent(message)}`;
-  }
-}
+};
 
 /**
- * Middleware para verificar se o usuário está autenticado
+ * Middleware unificado para verificar se o usuário está autenticado
+ * Suporta JWT tokens, API keys e múltiplas fontes de token
  */
 const requireAuth = async (req, res, next) => {
-  // console.log(`[AUTH LOG] requireAuth chamado para ${req.method} ${req.originalUrl}`);
   try {
     // Inicializar/Limpar dados de usuário para evitar contaminação entre requisições
     req.user = null;
@@ -210,452 +109,211 @@ const requireAuth = async (req, res, next) => {
     // Verificar e criar tabela de perfis se necessário
     await checkAndCreateTables();
     
-    // Verificar token na requisição
-    // 1. Verificar nos cookies
-    let token = req.cookies.authToken;
-    // logger.info(`Token do cookie: ${token ? 'encontrado' : 'não encontrado'}`);
+    // ✅ OTIMIZADO: Extrair token de múltiplas fontes
+    let token = extractTokenFromRequest(req);
     
-    // 2. Se não encontrou nos cookies, verificar no header de autorização
-    if (!token && req.headers.authorization) {
-      const authHeader = req.headers.authorization;
-      if (authHeader && authHeader.startsWith('Bearer ')) {
-        token = authHeader.substring(7);
-        // logger.info(`Token do header: ${token ? 'encontrado' : 'não encontrado'}`);
-      }
-    }
+    // ✅ NOVO: Verificar API key como alternativa
+    const apiKey = req.headers['x-user-api-key'] || req.query.api_key;
     
-    // 3. Se ainda não encontrou, verificar na query string (para uso em fluxos especiais)
-    if (!token && req.query.token) {
-      token = req.query.token;
-      // logger.info(`Token da query: ${token ? 'encontrado' : 'não encontrado'}`);
-    }
-    
-    // 4. Verificar nos parâmetros do body para API
-    if (!token && req.body && req.body.token) {
-      token = req.body.token;
-      // logger.info(`Token do body: ${token ? 'encontrado' : 'não encontrado'}`);
+    if (apiKey && !token) {
+      logger.info('[AUTH] Tentando autenticação por API key');
+      return await authenticateWithApiKey(req, res, next, apiKey);
     }
     
     if (!token) {
-      // Não autenticado
-      logger.warn('Acesso não autorizado - Token não encontrado');
+      logger.warn(`[AUTH] Tentativa de acesso sem token: ${req.originalUrl}`);
       
-      // Para requisições de API, retornar erro 401
       if (req.originalUrl.startsWith('/api/')) {
         return res.status(401).json({
           success: false,
-          message: 'Não autorizado - Autenticação necessária'
+          message: 'Token de autenticação necessário'
         });
       }
       
-      // Para acesso web, redirecionar para o login com parâmetro redirect
-      // Em vez de redirecionar diretamente para /login, verificamos o tipo de cliente
-      const isReactClient = !req.headers['accept'] || req.headers['accept'].includes('text/html');
-      
-      if (isReactClient) {
-        // Aplicativo React - redirecionar para a URL base e deixar o React Router lidar
-        const loginPath = getReactLoginUrl(req, req.originalUrl, 'Faça login para acessar esta página');
-        
-        // logger.info(`Redirecionando cliente React para: ${loginPath}`);
-        return res.redirect(loginPath);
-      } else {
-        // Cliente tradicional - redirecionar para a rota /login convencional
-        const redirectUrl = encodeURIComponent(req.originalUrl);
-        // logger.info(`Redirecionando para o login com redirect=${redirectUrl}`);
-        return res.redirect(`/login?redirect=${redirectUrl}&message=Faça login para acessar esta página`);
-      }
+      // Para rotas web, redirecionar para login
+      return res.redirect('/login?redirect=' + encodeURIComponent(req.originalUrl));
     }
     
-    // Analisar o token JWT para verificar a expiração
-    try {
-      const [headerEncoded, payloadEncoded] = token.split('.');
-      if (headerEncoded && payloadEncoded) {
-        const payload = JSON.parse(Buffer.from(payloadEncoded, 'base64').toString('utf8'));
-        if (payload && payload.exp) {
-          const expiryTime = payload.exp * 1000; // Converter para milissegundos
-          const currentTime = Date.now();
-          const timeRemaining = expiryTime - currentTime;
-          
-          // Se o token expira em menos de 10 minutos, renovar o cookie
-          if (timeRemaining < 600000 && timeRemaining > 0) {
-            // logger.info('Token prestes a expirar, renovando cookie por mais 1 dia');
-            res.cookie('authToken', token, {
-              httpOnly: true,
-              secure: process.env.NODE_ENV === 'production', 
-              maxAge: 24 * 60 * 60 * 1000 // 1 dia
-            });
-          } else if (timeRemaining <= 0) {
-            logger.warn('Token já expirado');
-            
-            // Em vez de redirecionar imediatamente, tentamos gerar um novo token
-            try {
-              // Extrair o user_id do payload
-              const userId = payload.sub;
-              if (userId) {
-                // logger.info(`Tentando renovar token expirado para usuário ${userId}`);
-                
-                // Gerar um novo token usando o userId
-                const { data: userData, error: userError } = await supabaseAdmin.auth.admin.getUserById(userId);
-                
-                if (!userError && userData && userData.user) {
-                  // Seguindo a melhor prática: não tentar criar sessão administrativa
-                  // Se o token expirou, o usuário deve fazer login novamente
-                  logger.warn(`Token expirado para usuário ${userId}. Usuário deve fazer login novamente.`);
-                  throw new Error('Token expirado. Faça login novamente.');
-                } else {
-                  logger.error(`Erro ao recuperar usuário por ID: ${userError?.message || 'Usuário não encontrado'}`);
-                  throw new Error('Usuário não encontrado');
-                }
-              } else {
-                logger.error('Token inválido: não contém ID do usuário');
-                throw new Error('Token inválido');
-              }
-            } catch (renewError) {
-              logger.error(`Erro ao renovar token: ${renewError.message}`);
-              
-              // Limpar cookies inválidos
-              res.clearCookie('authToken');
-              
-              if (req.originalUrl.startsWith('/api/')) {
-                return res.status(401).json({
-                  success: false,
-                  message: 'Token expirado. Faça login novamente.'
-                });
-              }
-              
-              // Para acesso web, redirecionar para o login com parâmetro redirect
-              const redirectUrl = encodeURIComponent(req.originalUrl);
-              // logger.info(`Redirecionando para o login após expiração de token: redirect=${redirectUrl}`);
-              
-              // Verificar se é cliente React
-              const isReactClient = !req.headers['accept'] || req.headers['accept'].includes('text/html');
-              
-              if (isReactClient) {
-                // Aplicativo React - redirecionar para a rota base
-                const loginPath = getReactLoginUrl(req, req.originalUrl, 'Sua sessão expirou. Faça login novamente.');
-                
-                // logger.info(`Redirecionando cliente React para: ${loginPath}`);
-                return res.redirect(loginPath);
-              } else {
-                // Cliente tradicional
-                return res.redirect(`/login?redirect=${redirectUrl}&message=Sua sessão expirou. Faça login novamente.`);
-              }
-            }
-          }
+    // ✅ CORRIGIDO: Verificar se o token está expirado ANTES de chamar Supabase
+    const isTokenExpired = (token) => {
+      try {
+        const jwt = require('jsonwebtoken');
+        const decoded = jwt.decode(token);
+        if (!decoded || !decoded.exp) {
+          logger.warn('[AUTH] Token malformado - sem campo exp');
+          return true; // Considerar expirado se não tem campo exp
         }
-      }
-    } catch (parseError) {
-      logger.warn(`Erro ao analisar token JWT: ${parseError.message}`);
-      // Continuar com a verificação padrão do Supabase
-    }
-    
-    // ✅ DEBUG: Log do token recebido
-    logger.info(`[AUTH] Verificando token: ${token ? token.substring(0, 20) + '...' : 'NENHUM'} para ${req.originalUrl}`);
-    
-    // Verificar token com o Supabase
-    const { data, error } = await supabase.auth.getUser(token);
-    
-    let user = data?.user;
-
-    // ✅ DEBUG: Log detalhado da verificação
-    logger.info(`[AUTH] Resultado da verificação:`, {
-      hasData: !!data,
-      hasUser: !!user,
-      hasError: !!error,
-      errorMessage: error?.message,
-      errorCode: error?.code,
-      url: req.originalUrl
-    });
-
-    // Se houver erro de autenticação, analisar antes de limpar cookies
-    if (error || !user) {
-      logger.warn(`[AUTH] Erro de autenticação: ${error ? error.message : 'Usuário não encontrado'}`);
-      
-      // ✅ VERIFICAR: Se é um token recém-criado (pode levar alguns segundos para sincronizar)
-      const isRecentLogin = req.headers['x-recent-login'] === 'true';
-      
-      if (isRecentLogin && error?.message && typeof error.message === 'string' && error.message.includes('invalid')) {
-        logger.info(`[AUTH] Token recém-criado detectado, aguardando sincronização...`);
-        
-        // ✅ AGUARDAR: 2 segundos para sincronização do Supabase
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        
-        // ✅ TENTAR NOVAMENTE: Verificar o token após aguardar
-        const { data: retryData, error: retryError } = await supabase.auth.getUser(token);
-        
-        if (!retryError && retryData?.user) {
-          logger.info(`[AUTH] Token validado após aguardar sincronização`);
-          user = retryData.user;
-        } else {
-          logger.warn(`[AUTH] Token ainda inválido após aguardar: ${retryError?.message}`);
+        const now = Math.floor(Date.now() / 1000);
+        const isExpired = decoded.exp < now;
+        if (isExpired) {
+          logger.info(`[AUTH] Token expirado - exp: ${decoded.exp}, now: ${now}`);
         }
+        return isExpired;
+      } catch (error) {
+        logger.warn(`[AUTH] Erro ao decodificar token: ${error.message}`);
+        return true; // Considerar expirado se não consegue decodificar
       }
+    };
+
+    // Se token está expirado, tentar refresh IMEDIATAMENTE
+    if (isTokenExpired(token)) {
+      logger.info('[AUTH] Token expirado detectado, tentando refresh...');
+      const refreshToken = extractRefreshToken(req);
       
-      // ✅ SE AINDA HÁ ERRO: Proceder com limpeza
-      if (!user) {
-        // ✅ NOVA ESTRATÉGIA: Limpar imediatamente todos os cookies de autenticação
-        res.clearCookie('authToken');
-        res.clearCookie('refreshToken');
-        res.clearCookie('sb-access-token');
-        res.clearCookie('sb-refresh-token');
-        
-        // ✅ LOG: Registrar o tipo específico de erro para debug
-        if (error) {
-          logger.error(`[AUTH] Detalhes do erro de autenticação: ${error.message}`, {
-            errorCode: error.code || 'unknown',
-            errorStatus: error.status || 'unknown',
-            tokenPrefix: token ? token.substring(0, 20) + '...' : 'no-token',
-            url: req.originalUrl
+      if (refreshToken) {
+        logger.info('[AUTH] Refresh token encontrado, tentando renovar...');
+        try {
+          const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession({
+            refresh_token: refreshToken
           });
+          
+          if (!refreshError && refreshData.session) {
+            logger.info('[AUTH] Token renovado com sucesso');
+            
+            // Atualizar cookies com novos tokens
+            res.cookie('authToken', refreshData.session.access_token, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === 'production',
+              maxAge: 24 * 60 * 60 * 1000, // 1 dia
+              sameSite: 'lax'
+            });
+            
+            res.cookie('refreshToken', refreshData.session.refresh_token, {
+              httpOnly: true,
+              secure: process.env.NODE_ENV === 'production',
+              maxAge: 30 * 24 * 60 * 60 * 1000, // 30 dias
+              sameSite: 'lax'
+            });
+            
+            // Usar o novo token para autenticação
+            req.user = refreshData.user;
+            req.user.full_name = req.user.user_metadata?.full_name || req.user.email?.split('@')[0] || 'Usuário';
+            req.user.first_name = req.user.user_metadata?.first_name || '';
+            req.user.last_name = req.user.user_metadata?.last_name || '';
+            req.user.phone = req.user.user_metadata?.phone || '';
+            
+            logger.info(`[AUTH] Usuário autenticado com token renovado: ${req.user.email} (${req.user.id})`);
+            return next();
+          } else {
+            logger.warn(`[AUTH] Erro ao renovar token: ${refreshError?.message || 'Sessão não encontrada'}`);
+          }
+        } catch (refreshErr) {
+          logger.warn(`[AUTH] Erro ao renovar token: ${refreshErr.message}`);
         }
+      } else {
+        logger.warn('[AUTH] Token expirado mas refresh token não encontrado');
+      }
+    }
+
+    // ✅ OTIMIZADO: Verificar token com Supabase (apenas se não foi renovado)
+    try {
+      const { data, error } = await supabase.auth.getUser(token);
       
-        // ✅ FORÇAR LOGIN: Não tentar recuperar usuário, apenas redirecionar
+      if (error || !data.user) {
+        
+        logger.warn(`[AUTH] Token inválido: ${error?.message || 'Usuário não encontrado'}`);
+        
         if (req.originalUrl.startsWith('/api/')) {
           return res.status(401).json({
             success: false,
-            message: 'Sessão inválida. Faça login novamente.',
-            code: 'SESSION_INVALID'
+            message: 'Token inválido ou expirado'
           });
         }
         
-        // Para acesso web, redirecionar para o login
-        const redirectUrl = encodeURIComponent(req.originalUrl);
-        const isReactClient = !req.headers['accept'] || req.headers['accept'].includes('text/html');
-        
-        if (isReactClient) {
-          const loginPath = getReactLoginUrl(req, req.originalUrl, 'Sua sessão expirou. Faça login novamente.');
-          return res.redirect(loginPath);
-        } else {
-          return res.redirect(`/login?redirect=${redirectUrl}&message=Sua sessão expirou. Faça login novamente.`);
-        }
-      }
-    }
-    
-    // Verificar se o usuário tem metadados
-    if (!user.user_metadata) {
-      user.user_metadata = {};
-      // logger.info(`Inicializando user_metadata para o usuário ${user.id}`);
-    }
-    
-    // // DEBUG: Imprimir ID do usuário para diagnóstico
-    // logger.info(`DEBUG: ID do usuário: "${user.id}"`);
-    
-    // IMPORTANTE: Verificar e criar o perfil do usuário se não existir
-    // Chama a função para qualquer tipo de autenticação (formulário ou OAuth)
-    const profileCreated = await ensureUserProfile(user);
-    // logger.info(`Resultado da verificação/criação de perfil: ${profileCreated ? 'sucesso' : 'falha'}`);
-
-    // Verificar e tentar corrigir os metadados do usuário
-    try {
-      // Se não temos full_name nos metadados, mas temos first_name e last_name, vamos construir
-      if (!user.user_metadata.full_name && user.user_metadata.first_name) {
-        // Construir o nome completo a partir do primeiro e último nome
-        const firstName = user.user_metadata.first_name || '';
-        const lastName = user.user_metadata.last_name || '';
-        user.user_metadata.full_name = firstName + (firstName && lastName ? ' ' : '') + lastName;
-        
-        // logger.info(`Full name construído para o usuário ${user.id}: ${user.user_metadata.full_name}`);
-        
-        // Tentar atualizar os metadados no Supabase
-        try {
-          const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(user.id, {
-            user_metadata: {
-              ...user.user_metadata
-            }
-          });
-          
-          if (updateError) {
-            logger.warn(`Não foi possível atualizar metadados do usuário ${user.id}: ${updateError.message}`);
-          } else {
-            // logger.info(`Metadados do usuário ${user.id} atualizados com sucesso`);
-          }
-        } catch (updateErr) {
-          logger.warn(`Erro ao atualizar metadados do usuário ${user.id}: ${updateErr.message}`);
-        }
+        return res.redirect('/login?error=invalid_token');
       }
       
-      // Se não temos um perfil na tabela user_profiles, tenta criar um com os metadados
-      if (!user.profile) {
-        // logger.info(`Perfil não encontrado para o usuário ${user.id}, tentando criar...`);
-        
-        // Verificar se a tabela user_profiles existe
-        await checkAndCreateTables();
-        
-        // Verificar primeiro se o perfil já existe
-        try {
-          const { data: existingProfile, error: searchError } = await supabaseAdmin
-            .from('user_profiles')
-            .select('*')
-            .eq('id', user.id)
-            .maybeSingle();
-            
-          if (searchError) {
-            logger.warn(`Erro ao verificar perfil existente para ${user.id}: ${searchError.message}`);
-          }
-          
-          // Se o perfil já existe, apenas use-o
-          if (existingProfile) {
-            // logger.info(`Perfil já existe para o usuário ${user.id}, usando o existente`);
-            user.profile = existingProfile;
-          } else {
-            // Criar um perfil apenas se não existir
-            try {
-              const { data: insertData, error: insertError } = await supabaseAdmin
-                .from('user_profiles')
-                .insert({
-                  id: user.id,
-                  email: user.email,
-                  first_name: user.user_metadata?.first_name || '',
-                  last_name: user.user_metadata?.last_name || '',
-                  full_name: user.user_metadata?.full_name || user.user_metadata?.name || '',
-                  avatar_url: user.user_metadata?.avatar_url || '',
-                  created_at: new Date().toISOString(),
-                  updated_at: new Date().toISOString()
-                })
-                .select()
-                .maybeSingle();
-              
-              if (insertError) {
-                // Se ainda houver erro de duplicação, tente buscar o perfil novamente
-                if (insertError.message && typeof insertError.message === 'string' && insertError.message.includes('duplicate key value')) {
-                  // logger.info(`Ocorreu conflito ao inserir perfil. Buscando perfil existente para ${user.id}...`);
-                  
-                  const { data: existingProfileRetry, error: retryError } = await supabaseAdmin
-                    .from('user_profiles')
-                    .select('*')
-                    .eq('id', user.id)
-                    .maybeSingle();
-                    
-                  if (!retryError && existingProfileRetry) {
-                    // logger.info(`Perfil encontrado após conflito para o usuário ${user.id}`);
-                    user.profile = existingProfileRetry;
-                  } else {
-                    logger.warn(`Não foi possível recuperar perfil após conflito: ${retryError?.message || 'Perfil não encontrado'}`);
-                  }
-                } else {
-                  logger.warn(`Não foi possível criar perfil para o usuário ${user.id}: ${insertError.message}`);
-                }
-              } else if (insertData) {
-                // logger.info(`Perfil criado com sucesso para o usuário ${user.id}`);
-                user.profile = insertData;
-              }
-            } catch (insertErr) {
-              logger.warn(`Erro ao inserir perfil para o usuário ${user.id}: ${insertErr.message}`);
-            }
-          }
-        } catch (checkErr) {
-          logger.warn(`Erro ao verificar perfil existente para o usuário ${user.id}: ${checkErr.message}`);
-        }
-      }
-    } catch (metadataErr) {
-      logger.error(`Erro ao processar metadados do usuário ${user.id}: ${metadataErr.message}`);
-    }
-    
-    // Adicionar o displayName para facilitar
-    if (!user.displayName) {
-      // Prioridade para exibição:
-      // 1. full_name dos metadados ou perfil
-      // 2. combinação de first_name + last_name
-      // 3. first_name
-      // 4. email
-      // 5. "Usuário" (genérico)
+      // ✅ OTIMIZADO: Token válido - anexar usuário à requisição
+      req.user = data.user;
       
-      const metadata = user.user_metadata || {};
-      const profile = user.profile || {};
+      // ✅ OTIMIZADO: Usar apenas metadados para evitar consultas ao banco
+      req.user.full_name = req.user.user_metadata?.full_name || req.user.email?.split('@')[0] || 'Usuário';
+      req.user.first_name = req.user.user_metadata?.first_name || '';
+      req.user.last_name = req.user.user_metadata?.last_name || '';
+      req.user.phone = req.user.user_metadata?.phone || '';
       
-      logger.info(`[requireAuth] Definindo displayName para usuário ${user.id}:`, {
-        metadata_full_name: metadata.full_name,
-        metadata_first_name: metadata.first_name,
-        metadata_last_name: metadata.last_name,
-        profile_full_name: profile.full_name,
-        profile_first_name: profile.first_name,
-        profile_last_name: profile.last_name,
-        user_email: user.email
+      // ✅ OTIMIZADO: Garantir que o token esteja nos cookies para futuras requisições
+      res.cookie('authToken', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 24 * 60 * 60 * 1000, // 1 dia
+        sameSite: 'lax'
       });
       
-      // Obter o nome completo de metadados ou perfil
-      if (metadata.full_name) {
-        user.displayName = metadata.full_name;
-        logger.info(`[requireAuth] Usando full_name dos metadados para displayName: ${user.displayName}`);
-      } else if (profile.full_name) {
-        user.displayName = profile.full_name;
-        logger.info(`[requireAuth] Usando full_name do perfil para displayName: ${user.displayName}`);
-      } 
-      // Tentar construir a partir de first_name + last_name
-      else if (metadata.first_name && metadata.last_name) {
-        user.displayName = `${metadata.first_name} ${metadata.last_name}`;
-        logger.info(`[requireAuth] Usando first_name + last_name dos metadados para displayName: ${user.displayName}`);
-      } else if (profile.first_name && profile.last_name) {
-        user.displayName = `${profile.first_name} ${profile.last_name}`;
-        logger.info(`[requireAuth] Usando first_name + last_name do perfil para displayName: ${user.displayName}`);
-      }
-      // Usar apenas first_name
-      else if (metadata.first_name) {
-        user.displayName = metadata.first_name;
-        logger.info(`[requireAuth] Usando first_name dos metadados para displayName: ${user.displayName}`);
-      } else if (profile.first_name) {
-        user.displayName = profile.first_name;
-        logger.info(`[requireAuth] Usando first_name do perfil para displayName: ${user.displayName}`);
-      }
-      // Usar email como último recurso antes do genérico
-      else if (user.email) {
-        // Tentar extrair um nome do email, por exemplo luizfiorimr@email.com -> Luizfiorimr
-        const emailName = user.email.split('@')[0];
-        user.displayName = emailName.charAt(0).toUpperCase() + emailName.slice(1);
-        logger.info(`[requireAuth] Usando email para displayName: ${user.displayName}`);
-      } else {
-        // Último recurso - nome genérico
-        user.displayName = 'Usuário';
-        logger.info(`[requireAuth] Usando nome genérico para displayName: ${user.displayName}`);
+      logger.info(`[AUTH] Usuário autenticado: ${req.user.email} (${req.user.id})`);
+      next();
+      
+    } catch (supabaseError) {
+      logger.error(`[AUTH] Erro na verificação Supabase: ${supabaseError.message}`);
+      
+      if (req.originalUrl.startsWith('/api/')) {
+        return res.status(500).json({
+          success: false,
+          message: 'Erro interno de autenticação'
+        });
       }
       
-      // Verificar se o displayName está vazio por algum motivo e definir um fallback
-      if (!user.displayName || user.displayName.trim() === '') {
-        // Checar se temos o email como último recurso
-        if (user.email) {
-          const emailName = user.email.split('@')[0];
-          user.displayName = emailName.charAt(0).toUpperCase() + emailName.slice(1);
-          logger.info(`[requireAuth] Definindo displayName a partir do email como fallback: ${user.displayName}`);
-        } else {
-          user.displayName = 'Usuário';
-          logger.info(`[requireAuth] Definindo displayName genérico como último recurso`);
-        }
-      }
+      return res.redirect('/login?error=auth_error');
     }
     
-    // Log para debugging do displayName
-    logger.info(`[requireAuth] Usuário final: ID=${user.id}, Email=${user.email}, DisplayName="${user.displayName}"`);
-    
-    // Usuário está autenticado, adicionar ao objeto de requisição para uso posterior
-    req.user = user;
-    // Adicionar indicador de que este usuário foi autenticado via JWT
-    req.user.auth_method = 'jwt';
-    req.token = token;
-    
-    // logger.info(`Usuário autenticado: ${user.email}, ID: ${user.id}`);
-    
-    // Garantir que o token esteja nos cookies para futuras requisições
-    res.cookie('authToken', token, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      maxAge: 24 * 60 * 60 * 1000 // 1 dia
-    });
-    
-    next();
   } catch (err) {
-    logger.error(`Erro no middleware de autenticação: ${err.message}`, err);
+    logger.error(`[AUTH] Erro no middleware: ${err.message}`);
     
     if (req.originalUrl.startsWith('/api/')) {
       return res.status(500).json({
         success: false,
-        message: 'Erro interno ao processar autenticação'
+        message: 'Erro interno de autenticação'
       });
     }
     
-    return res.status(500).render('error', {
-      message: 'Erro ao processar autenticação',
-      error: process.env.NODE_ENV === 'development' ? err : {}
-    });
+    return res.redirect('/login?error=internal_error');
+  }
+};
+
+/**
+ * Middleware para verificar se o usuário é administrador
+ */
+const requireAdmin = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: 'Autenticação necessária'
+      });
+    }
+    
+    // Verificar se é admin
+    const isAdmin = req.user.app_metadata?.role === 'admin' || 
+                   req.user.app_metadata?.isAdmin === true ||
+                   req.user.user_metadata?.role === 'admin';
+    
+    if (!isAdmin) {
+      logger.warn(`[AUTH] Tentativa de acesso administrativo por usuário não autorizado: ${req.user.id}`);
+      
+      if (req.originalUrl.startsWith('/api/')) {
+        return res.status(403).json({
+          success: false,
+          message: 'Acesso restrito a administradores'
+        });
+      }
+      
+      return res.redirect('/dashboard?error=admin_required');
+    }
+    
+    logger.info(`[AUTH] Acesso administrativo concedido: ${req.user.email}`);
+    next();
+    
+  } catch (error) {
+    logger.error(`[AUTH] Erro na verificação de admin: ${error.message}`);
+    
+    if (req.originalUrl.startsWith('/api/')) {
+      return res.status(500).json({
+        success: false,
+        message: 'Erro interno de autorização'
+      });
+    }
+    
+    return res.redirect('/dashboard?error=auth_error');
   }
 };
 
@@ -664,485 +322,189 @@ const requireAuth = async (req, res, next) => {
  */
 const requireOrganization = async (req, res, next) => {
   try {
-    // Verificar se o usuário está autenticado
     if (!req.user) {
-      return res.status(401).json({ success: false, message: 'Acesso não autorizado' });
+      return res.status(401).json({
+        success: false,
+        message: 'Autenticação necessária'
+      });
     }
-
+    
     // Buscar organizações do usuário
     const { data: organizations, error } = await supabase
       .from('organization_members')
       .select('organization_id, organizations(id, name, slug)')
       .eq('user_id', req.user.id);
-
+    
     if (error) {
-      logger.error('Erro ao buscar organizações:', error.message);
-      return res.status(500).json({ success: false, message: 'Erro ao verificar organização' });
-    }
-
-    if (!organizations || organizations.length === 0) {
-      // Verificar se é API ou web
-      if (req.path.startsWith('/api/')) {
-        return res.status(403).json({ 
-          success: false, 
-          message: 'Você não pertence a nenhuma organização',
-          redirect: '/organizations/new'
-        });
-      }
-      
-      // Redirecionar para criar organização
-      return res.redirect('/organizations/new?message=Você precisa criar ou participar de uma organização&success=false');
-    }
-
-    // Adicionar organizações ao objeto req
-    req.organizations = organizations.map(org => ({
-      id: org.organization_id,
-      name: org.organizations?.name,
-      slug: org.organizations?.slug
-    }));
-
-    next();
-  } catch (err) {
-    logger.error('Erro no middleware de organização:', err);
-    return res.status(500).json({ success: false, message: 'Erro interno do servidor' });
-  }
-};
-
-/**
- * Middleware para verificar se o usuário é administrador da organização
- */
-const requireAdmin = async (req, res, next) => {
-  // logger.warn('[ADMIN] Entrou no middleware requireAdmin');
-  try {
-    if (!req.user) {
-      return res.status(401).json({ success: false, message: 'Acesso não autorizado' });
-    }
-
-    // Buscar o perfil do usuário no banco usando supabaseAdmin
-    const { data: profile, error } = await supabaseAdmin
-      .from('user_profiles')
-      .select('role')
-      .eq('id', req.user.id)
-      .single();
-
-    // logger.warn(`[ADMIN DEBUG] Resultado profile:`, profile, 'Erro:', error);
-
-    if (error || !profile) {
-      // logger.warn('[ADMIN] Perfil não encontrado ou erro ao buscar role.');
-      return res.status(403).json({ success: false, message: 'Acesso restrito a administradores' });
-    }
-
-    // Permitir qualquer valor de role
-    if (!profile.role) {
-      // logger.warn('[ADMIN] Usuário sem role definido no perfil.');
-      return res.status(403).json({ success: false, message: 'Acesso restrito a administradores' });
-    }
-
-    // logger.warn(`[ADMIN] Usuário com role "${profile.role}" permitido.`);
-    return next();
-  } catch (err) {
-    logger.error('Erro no middleware de administrador:', err);
-    return res.status(500).json({ success: false, message: 'Erro interno do servidor' });
-  }
-};
-
-/**
- * Função para verificar se as tabelas necessárias existem e criá-las caso não existam
- */
-async function checkAndCreateTables() {
-  try {
-    // logger.info('Verificando tabelas do sistema...');
-    
-    let tableExists = false;
-    
-    // Verificar se a tabela user_profiles existe usando RPC
-    try {
-      const { data: tablesData, error: tablesError } = await supabaseAdmin.rpc('check_table_exists', { 
-        table_name: 'user_profiles' 
+      logger.error(`[AUTH] Erro ao buscar organizações: ${error.message}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao verificar organização'
       });
-      
-      if (!tablesError && tablesData !== null) {
-        tableExists = tablesData === true;
-        // logger.info(`Verificação via RPC: tabela user_profiles ${tableExists ? 'existe' : 'não existe'}`);
-      } else {
-        logger.warn(`Erro ao verificar tabela via RPC: ${tablesError?.message || 'Resposta inválida'}`);
-        throw new Error('Falha na verificação via RPC');
-      }
-    } catch (rpcError) {
-      logger.warn(`Função RPC indisponível: ${rpcError.message}`);
-      
-      // Método alternativo: verificar diretamente com SQL
-      // logger.info('Tentando verificar tabela diretamente com SQL...');
-      
-      try {
-        // Usar from() com uma query simples para verificar se a tabela existe
-        const { data: directCheckData, error: directCheckError } = await supabaseAdmin
-          .from('user_profiles')
-          .select('id')
-          .limit(1);
-        
-        // Se não há erro ou é apenas "relation does not exist", sabemos o status da tabela
-        if (directCheckError && directCheckError.message && typeof directCheckError.message === 'string' && directCheckError.message.includes('relation "user_profiles" does not exist')) {
-          tableExists = false;
-          // logger.info(`Verificação direta: tabela user_profiles não existe`);
-        } else if (!directCheckError) {
-          tableExists = true;
-          // logger.info(`Verificação direta: tabela user_profiles existe`);
-        } else {
-          logger.warn(`Erro na verificação direta: ${directCheckError?.message || 'Sem dados'}`);
-          // Assumir que a tabela não existe para tentar criá-la
-          tableExists = false;
-        }
-      } catch (sqlError) {
-        logger.error(`Erro ao executar verificação direta: ${sqlError.message}`);
-        // Assumir que a tabela não existe para tentar criá-la
-        tableExists = false;
-      }
     }
     
-    // Se a tabela não existir, criá-la
-    if (!tableExists) {
-      // logger.warn(`Tabela 'user_profiles' não encontrada. Tentando criar...`);
-      
-      // SQL para criação da tabela user_profiles
-      const createProfilesSQL = `
-        CREATE TABLE IF NOT EXISTS public.user_profiles (
-          id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
-          email TEXT UNIQUE,
-          first_name TEXT,
-          last_name TEXT,
-          full_name TEXT,
-          avatar_url TEXT,
-          created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-          updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-        );
-        
-        -- Criar índice para buscas por email
-        CREATE INDEX IF NOT EXISTS idx_user_profiles_email ON public.user_profiles(email);
-        
-        -- Comentário na tabela
-        COMMENT ON TABLE public.user_profiles IS 'Perfis de usuários da plataforma';
-      `;
-      
-      // Tentar criar a tabela usando RPC
-      try {
-        const { error: createError } = await supabaseAdmin.rpc('execute_sql', { 
-          sql_query: createProfilesSQL 
+    if (!organizations || organizations.length === 0) {
+      if (req.originalUrl.startsWith('/api/')) {
+        return res.status(403).json({
+          success: false,
+          message: 'Usuário não pertence a nenhuma organização'
         });
-        
-        if (createError) {
-          logger.error(`Erro ao criar tabela via RPC: ${createError.message}`);
-          throw new Error('Falha ao criar tabela via RPC');
-        } else {
-          // logger.info(`Tabela 'user_profiles' criada com sucesso via RPC!`);
-          return;
-        }
-      } catch (rpcCreateError) {
-        logger.warn(`Função RPC execute_sql indisponível: ${rpcCreateError.message}`);
-        
-        // Método alternativo: executar SQL diretamente
-        // logger.info('Tentando criar tabela diretamente com SQL...');
-        
-        try {
-          // Tentar usar uma abordagem alternativa sem .sql()
-          // Em vez de executar SQL diretamente, usamos uma operação que force a criação se necessário
-          // logger.info(`Tentativa de criação de tabela não suportada pelo cliente JavaScript do Supabase.`);
-          logger.error(`Para resolver este problema, você precisa:`);
-          logger.error(`1. Acessar o painel do Supabase (https://supabase.com/dashboard)`);
-          logger.error(`2. Ir na seção 'SQL Editor'`);
-          logger.error(`3. Executar o SQL de criação da tabela user_profiles manualmente`);
-          logger.error(`4. Ou usar uma migração apropriada através do CLI do Supabase`);
-          
-        } catch (createError) {
-          logger.error(`Erro ao tentar alternativa de criação: ${createError.message}`);
-          logger.error(`A tabela user_profiles deve ser criada manualmente no painel do Supabase.`);
-        }
       }
-    } else {
-      // logger.info(`Tabela 'user_profiles' verificada e está disponível.`);
+      
+      return res.redirect('/dashboard?error=no_organization');
     }
-  } catch (err) {
-    logger.error(`Erro ao verificar e criar tabelas: ${err.message}`);
-    // Não interrompe o fluxo, apenas registra o erro
+    
+    // Anexar organização à requisição
+    req.organization = organizations[0].organizations;
+    next();
+    
+  } catch (error) {
+    logger.error(`[AUTH] Erro na verificação de organização: ${error.message}`);
+    
+    if (req.originalUrl.startsWith('/api/')) {
+      return res.status(500).json({
+        success: false,
+        message: 'Erro interno de autorização'
+      });
+    }
+    
+    return res.redirect('/dashboard?error=auth_error');
   }
-}
+};
 
-// Middleware para verificar se o usuário está autenticado em rotas da API
+/**
+ * Função para verificar e criar tabelas necessárias
+ */
+const checkAndCreateTables = async () => {
+  try {
+    // Verificar se a tabela user_profiles existe usando uma consulta simples
+    const { data, error } = await supabaseAdmin
+      .from('user_profiles')
+      .select('id')
+      .limit(1);
+    
+    // Se não há erro, a tabela existe
+    if (!error) {
+      return;
+    }
+    
+    // Se o erro é que a tabela não existe, apenas logar
+    if (error.code === '42P01' || error.message.includes('relation') || error.message.includes('does not exist')) {
+      logger.warn('Tabela user_profiles não encontrada. Execute a migração manualmente se necessário.');
+      // Não tentar criar automaticamente para evitar erros
+      return;
+    }
+    
+    // Outros erros
+    logger.error('Erro ao verificar tabela user_profiles:', error);
+  } catch (err) {
+    logger.error('Erro ao verificar tabelas:', err);
+  }
+};
+
+/**
+ * Middleware para verificar autenticação em APIs
+ */
 const isAuthenticatedApi = async (req, res, next) => {
   try {
-    // Inicializa um estado padrão de autenticação
-    req.isAuthenticated = false;
-    
-    // Verificar token em diferentes fontes
-    let accessToken = null;
-    
-    // Verificar no header Authorization
-    if (req.headers.authorization && req.headers.authorization.startsWith('Bearer ')) {
-      accessToken = req.headers.authorization.split(' ')[1];
-    }
-    
-    // Verificar nos cookies se não encontrou no header
-    if (!accessToken && req.cookies && req.cookies.authToken) {
-      accessToken = req.cookies.authToken;
-    }
-    
-    // Verificar nos parâmetros de query (útil para WebSockets)
-    if (!accessToken && req.query && req.query.token) {
-      accessToken = req.query.token;
-    }
-    
-    // Se não encontrou token em nenhum lugar, retornar erro
-    if (!accessToken) {
-      // logger.info('API: Sem token de autenticação');
+    if (!req.user) {
       return res.status(401).json({
         success: false,
-        message: 'Acesso negado: Token não fornecido'
+        message: 'Token de autenticação necessário'
       });
     }
-    
-    // Verificar se o token é válido
-    let tokenPayload = null;
-    let tokenUser = null;
-    
-    try {
-      // Obter informações do usuário usando o token
-      const { data: userData, error: userError } = await supabase.auth.getUser(accessToken);
-      
-      if (userError) {
-        // logger.warn(`API: Erro ao obter usuário pelo token: ${userError.message}`);
-        
-        // Se o erro indica token expirado, tentar renovar
-        if (userError.message && typeof userError.message === 'string' && (userError.message.includes('expired') || userError.message.includes('invalid'))) {
-          // logger.info('API: Token expirado ou inválido, tentando renovar');
-          
-          // Verificar se temos refresh token
-          const refreshToken = req.cookies.refreshToken;
-          
-          if (refreshToken) {
-            // Tenta renovar a sessão usando o refresh token
-            const { data: refreshData, error: refreshError } = await supabase.auth.refreshSession({
-              refresh_token: refreshToken
-            });
-            
-            if (!refreshError && refreshData?.session) {
-              // Sessão renovada com sucesso
-              // logger.info('API: Sessão renovada com sucesso no middleware');
-              
-              // Atualizar cookies
-              if (refreshData.session.access_token) {
-                res.cookie('authToken', refreshData.session.access_token, {
-                  httpOnly: true,
-                  secure: process.env.NODE_ENV === 'production',
-                  maxAge: 24 * 60 * 60 * 1000 // 1 dia
-                });
-              }
-              
-              if (refreshData.session.refresh_token) {
-                res.cookie('refreshToken', refreshData.session.refresh_token, {
-                  httpOnly: true,
-                  secure: process.env.NODE_ENV === 'production',
-                  maxAge: 30 * 24 * 60 * 60 * 1000 // 30 dias
-                });
-              }
-              
-              // Usar o novo token para obter os dados do usuário
-              const { data: newUserData, error: newUserError } = await supabase.auth.getUser(refreshData.session.access_token);
-              
-              if (!newUserError && newUserData?.user) {
-                tokenUser = newUserData.user;
-                // logger.info(`API: Usuário recuperado após renovação do token: ${tokenUser.id}`);
-                
-                // Configurar o payload do token
-                tokenPayload = { sub: tokenUser.id, email: tokenUser.email };
-                accessToken = refreshData.session.access_token;
-              } else {
-                logger.error('API: Erro ao obter usuário após renovação do token:', newUserError?.message);
-                return res.status(401).json({
-                  success: false,
-                  message: 'Erro ao renovar sessão. Por favor, faça login novamente.'
-                });
-              }
-            } else {
-              logger.error('API: Erro ao renovar sessão:', refreshError?.message);
-              return res.status(401).json({
-                success: false,
-                message: 'Erro ao renovar sessão. Por favor, faça login novamente.'
-              });
-            }
-          } else {
-            // logger.warn('API: Sem refresh token disponível para renovação');
-            return res.status(401).json({
-              success: false,
-              message: 'Sessão expirada. Por favor, faça login novamente.'
-            });
-          }
-        } else {
-          // Outro tipo de erro na verificação do token
-          logger.error('API: Erro na verificação do token:', userError.message);
-          return res.status(401).json({
-            success: false,
-            message: 'Erro de autenticação. Por favor, faça login novamente.'
-          });
-        }
-      } else if (userData?.user) {
-        // Token válido, usuário encontrado
-        tokenUser = userData.user;
-        tokenPayload = { sub: tokenUser.id, email: tokenUser.email };
-        // logger.info(`API: Usuário autenticado: ${tokenUser.id}`);
-      } else {
-        logger.warn('API: Token válido mas usuário não encontrado');
-        return res.status(401).json({
-          success: false,
-          message: 'Usuário não encontrado. Por favor, faça login novamente.'
-        });
-      }
-    } catch (tokenErr) {
-      logger.error('API: Erro ao processar token:', tokenErr.message);
-      return res.status(401).json({
-        success: false,
-        message: 'Erro de autenticação. Por favor, faça login novamente.'
-      });
-    }
-    
-    // Se chegou aqui, o token é válido e temos o payload
-    if (tokenPayload && tokenUser) {
-      // Marcar a requisição como autenticada
-      req.isAuthenticated = true;
-      
-      // Obter usuário completo da base de dados
-      const userId = tokenPayload.sub;
-      
-      try {
-        // Buscar dados do usuário usando a função auth.getUser() do Supabase
-        const { data: { user }, error: userError } = await supabaseAdmin.auth.getUser(token);
-        
-        if (userError) {
-          logger.error('API: Erro ao buscar usuário:', userError.message);
-          return res.status(401).json({
-            success: false,
-            message: 'Erro ao buscar dados do usuário.'
-          });
-        }
-        
-        if (!user) {
-          logger.warn(`API: Usuário não encontrado na base de dados: ${userId}`);
-          return res.status(401).json({
-            success: false,
-            message: 'Usuário não encontrado.'
-          });
-        }
-        
-        // Preparar metadados do usuário
-        let userMetadata = tokenUser.user_metadata || {};
-        
-        // Garantir que temos dados completos
-        if (!user.email && tokenUser.email) {
-          user.email = tokenUser.email;
-        }
-        
-        if (!user.name && userMetadata.name) {
-          user.name = userMetadata.name;
-        }
-        
-        // Definir o usuário na requisição
-        req.user = user;
-        req.userId = userId;
-        req.accessToken = accessToken;
-        
-        // Definir o usuário também em res.locals para acesso nos templates
-        res.locals.user = user;
-        res.locals.userId = userId;
-        
-        // logger.info(`API: Usuário autenticado e configurado: ${user.id} (${user.email})`);
-        
-        // Prosseguir para a próxima middleware
-        return next();
-      } catch (dbError) {
-        logger.error('API: Erro ao processar dados do usuário:', dbError.message);
-        return res.status(500).json({
-          success: false,
-          message: 'Erro interno. Por favor, tente novamente.'
-        });
-      }
-    } else {
-      // Não foi possível autenticar
-      logger.warn('API: Falha na autenticação: token inválido ou usuário não encontrado');
-      return res.status(401).json({
-        success: false,
-        message: 'Erro de autenticação. Por favor, faça login novamente.'
-      });
-    }
-  } catch (err) {
-    logger.error('API: Erro no middleware de autenticação:', err);
+    next();
+  } catch (error) {
+    logger.error(`[AUTH] Erro no middleware de API: ${error.message}`);
     return res.status(500).json({
       success: false,
-      message: 'Erro interno. Por favor, tente novamente.'
+      message: 'Erro interno de autenticação'
     });
   }
 };
 
-// Middleware para preparar os dados do usuário para o frontend
+/**
+ * Middleware para preparar dados do usuário
+ */
 const prepareUserData = async (req, res, next) => {
   try {
-    // Se o usuário já foi autenticado, preparar seus dados
-    if (req.isAuthenticated && req.user) {
-      // Garantir que temos res.locals inicializado
-      if (!res.locals) res.locals = {};
+    if (req.user) {
+      // Buscar perfil completo do usuário
+      const { data: profile, error } = await supabaseAdmin
+        .from('user_profiles')
+        .select('*')
+        .eq('id', req.user.id)
+        .single();
       
-      // Atribuir usuário e ID aos locals para acesso nas views
-      res.locals.user = req.user;
-      res.locals.userId = req.user.id;
-      
-      // logger.info(`Dados do usuário preparados para a view: ${req.user.id}`);
-    } else if (req.userId) {
-      // Se temos apenas o ID do usuário, buscar dados completos
-      try {
-        // Buscar dados do usuário usando a função auth.getUser() do Supabase
-        // Como não temos o token aqui, vamos usar uma abordagem diferente
-        const { data: user, error: userError } = await supabaseAdmin
-          .from('user_profiles')
-          .select('id, email, first_name, last_name, full_name, role')
-          .eq('id', req.userId)
-          .single();
-        
-        if (!userError && user) {
-          // Garantir que temos res.locals inicializado
-          if (!res.locals) res.locals = {};
-          
-          // Atribuir usuário e ID aos locals
-          req.user = user;
-          res.locals.user = user;
-          res.locals.userId = user.id;
-          
-          // logger.info(`Dados do usuário recuperados e preparados: ${user.id}`);
-        } else {
-          logger.warn(`Não foi possível recuperar dados do usuário: ${req.userId} - ${userError?.message}`);
-        }
-      } catch (userErr) {
-        logger.error('Erro ao buscar dados do usuário:', userErr);
+      if (!error && profile) {
+        req.userProfile = profile;
+        res.locals.userProfile = profile;
       }
+      
+      // Adicionar dados do usuário às variáveis locais
+      res.locals.user = req.user;
+      res.locals.isAuthenticated = true;
+    } else {
+      res.locals.isAuthenticated = false;
     }
-  } catch (err) {
-    logger.error('Erro ao preparar dados do usuário:', err);
-    // Continuar mesmo com erro
+    
+    next();
+  } catch (error) {
+    logger.error('Erro ao preparar dados do usuário:', error);
+    next();
   }
-  
-  next();
 };
 
-// Middleware para dados comuns em todas as views
-const commonViewData = (req, res, next) => {
+/**
+ * Middleware para garantir que o usuário tenha um perfil
+ */
+const ensureUserProfile = async (req, res, next) => {
   try {
-    // Garantir que temos res.locals inicializado
-    if (!res.locals) res.locals = {};
-    
-    // Se o usuário não foi definido em res.locals mas está disponível em req
-    if (!res.locals.user && req.user) {
-      res.locals.user = req.user;
-      res.locals.userId = req.user.id;
-      // logger.info('Usuário copiado de req.user para res.locals.user');
+    if (!req.user) {
+      return next();
     }
     
+    // Verificar se o usuário tem um perfil
+    const { data: profile, error } = await supabaseAdmin
+      .from('user_profiles')
+      .select('*')
+      .eq('id', req.user.id)
+      .single();
+    
+    if (error && error.code === 'PGRST116') {
+      // Perfil não existe, criar um
+      const { error: createError } = await supabaseAdmin
+        .from('user_profiles')
+        .insert({
+          id: req.user.id,
+          email: req.user.email,
+          full_name: req.user.user_metadata?.full_name || req.user.email?.split('@')[0] || 'Usuário',
+          first_name: req.user.user_metadata?.first_name || '',
+          last_name: req.user.user_metadata?.last_name || '',
+          phone: req.user.user_metadata?.phone || '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        });
+      
+      if (createError) {
+        logger.error('Erro ao criar perfil do usuário:', createError);
+      } else {
+        logger.info(`Perfil criado para usuário: ${req.user.id}`);
+      }
+    }
+    
+    next();
+  } catch (error) {
+    logger.error('Erro ao verificar/criar perfil do usuário:', error);
+    next();
+  }
+};
+
+/**
+ * Middleware para preparar dados comuns para todas as views
+ */
+const commonViewData = (req, res, next) => {
+  try {
     // Definir variáveis globais para todas as views
     res.locals.appName = process.env.APP_NAME || 'Meu App';
     res.locals.appVersion = process.env.APP_VERSION || '1.0.0';
@@ -1154,7 +516,6 @@ const commonViewData = (req, res, next) => {
     res.locals.currentUrl = req.originalUrl;
     res.locals.isAuthenticated = req.isAuthenticated || false;
     
-    // logger.info(`Dados comuns preparados para a view: ${req.path}`);
   } catch (err) {
     logger.error('Erro ao preparar dados comuns para a view:', err);
     // Continuar mesmo com erro

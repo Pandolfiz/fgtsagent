@@ -1,7 +1,8 @@
 // Rotas de autenticação
 const express = require('express');
 const authController = require('../controllers/authController');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdmin } = require('../middleware/authMiddleware');
+// Removido: hybridAuth não é mais necessário - requireAuth já tem lógica de refresh
 const { validate, schemas } = require('../middleware/validationMiddleware');
 const jwt = require('jsonwebtoken');
 const { supabaseAdmin } = require('../services/database');

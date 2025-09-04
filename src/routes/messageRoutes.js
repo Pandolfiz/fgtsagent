@@ -1,12 +1,12 @@
 // Rotas para sistema de mensagens
 const express = require('express');
 const messageController = require('../controllers/messageController');
-const authMiddleware = require('../middleware/authMiddleware');
+const { requireAuth } = require('../middleware/authMiddleware');
 
 const router = express.Router();
 
 // Todas as rotas requerem autenticação
-router.use(authMiddleware);
+router.use(requireAuth);
 
 // Rotas para campanhas
 router.get('/campaigns', messageController.getCampaigns);

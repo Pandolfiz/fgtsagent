@@ -1,5 +1,7 @@
 import React from 'react';
 import { FaCheck, FaClock, FaUser, FaRobot } from 'react-icons/fa';
+import MediaMessage from './MediaMessage';
+import MessageReactions from './MessageReactions';
 
 // Componente otimizado com React.memo para evitar re-renders desnecessários
 const MessageItem = React.memo(({ message, isLastMessage }) => {
@@ -89,10 +91,44 @@ const MessageItem = React.memo(({ message, isLastMessage }) => {
         
         {/* Bolha da mensagem */}
         <div className={bubbleClasses}>
-          <div className="break-words whitespace-pre-wrap">
-            {message.content}
-          </div>
+          {/* Conteúdo da mensagem */}
+          {message.media ? (
+            <MediaMessage 
+              message={message}
+              onDownload={(url, fileName) => {
+                // Implementar download
+                const link = document.createElement('a');
+                link.href = url;
+                link.download = fileName;
+                link.click();
+              }}
+              onPreview={(url, type) => {
+                // Implementar preview
+                window.open(url, '_blank');
+              }}
+            />
+          ) : (
+            <div className="break-words whitespace-pre-wrap">
+              {message.content}
+            </div>
+          )}
         </div>
+        
+        {/* Reações */}
+        {message.reactions && (
+          <MessageReactions
+            messageId={message.id}
+            reactions={message.reactions}
+            currentUserId="current-user-id" // TODO: Obter do contexto
+            onReactionAdd={(messageId, reactionId, userId) => {
+              console.log('Adicionar reação:', { messageId, reactionId, userId });
+            }}
+            onReactionRemove={(messageId, reactionId, userId) => {
+              console.log('Remover reação:', { messageId, reactionId, userId });
+            }}
+            className="mt-1"
+          />
+        )}
         
         {/* Status e timestamp */}
         <div className={iconClasses}>

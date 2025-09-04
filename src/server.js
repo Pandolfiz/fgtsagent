@@ -82,8 +82,8 @@ async function startServer() {
     
     let server;
     
-    if (hasCertificates && process.env.NODE_ENV === 'production') {
-      // Configuração HTTPS para produção com certificados
+    if (hasCertificates) {
+      // Configuração HTTPS com certificados (desenvolvimento e produção)
       try {
         const httpsOptions = {
           key: fs.readFileSync(keyPath),
@@ -97,13 +97,9 @@ async function startServer() {
         server = http.createServer(app);
       }
     } else {
-      // Servidor HTTP para desenvolvimento ou quando não há certificados
+      // Servidor HTTP quando não há certificados
       server = http.createServer(app);
-      if (process.env.NODE_ENV === 'development') {
-        logger.info('Servidor HTTP iniciado em modo desenvolvimento');
-      } else {
-        logger.info('Servidor HTTP iniciado (certificados SSL não encontrados)');
-      }
+      logger.info('Servidor HTTP iniciado (certificados SSL não encontrados)');
     }
     
     // Verificar se a porta já está em uso

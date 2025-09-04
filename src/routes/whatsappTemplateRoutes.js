@@ -4,7 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const whatsappTemplateController = require('../controllers/whatsappTemplateController');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth } = require('../middleware/authMiddleware');
 const { sanitizeInput } = require('../middleware/securityMiddleware');
 
 // Aplicar middleware de autenticação em todas as rotas

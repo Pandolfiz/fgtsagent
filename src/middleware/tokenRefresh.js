@@ -32,6 +32,24 @@ class TokenRefreshMiddleware {
   }
 
   /**
+   * Verifica se um token já expirou
+   */
+  isTokenExpired(token) {
+    try {
+      const decoded = jwt.decode(token);
+      if (!decoded || !decoded.exp) {
+        return false;
+      }
+
+      const now = Math.floor(Date.now() / 1000);
+      return decoded.exp < now;
+    } catch (error) {
+      logger.error('Erro ao decodificar token para verificar expiração:', error.message);
+      return false;
+    }
+  }
+
+  /**
    * Renova um token usando o refresh token
    */
   async refreshToken(refreshToken) {
@@ -67,12 +85,18 @@ class TokenRefreshMiddleware {
         const token = this.extractToken(req);
         
         if (!token) {
+          logger.debug(`[TOKEN_REFRESH] Nenhum token encontrado para ${req.originalUrl}`);
           return next();
         }
 
-        // Verificar se o token está expirando em breve
-        if (this.isTokenExpiringSoon(token)) {
-          logger.info('Token expirando em breve, tentando renovar...');
+        logger.debug(`[TOKEN_REFRESH] Token encontrado para ${req.originalUrl}: ${token.substring(0, 20)}...`);
+
+        // Verificar se o token está expirando em breve OU já expirou
+        const isExpiringSoon = this.isTokenExpiringSoon(token);
+        const isExpired = this.isTokenExpired(token);
+        
+        if (isExpiringSoon || isExpired) {
+          logger.info(`Token ${isExpired ? 'expirado' : 'expirando em breve'}, tentando renovar...`);
           
           // Verificar cache para evitar múltiplas renovações
           const cacheKey = `refresh_${token.substring(0, 20)}`;
