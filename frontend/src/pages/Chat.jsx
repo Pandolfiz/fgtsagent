@@ -11,6 +11,7 @@ import { useClipboard } from '../hooks/useClipboard'
 import { useContacts } from '../hooks/useContacts'
 import { useMessages } from '../hooks/useMessages'
 import { useMessagePolling } from '../hooks/useMessagePolling'
+import { useUnifiedPolling } from '../hooks/useUnifiedPolling'
 import { useScroll } from '../hooks/useScroll'
 import { useChatState } from '../hooks/useChatState'
 
@@ -57,6 +58,8 @@ export default function Chat() {
   const [copiedId, setCopiedId] = useState(false)
   const [copiedPix, setCopiedPix] = useState(false)
   const [copiedLink, setCopiedLink] = useState(false)
+  
+  // Estados para indicadores de atualização automática (agora gerenciados pelo useUnifiedPolling)
   
   // Estados para modais e funcionalidades do painel lateral
   const [editModalOpen, setEditModalOpen] = useState(false)
@@ -143,19 +146,123 @@ export default function Chat() {
     isInitialLoad
   } = useMessages({ currentContact, messagesContainerRef })
 
+  // ✅ FUNÇÃO PARA BUSCAR DADOS DO LEAD POR TELEFONE
+  const fetchLeadData = useCallback(async (phone) => {
+    if (!phone) return;
+    
+    try {
+      console.log('[LEAD-DATA] 🔍 Buscando dados do lead para telefone:', phone);
+      
+      // Resetar dados anteriores
+      setContactData({
+        leadId: null,
+    saldo: null,
+    simulado: null,
+    erroConsulta: null,
+    proposta: null,
+    erroProposta: null,
+    statusProposta: null,
+    descricaoStatus: null,
+    valorProposta: null,
+    linkFormalizacao: null,
+        chavePix: null,
+        cpf: null
+      });
+      
+      // Buscar todos os leads e filtrar por telefone
+      const response = await fetch('/api/leads', {
+              credentials: 'include'
+            });
+            
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[LEAD-DATA] 📊 Resposta da API:', data);
+        
+        if (data.success && data.data && data.data.length > 0) {
+          console.log('[LEAD-DATA] 📋 Leads encontrados:', data.data.length);
+          console.log('[LEAD-DATA] 🔍 Telefones nos leads:', data.data.map(l => ({ id: l.id, phone: l.phone, name: l.name })));
+          
+          // Filtrar leads por telefone
+          const lead = data.data.find(l => l.phone === phone);
+          
+          if (!lead) {
+            console.log('[LEAD-DATA] ⚠️ Nenhum lead encontrado para telefone:', phone);
+            console.log('[LEAD-DATA] 🔍 Telefone buscado:', phone);
+            console.log('[LEAD-DATA] 🔍 Telefones disponíveis:', data.data.map(l => l.phone));
+            return;
+          }
+          
+          console.log('[LEAD-DATA] ✅ Lead encontrado:', lead);
+          
+          // Atualizar dados do contato
+          setContactData(prev => ({
+            ...prev,
+            leadId: lead.id,
+            cpf: lead.cpf,
+            saldo: lead.balance,
+            simulado: lead.simulation,
+            erroConsulta: lead.balance_error,
+            erroProposta: lead.proposal_error
+          }));
+          
+          // Buscar propostas do lead
+          if (lead.id) {
+            const proposalsResponse = await fetch(`/api/leads/${lead.id}/proposals`, {
+          credentials: 'include'
+        });
+        
+            if (proposalsResponse.ok) {
+              const proposalsData = await proposalsResponse.json();
+              if (proposalsData.success && proposalsData.data && proposalsData.data.length > 0) {
+                const proposal = proposalsData.data[0]; // Pegar a proposta mais recente
+                
+                console.log('[LEAD-DATA] ✅ Proposta encontrada:', proposal);
+                
+                setContactData(prev => ({
+            ...prev,
+                  proposta: proposal.proposal_id,
+                  statusProposta: proposal.status,
+                  descricaoStatus: proposal.status_description,
+                  valorProposta: proposal.value,
+                  linkFormalizacao: proposal['Link de formalização'],
+                  chavePix: proposal.chavePix
+          }));
+              } else {
+                console.log('[LEAD-DATA] ℹ️ Nenhuma proposta encontrada para o lead');
+              }
+            } else {
+              console.error('[LEAD-DATA] ❌ Erro ao buscar propostas:', proposalsResponse.status);
+            }
+          }
+        } else {
+          console.log('[LEAD-DATA] ℹ️ Nenhum lead encontrado na resposta da API');
+        }
+        } else {
+        console.error('[LEAD-DATA] ❌ Erro ao buscar lead:', response.status);
+            }
+          } catch (error) {
+      console.error('[LEAD-DATA] ❌ Erro ao buscar dados do lead:', error);
+    }
+  }, [])
+
+  // ✅ SISTEMA UNIFICADO DE POLLING
   const { 
     resumePolling: startPolling, 
     pausePolling: stopPolling, 
-    isPolling 
-  } = useMessagePolling({ 
+    isPolling,
+    isUpdating: unifiedUpdating
+  } = useUnifiedPolling({ 
     currentContact, 
-    messages, 
-    setMessages: setMessages, // ✅ CORRIGIDO: Usar setMessages diretamente do useMessages
-    setLoading: () => {}, // Placeholder - não usado no hook atual
-    isInitialLoad: messagesLoading.initialLoad,
+    currentUser,
+    isContactPanelOpen,
+    fetchMessages,
+    fetchContacts,
+    fetchLeadData,
+    messages,
+    setMessages,
     lastMessageRef,
-    currentIntervalRef,
-    timeoutsRef
+    timeoutsRef,
+    setLastSyncTime // ✅ ADICIONADO: Callback para atualizar lastSyncTime
   })
 
   const { 
@@ -214,29 +321,23 @@ export default function Chat() {
       }
     });
     
-    // ✅ Ações PESADAS com debounce (podem ter delay)
-    // Carregar mensagens antigas só após parar de rolar
-    // ✅ MÚLTIPLAS PROTEÇÕES: Evitar conflitos com ancoragem
+    // ✅ SIMPLIFICADO: Condições mais permissivas para scroll infinito
     if (scrollTop < 100 && 
         hasMoreMessages && 
         !isLoadingMoreMessages && 
-        allowInfiniteScroll && 
-        !isInitialLoad &&
         currentContact?.remote_jid) {
       
-      console.log('[SCROLL-DEBUG] ✅ Todas as condições atendidas - chamando loadMoreMessages');
+      console.log('[SCROLL-DEBUG] ✅ Condições atendidas - chamando loadMoreMessages');
       loadMoreMessages();
     } else {
       console.log('[SCROLL-DEBUG] ❌ Condições não atendidas para scroll infinito:', {
         scrollTopLessThan100: scrollTop < 100,
         hasMoreMessages: hasMoreMessages,
         notLoadingMore: !isLoadingMoreMessages,
-        allowInfiniteScroll: allowInfiniteScroll,
-        notInitialLoad: !isInitialLoad,
         hasContact: !!currentContact?.remote_jid
       });
     }
-  }, [hasMoreMessages, isLoadingMoreMessages, allowInfiniteScroll, isInitialLoad, currentContact, loadMoreMessages]);
+  }, [hasMoreMessages, isLoadingMoreMessages, currentContact, loadMoreMessages]);
 
   const handleScroll = useCallback((e) => {
     // ✅ Executar ações imediatas
@@ -262,11 +363,11 @@ export default function Chat() {
     if (currentUser?.id) return;
     
     async function getCurrentUser() {
-      try {
-        console.log("Iniciando fetchUserFromApi...");
+    try {
+      console.log("Iniciando fetchUserFromApi...");
         const response = await fetch('/api/auth/me', {
-          credentials: 'include'
-        });
+        credentials: 'include'
+      });
         
         const data = await response.json();
       
@@ -354,17 +455,17 @@ export default function Chat() {
               totalInstances: formattedInstances.length,
               connectedInstances: connectedInstances.length
             });
-                    } else {
+        } else {
             console.log('[INSTANCES] ⚠️ Nenhuma instância encontrada');
           setInstances([]);
             setConnectionStatus({ connected: false, totalInstances: 0, connectedInstances: 0 });
-              }
-        } else {
+        }
+      } else {
           console.error('[INSTANCES] ❌ Erro ao carregar instâncias:', response.status);
         setInstances([]);
           setConnectionStatus({ connected: false, totalInstances: 0, connectedInstances: 0 });
-        }
-      } catch (error) {
+      }
+    } catch (error) {
         console.error('[INSTANCES] ❌ Erro ao buscar instâncias:', error);
       setInstances([]);
         setConnectionStatus({ connected: false, totalInstances: 0, connectedInstances: 0 });
@@ -392,9 +493,9 @@ export default function Chat() {
     // ✅ UX: PROTEÇÃO - Se for o mesmo contato, não recarregar
     if (currentContact?.remote_jid === contact?.remote_jid) {
       console.log('[CONTACT] ⚠️ Mesmo contato já selecionado - mantendo histórico');
-        return;
-      }
-      
+            return;
+          }
+          
     console.log('[CONTACT] ✅ Contato DIFERENTE detectado - carregando novo histórico');
     
     // ✅ UX: Transição imediata sem estados de carregamento visíveis
@@ -454,9 +555,9 @@ export default function Chat() {
         if (data.success && data.message) {
           // Substituir mensagem temporária pela real
           addMessage(data.message)
-        }
-      }
-    } catch (error) {
+              }
+            }
+          } catch (error) {
       console.error('Erro ao enviar mensagem:', error)
       actions.setError('Erro ao enviar mensagem')
     } finally {
@@ -480,100 +581,7 @@ export default function Chat() {
     setSelectedContactForPanel(null)
   }, [])
 
-  // ✅ FUNÇÃO PARA BUSCAR DADOS DO LEAD POR TELEFONE
-  const fetchLeadData = useCallback(async (phone) => {
-    if (!phone) return;
-    
-    try {
-      console.log('[LEAD-DATA] 🔍 Buscando dados do lead para telefone:', phone);
-      
-      // Resetar dados anteriores
-      setContactData({
-        leadId: null,
-        saldo: null,
-        simulado: null,
-        erroConsulta: null,
-        proposta: null,
-        erroProposta: null,
-        statusProposta: null,
-        descricaoStatus: null,
-        valorProposta: null,
-        linkFormalizacao: null,
-        chavePix: null,
-        cpf: null
-      });
-      
-      // Buscar todos os leads e filtrar por telefone
-      const response = await fetch('/api/leads', {
-              credentials: 'include'
-            });
-            
-      if (response.ok) {
-        const data = await response.json();
-        console.log('[LEAD-DATA] 📊 Resposta da API:', data);
-        
-        if (data.success && data.data && data.data.length > 0) {
-          console.log('[LEAD-DATA] 📋 Leads encontrados:', data.data.length);
-          console.log('[LEAD-DATA] 🔍 Telefones nos leads:', data.data.map(l => ({ id: l.id, phone: l.phone, name: l.name })));
-          
-          // Filtrar leads por telefone
-          const lead = data.data.find(l => l.phone === phone);
-          
-          if (!lead) {
-            console.log('[LEAD-DATA] ⚠️ Nenhum lead encontrado para telefone:', phone);
-            console.log('[LEAD-DATA] 🔍 Telefone buscado:', phone);
-            console.log('[LEAD-DATA] 🔍 Telefones disponíveis:', data.data.map(l => l.phone));
-            return;
-          }
-          
-          console.log('[LEAD-DATA] ✅ Lead encontrado:', lead);
-          
-          // Atualizar dados do contato
-          setContactData(prev => ({
-            ...prev,
-            leadId: lead.id,
-            cpf: lead.cpf,
-            saldo: lead.balance,
-            simulado: lead.simulation,
-            erroConsulta: lead.balance_error,
-            erroProposta: lead.proposal_error
-          }));
-          
-          // Buscar propostas do lead
-          if (lead.id) {
-            const proposalsResponse = await fetch(`/api/leads/${lead.id}/proposals`, {
-          credentials: 'include'
-        });
-        
-            if (proposalsResponse.ok) {
-              const proposalsData = await proposalsResponse.json();
-              if (proposalsData.success && proposalsData.data && proposalsData.data.length > 0) {
-                const proposal = proposalsData.data[0]; // Pegar a proposta mais recente
-                
-                console.log('[LEAD-DATA] ✅ Proposta encontrada:', proposal);
-                
-                setContactData(prev => ({
-            ...prev,
-                  proposta: proposal.proposal_id,
-                  statusProposta: proposal.status,
-                  descricaoStatus: proposal.status_description,
-                  valorProposta: proposal.value,
-                  linkFormalizacao: proposal['Link de formalização'],
-                  chavePix: proposal.chavePix
-          }));
-          }
-        }
-      }
-            } else {
-          console.log('[LEAD-DATA] ⚠️ Nenhum lead encontrado na resposta da API');
-        }
-        } else {
-        console.error('[LEAD-DATA] ❌ Erro ao buscar lead:', response.status);
-            }
-          } catch (error) {
-      console.error('[LEAD-DATA] ❌ Erro ao buscar dados do lead:', error);
-    }
-  }, [])
+  // ✅ FUNÇÃO PARA BUSCAR DADOS DO LEAD POR TELEFONE (movida para antes do useUnifiedPolling)
 
   // ✅ FUNÇÃO PARA TOGGLE AI (igual ao backup)
   const toggleAutoResponse = async (contactId, e) => {
@@ -607,7 +615,7 @@ export default function Chat() {
             }, 1000);
           }
           }
-        } else {
+                } else {
         const errorData = await response.json();
         console.error('[TOGGLE-AI] ❌ Erro na resposta:', errorData.message);
         actions.setError(errorData.message || 'Erro ao alternar AI');
@@ -666,11 +674,11 @@ export default function Chat() {
     // ✅ Detectar quando está próximo do final (100px do bottom)
     const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
     
-    if (isNearBottom && !contactsLoading.moreContacts && pagination.hasMoreContacts && currentUser) {
+    if (isNearBottom && !contactsLoading.moreContacts && pagination.hasMore && currentUser) {
       console.log('[CONTACTS] 🔄 Próximo ao final da lista - carregando mais contatos');
       loadMoreContacts();
     }
-  }, [contactsLoading.moreContacts, pagination.hasMoreContacts, currentUser, loadMoreContacts]);
+  }, [contactsLoading.moreContacts, pagination.hasMore, currentUser, loadMoreContacts]);
   
   const handleContactsScrollDebounced = useCallback((e) => {
     // ✅ Ações pesadas com debounce se necessário
@@ -757,6 +765,8 @@ export default function Chat() {
     }
   }, [currentContact?.phone, currentContact?.remote_jid, fetchLeadData]);
 
+  // ✅ POLLING AUTOMÁTICO: Agora gerenciado pelo useUnifiedPolling
+
   // ✅ FUNÇÃO PARA FORMATAR MOEDA (igual ao backup)
   const formataMoeda = useCallback((valor) => {
     if (!valor || valor === null || valor === undefined || valor === '') return null;
@@ -803,9 +813,9 @@ export default function Chat() {
       console.log('[CHAT] Iniciando busca de bancos...');
 
       const response = await fetch('/api/partner-credentials', {
-        credentials: 'include'
-      });
-      
+            credentials: 'include'
+          });
+          
       if (!response.ok) {
         throw new Error(`Erro HTTP ${response.status}: ${response.statusText}`);
       }
@@ -823,12 +833,12 @@ export default function Chat() {
         if (activeCredentials.length > 0) {
           setSelectedBank(activeCredentials[0].id);
           console.log('[CHAT] Banco padrão selecionado:', activeCredentials[0].name);
-        }
-      } else {
+              }
+              } else {
         console.error('Erro ao carregar bancos:', data.message);
         setAvailableBanks([]);
-      }
-    } catch (error) {
+        }
+              } catch (error) {
       console.error('Erro ao buscar bancos disponíveis:', error);
       setAvailableBanks([]);
     } finally {
@@ -927,8 +937,8 @@ export default function Chat() {
     try {
       // Buscar dados do partner_credentials selecionado
       const credentialsResponse = await fetch(`/api/partner-credentials/${selectedBank}`, {
-        credentials: 'include'
-      });
+              credentials: 'include'
+            });
       const credentialsData = await credentialsResponse.json();
 
       if (!credentialsData.success) {
@@ -977,10 +987,10 @@ export default function Chat() {
           setSelectedBank('');
           
           // Recarregar dados do contato
-          if (currentContact) {
+        if (currentContact) {
             fetchLeadData(currentContact);
           }
-        } else {
+            } else {
           throw new Error(`Erro do webhook: ${webhookResponse.status}`);
         }
       }).catch((webhookError) => {
@@ -1011,9 +1021,9 @@ export default function Chat() {
           setProposalsHistoryModalOpen(true);
               }
             }
-          } catch (error) {
+    } catch (error) {
       console.error('[CHAT] ❌ Erro ao buscar histórico de propostas:', error);
-      } finally {
+    } finally {
       setIsLoadingProposals(false);
     }
   }, []);
@@ -1319,9 +1329,9 @@ export default function Chat() {
                       <p>Nenhuma conversa encontrada</p>
                       </div>
                     ) : (
-                    displayContacts.map((contact) => (
+                    displayContacts.map((contact, index) => (
                           <div
-                            key={contact.id || contact.remote_jid}
+                            key={`${contact.remote_jid || contact.id || 'contact'}-${index}`}
                             className={`flex items-center p-2 cursor-pointer border-b border-cyan-800/30 hover:bg-white/5 transition-colors ${
                               currentContact?.id === contact.id || currentContact?.remote_jid === contact.remote_jid ? 'bg-white/10' : ''
                             }`}
@@ -1403,7 +1413,7 @@ export default function Chat() {
                     )}
                     
                     {/* Botão para carregar mais contatos */}
-                    {contactsLoading.hasMoreContacts && !contactsLoading.contacts && !contactsLoading.moreContacts && displayContacts.length > 0 && (
+                    {pagination.hasMore && !contactsLoading.contacts && !contactsLoading.moreContacts && displayContacts.length > 0 && (
                       <div className="p-3 text-center">
                         <button
                           onClick={loadMoreContacts}
@@ -1659,6 +1669,7 @@ export default function Chat() {
                 onRepeatQuery={handleRepeatQuery}
                 contactData={contactData} // ✅ ADICIONADO: Passar dados já carregados
                 instances={instances} // ✅ ADICIONADO: Passar dados das instâncias
+                isAutoUpdating={unifiedUpdating.leadData} // ✅ ADICIONADO: Indicador de atualização automática unificado
               />
             )}
                   </div>

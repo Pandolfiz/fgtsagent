@@ -29,7 +29,8 @@ import {
   FaExclamationTriangle,
   FaTimes,
   FaChevronRight,
-  FaPlus
+  FaPlus,
+  FaSearch
 } from 'react-icons/fa'
 import { DateRange } from 'react-date-range'
 import 'react-date-range/dist/styles.css'
@@ -1645,8 +1646,8 @@ export default function Dashboard() {
   const cards = [
     { title: 'Leads Novos', value: stats.newLeadsCount, icon: <FaUserPlus className="text-green-500" />, bgClass: 'bg-white/10', titleColor: 'text-green-400' },
     { title: 'Leads Antigos Ativos', value: stats.returningLeadsCount, icon: <FaUserPlus className="text-purple-500" />, bgClass: 'bg-white/10', titleColor: 'text-purple-400' },
-    { title: 'Porcentagem de Consultas', value: `${stats.consultationPercentage || '0'}%`, icon: <FaPercentage className="text-blue-500" />, bgClass: 'bg-white/10', titleColor: 'text-blue-400' },
-    { title: 'Consultas Válidas', value: `${stats.validConsultationsPercentage || '0'}%`, icon: <FaPercentage className="text-teal-500" />, bgClass: 'bg-white/10', titleColor: 'text-teal-400' },
+    { title: 'Total de Consultas', value: stats.totalConsultations || '0', icon: <FaSearch className="text-blue-500" />, bgClass: 'bg-white/10', titleColor: 'text-blue-400' },
+    { title: 'Consultas Válidas', value: stats.validConsultationsCount || '0', icon: <FaCheckCircle className="text-teal-500" />, bgClass: 'bg-white/10', titleColor: 'text-teal-400' },
     { title: 'Saldo Total Consultado', value: stats.totalBalance, icon: <FaDollarSign className="text-emerald-500" />, bgClass: 'bg-white/10', titleColor: 'text-emerald-400' },
     { title: 'Saldo Simulado Total', value: stats.totalSimulation, icon: <FaDollarSign className="text-emerald-500" />, bgClass: 'bg-white/10', titleColor: 'text-emerald-400' },
     { title: 'Propostas Criadas', value: stats.totalProposals, icon: <FaFileSignature className="text-cyan-500" />, bgClass: 'bg-white/10', titleColor: 'text-cyan-400' },

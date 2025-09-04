@@ -30,7 +30,7 @@ export const useMessagePolling = ({
     try {
       console.log('[POLLING] 🔄 Verificando novas mensagens...');
       
-      const response = await fetch(`/api/chat/messages/${currentContact.remote_jid}?since=${lastMessageRef.current || ''}`, {
+      const response = await fetch(`/api/messages/${currentContact.remote_jid}?page=1&limit=20`, {
         credentials: 'include'
       });
 
@@ -41,39 +41,47 @@ export const useMessagePolling = ({
       const data = await response.json();
       
       if (data.success && data.messages && data.messages.length > 0) {
-        console.log(`[POLLING] ✅ ${data.messages.length} novas mensagens encontradas`);
+        console.log(`[POLLING] ✅ ${data.messages.length} mensagens encontradas no polling`);
         
-        // Adicionar novas mensagens ao final da lista
+        // Comparar com mensagens existentes para encontrar apenas as novas
         setMessages(prevMessages => {
           const newMessages = data.messages.filter(newMsg => 
             !prevMessages.some(existingMsg => existingMsg.id === newMsg.id)
           );
           
           if (newMessages.length > 0) {
+            console.log(`[POLLING] 📝 Adicionando ${newMessages.length} mensagens novas`);
+            
+            // Adicionar novas mensagens ao final da lista
             const updatedMessages = [...prevMessages, ...newMessages];
-            // Manter ordenação por timestamp
-            return updatedMessages.sort((a, b) => {
+            
+            // Ordenar por timestamp (mais antigas primeiro)
+            const sortedMessages = updatedMessages.sort((a, b) => {
               const timeA = new Date(a.timestamp || a.created_at).getTime();
               const timeB = new Date(b.timestamp || b.created_at).getTime();
               return timeA - timeB; // Ordem crescente (mais antigas primeiro)
             });
+            
+            // Atualizar lastMessageRef com a mensagem mais recente
+            const lastMessage = sortedMessages[sortedMessages.length - 1];
+            lastMessageRef.current = lastMessage.timestamp || lastMessage.created_at;
+            
+            return sortedMessages;
+          } else {
+            console.log(`[POLLING] ℹ️ Nenhuma mensagem nova encontrada`);
           }
           
           return prevMessages;
         });
-
-        // Atualizar referência da última mensagem
-        const lastMessage = data.messages[data.messages.length - 1];
-        if (lastMessage) {
-          lastMessageRef.current = lastMessage.timestamp || lastMessage.created_at;
-        }
+      } else {
+        console.log(`[POLLING] ℹ️ Nenhuma mensagem encontrada no polling`);
       }
     } catch (error) {
       console.error('[POLLING] ❌ Erro ao buscar mensagens:', error);
     } finally {
       isPollingRef.current = false;
     }
-  }, [currentContact?.remote_jid, isInitialLoad, setMessages]);
+  }, [currentContact?.remote_jid, isInitialLoad, setMessages, lastMessageRef]);
 
   // Função para agendar próximo polling
   const scheduleNextPoll = useCallback(() => {
@@ -85,9 +93,8 @@ export const useMessagePolling = ({
     console.log(`[POLLING] ⏰ Próximo polling em ${interval}ms`);
     
     pollingIntervalRef.current = setTimeout(() => {
-      pollMessages().then(() => {
-        scheduleNextPoll();
-      });
+      pollMessages();
+      scheduleNextPoll();
     }, interval);
     
     timeoutsRef.current.push(pollingIntervalRef.current);
@@ -178,26 +185,3 @@ export const useMessagePolling = ({
     isPolling: isPollingRef.current
   };
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

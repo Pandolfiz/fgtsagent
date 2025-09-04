@@ -72,7 +72,17 @@ export const useContacts = ({ currentUser, selectedInstanceId }) => {
       if (reset) {
         setContacts(newContacts);
       } else {
-        setContacts(prev => [...prev, ...newContacts]);
+        // ✅ CORREÇÃO: Filtrar duplicatas baseado em remote_jid
+        setContacts(prev => {
+          const existingRemoteJids = new Set(prev.map(contact => contact.remote_jid));
+          const uniqueNewContacts = newContacts.filter(contact => 
+            !existingRemoteJids.has(contact.remote_jid)
+          );
+          
+          console.log(`[CONTACTS] 🔍 Filtrados ${newContacts.length - uniqueNewContacts.length} contatos duplicados`);
+          
+          return [...prev, ...uniqueNewContacts];
+        });
       }
 
       setPagination(prev => ({
@@ -170,6 +180,8 @@ export const useContacts = ({ currentUser, selectedInstanceId }) => {
       fetchContacts(1, true);
     }
   }, [currentUser?.id, selectedInstanceId, fetchContacts]);
+
+  // ✅ POLLING AUTOMÁTICO: Agora gerenciado pelo useUnifiedPolling
 
   return {
     contacts,

@@ -315,19 +315,16 @@ async function getDashboardStats(req, userId, period = 'daily') {
     logger.info(`[RETURNING-LEAD-SUMMARY] Total leads: ${leadsData?.length || 0}, Leads novos: ${newLeadsCount}, Leads antigos ativos: ${returningLeadsCount}`);
     logger.info(`[RETURNING-LEAD-SUMMARY] Período filtrado: ${periodStart?.toISOString() || 'não definido'} a ${periodEnd?.toISOString() || 'não definido'}`);
     
-    // Calcular porcentagem de leads que consultaram saldo
-    const consultationPercentage = newLeadsCount > 0
-      ? Math.round((leadsWithBalance.length / newLeadsCount) * 100)
-      : 0;
+    // Calcular somatório de consultas realizadas (leads únicos com consulta)
+    const totalConsultations = leadsWithBalance.length;
 
-    // Calcular porcentagem de consultas válidas (sem erros)
-    const validConsultationsCount = (filteredBalanceData || []).filter(b => !b.error_reason).length;
-    // Usar número de leads como denominador em vez do número total de consultas
-    const validConsultationsPercentage = newLeadsCount > 0
-      ? Math.round((validConsultationsCount / newLeadsCount) * 100)
-      : 0;
+    // Calcular somatório de consultas válidas (leads únicos com consulta sem erro)
+    const validConsultationsCount = leadsWithBalance.filter(l => {
+      const balance = latestBalanceByLead[l.id];
+      return balance && !balance.error_reason;
+    }).length;
 
-    logger.info(`[DASHBOARD] Cards: totalProposals=${totalProposals}, totalPaidProposals=${totalPaidProposals}, totalProposalsValue=${totalProposalsValue}, totalPaidProposalsValue=${totalPaidProposalsValue}, totalPendingProposals=${totalPendingProposals}, totalFormalizationProposals=${totalFormalizationProposals}, newLeadsCount=${newLeadsCount}, returningLeadsCount=${returningLeadsCount}, consultationPercentage=${consultationPercentage}, validConsultationsPercentage=${validConsultationsPercentage}`);
+    logger.info(`[DASHBOARD] Cards: totalProposals=${totalProposals}, totalPaidProposals=${totalPaidProposals}, totalProposalsValue=${totalProposalsValue}, totalPaidProposalsValue=${totalPaidProposalsValue}, totalPendingProposals=${totalPendingProposals}, totalFormalizationProposals=${totalFormalizationProposals}, newLeadsCount=${newLeadsCount}, returningLeadsCount=${returningLeadsCount}, totalConsultations=${totalConsultations}, validConsultationsCount=${validConsultationsCount}`);
 
     // Taxa de conversão (propostas pagas / propostas criadas)
     const conversionRate = totalProposals > 0
@@ -906,8 +903,8 @@ async function getDashboardStats(req, userId, period = 'daily') {
       totalLeads,
       newLeadsCount,
       returningLeadsCount,
-      consultationPercentage,
-      validConsultationsPercentage,
+      totalConsultations,
+      validConsultationsCount,
       conversionRate: `${conversionRate}%`,
       recentProposals,
       proposalsChartData,
