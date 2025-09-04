@@ -737,7 +737,7 @@ export default function Home({ isLoggedIn }) {
         <span className="mb-4 text-lg animate-fade-in">Uma solução em parceria com</span>
         <a href="https://www.v8digital.online/" target="_blank" rel="noopener noreferrer" className="inline-block animate-fade-in-delay">
           <img
-            src="/img/partners/v8digital-logo.svg"
+            src="/_next/static/media/v8-logo-white.8e870e75.svg"
             alt="Logo V8 Digital"
             className="h-16 md:h-20 drop-shadow-neon hover:scale-105 transition"
             style={{ filter: 'drop-shadow(0 0 8px #00bcd4)' }}

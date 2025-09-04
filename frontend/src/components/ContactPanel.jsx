@@ -34,7 +34,8 @@ const ContactPanel = ({
   onViewProposalHistory,
   onRepeatQuery,
   contactData, // ✅ ADICIONADO: Receber dados já carregados do Chat.jsx
-  instances = [] // ✅ ADICIONADO: Receber dados das instâncias para buscar o nome
+  instances = [], // ✅ ADICIONADO: Receber dados das instâncias para buscar o nome
+  isAutoUpdating = false // ✅ ADICIONADO: Indicador de atualização automática
 }) => {
   const [leadData, setLeadData] = useState(null);
   const [proposalData, setProposalData] = useState(null);
@@ -253,7 +254,15 @@ const ContactPanel = ({
       {/* Header */}
       <div className="sticky top-0 border-b border-gray-600/30 p-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-white">Dados do Cliente</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="text-lg font-bold text-white">Dados do Cliente</h3>
+            {isAutoUpdating && (
+              <div className="flex items-center gap-1 text-cyan-400 animate-pulse">
+                <div className="w-2 h-2 bg-cyan-400 rounded-full animate-ping"></div>
+                <span className="text-xs">Atualizando...</span>
+              </div>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="text-gray-400 hover:text-white transition-colors p-1 rounded-full hover:bg-gray-700/50"
