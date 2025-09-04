@@ -47,10 +47,10 @@ export const useSessionPersistence = () => {
             // ✅ EVITAR: Atualizações desnecessárias se a sessão é a mesma
             setSession(prevSession => {
               if (prevSession?.access_token === activeSession.session.access_token) {
-                console.log('🔄 Hook: Mesmo token - evitando atualização desnecessária');
+                // Removido log excessivo
                 return prevSession; // Não atualizar se é o mesmo token
               }
-              console.log('🔄 Hook: Token diferente - atualizando sessão');
+              // Removido log excessivo
               return activeSession.session;
             });
           }

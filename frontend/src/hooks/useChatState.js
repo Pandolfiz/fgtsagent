@@ -1,260 +1,264 @@
 import { useReducer, useCallback, useMemo } from 'react';
 
-// Tipos de ações para o reducer
-const ACTIONS = {
-  SET_MESSAGES: 'SET_MESSAGES',
-  ADD_MESSAGE: 'ADD_MESSAGE',
-  UPDATE_MESSAGE_STATUS: 'UPDATE_MESSAGE_STATUS',
-  SET_CONTACTS: 'SET_CONTACTS',
-  SET_CURRENT_CONTACT: 'SET_CURRENT_CONTACT',
-  SET_LOADING: 'SET_LOADING',
-  SET_PAGINATION: 'SET_PAGINATION',
-  SET_UNREAD_COUNT: 'SET_UNREAD_COUNT',
-  SET_SEARCH_QUERY: 'SET_SEARCH_QUERY',
-  RESET_CHAT: 'RESET_CHAT'
-};
-
-// Estado inicial otimizado
-const initialState = {
-  // Mensagens
-  messages: [],
-  lastMessageId: null,
-  
-  // Contatos
-  contacts: [],
-  currentContact: null,
-  searchQuery: '',
-  
-  // Estados de loading
-  loading: {
-    initialLoad: false,
-    syncing: false,
-    allowInfiniteScroll: false,
-    isLoadingMoreMessages: false
-  },
-  
-  // Paginação
-  pagination: {
-    messagesPage: 1,
-    hasMoreMessages: true,
-    contactsPage: 1,
-    hasMoreContacts: true
-  },
-  
-  // Contadores
-  unreadCount: 0,
-  
-  // Timestamps
-  lastStatusUpdate: '1970-01-01T00:00:00Z',
-  lastSync: null
-};
-
-// Função reducer otimizada
+/**
+ * Reducer para gerenciar o estado do chat
+ * Centraliza todos os estados em um local
+ */
 const chatReducer = (state, action) => {
   switch (action.type) {
-    case ACTIONS.SET_MESSAGES:
+    case 'SET_CURRENT_CONTACT':
       return {
         ...state,
-        messages: action.payload,
-        lastMessageId: action.payload.length > 0 ? action.payload[action.payload.length - 1].id : null
+        currentContact: action.payload
       };
-      
-    case ACTIONS.ADD_MESSAGE:
+    
+    case 'SET_CURRENT_USER':
       return {
         ...state,
-        messages: [...state.messages, action.payload],
-        lastMessageId: action.payload.id
+        currentUser: action.payload
       };
-      
-    case ACTIONS.UPDATE_MESSAGE_STATUS:
+    
+    case 'SET_INSTANCES':
       return {
         ...state,
-        messages: state.messages.map(msg => 
-          msg.id === action.payload.id 
-            ? { ...msg, status: action.payload.status }
-            : msg
-        )
+        instances: action.payload
       };
-      
-    case ACTIONS.SET_CONTACTS:
+    
+    case 'SET_SELECTED_INSTANCE':
       return {
         ...state,
-        contacts: action.payload
+        selectedInstanceId: action.payload
       };
-      
-    case ACTIONS.SET_CURRENT_CONTACT:
+    
+    case 'SET_AGENT_MODE':
       return {
         ...state,
-        currentContact: action.payload,
-        // Resetar mensagens quando mudar de contato
-        messages: [],
-        lastMessageId: null,
-        unreadCount: 0,
-        pagination: {
-          ...state.pagination,
-          messagesPage: 1,
-          hasMoreMessages: true
-        }
+        agentMode: action.payload
       };
-      
-    case ACTIONS.SET_LOADING:
+    
+    case 'SET_ERROR':
+      return {
+        ...state,
+        error: action.payload
+      };
+    
+    case 'CLEAR_ERROR':
+      return {
+        ...state,
+        error: null
+      };
+    
+    case 'SET_LOADING':
       return {
         ...state,
         loading: {
           ...state.loading,
-          ...action.payload
+          [action.payload.type]: action.payload.value
         }
       };
-      
-    case ACTIONS.SET_PAGINATION:
+    
+    case 'SET_SEARCH_TERM':
       return {
         ...state,
-        pagination: {
-          ...state.pagination,
-          ...action.payload
-        }
+        searchTerm: action.payload
       };
-      
-    case ACTIONS.SET_UNREAD_COUNT:
+    
+    case 'SET_CONTACT_PANEL':
       return {
         ...state,
-        unreadCount: action.payload
+        isContactPanelOpen: action.payload.isOpen,
+        selectedContactForPanel: action.payload.contact
       };
-      
-    case ACTIONS.SET_SEARCH_QUERY:
+    
+    case 'SET_CONNECTION_STATUS':
       return {
         ...state,
-        searchQuery: action.payload
+        connectionStatus: action.payload
       };
-      
-    case ACTIONS.RESET_CHAT:
+    
+    case 'SET_ONLINE_STATUS':
       return {
-        ...initialState,
-        contacts: state.contacts, // Manter contatos
-        lastSync: state.lastSync // Manter último sync
+        ...state,
+        isOnline: action.payload
       };
-      
+    
+    case 'SET_SCREEN_SIZE':
+      return {
+        ...state,
+        screenWidth: action.payload.width,
+        isMobileView: action.payload.width < 768
+      };
+    
+    case 'SET_DROPDOWN_OPEN':
+      return {
+        ...state,
+        dropdownOpen: action.payload
+      };
+    
+    case 'RESET_CHAT':
+      return {
+        ...state,
+        currentContact: null,
+        error: null,
+        isContactPanelOpen: false,
+        selectedContactForPanel: null
+      };
+    
     default:
       return state;
   }
 };
 
-// Hook customizado otimizado para gerenciar estado do chat
+/**
+ * Estado inicial do chat
+ */
+const initialState = {
+  // Dados principais
+  currentContact: null,
+  currentUser: null,
+  instances: [],
+  selectedInstanceId: 'all',
+  agentMode: 'full',
+  
+  // Estados de UI
+  isMobileView: window.innerWidth < 768,
+  screenWidth: window.innerWidth,
+  dropdownOpen: false,
+  
+  // Estados de painel lateral
+  isContactPanelOpen: false,
+  selectedContactForPanel: null,
+  
+  // Estados de loading
+  loading: {
+    contacts: false,
+    messages: false,
+    instances: false,
+    syncing: false,
+    moreContacts: false,
+    moreMessages: false,
+    initialLoad: false
+  },
+  
+  // Estados de erro e status
+  error: null,
+  connectionStatus: null,
+  isOnline: navigator.onLine,
+  
+  // Estados de busca
+  searchTerm: ''
+};
+
+/**
+ * Hook customizado para gerenciar o estado do chat
+ */
 export const useChatState = () => {
   const [state, dispatch] = useReducer(chatReducer, initialState);
 
-  // Ações otimizadas com useCallback
-  const setMessages = useCallback((messages) => {
-    dispatch({ type: ACTIONS.SET_MESSAGES, payload: messages });
-  }, []);
-
-  const addMessage = useCallback((message) => {
-    dispatch({ type: ACTIONS.ADD_MESSAGE, payload: message });
-  }, []);
-
-  const updateMessageStatus = useCallback((messageId, status) => {
-    dispatch({ 
-      type: ACTIONS.UPDATE_MESSAGE_STATUS, 
-      payload: { id: messageId, status } 
-    });
-  }, []);
-
-  const setContacts = useCallback((contacts) => {
-    dispatch({ type: ACTIONS.SET_CONTACTS, payload: contacts });
-  }, []);
-
+  // Actions
   const setCurrentContact = useCallback((contact) => {
-    dispatch({ type: ACTIONS.SET_CURRENT_CONTACT, payload: contact });
+    dispatch({ type: 'SET_CURRENT_CONTACT', payload: contact });
   }, []);
 
-  const setLoading = useCallback((key, value) => {
+  const setCurrentUser = useCallback((user) => {
+    dispatch({ type: 'SET_CURRENT_USER', payload: user });
+  }, []);
+
+  const setInstances = useCallback((instances) => {
+    dispatch({ type: 'SET_INSTANCES', payload: instances });
+  }, []);
+
+  const setSelectedInstance = useCallback((instanceId) => {
+    dispatch({ type: 'SET_SELECTED_INSTANCE', payload: instanceId });
+  }, []);
+
+  const setAgentMode = useCallback((mode) => {
+    dispatch({ type: 'SET_AGENT_MODE', payload: mode });
+  }, []);
+
+  const setError = useCallback((error) => {
+    dispatch({ type: 'SET_ERROR', payload: error });
+  }, []);
+
+  const clearError = useCallback(() => {
+    dispatch({ type: 'CLEAR_ERROR' });
+  }, []);
+
+  const setLoading = useCallback((type, value) => {
+    dispatch({ type: 'SET_LOADING', payload: { type, value } });
+  }, []);
+
+  const setSearchTerm = useCallback((term) => {
+    dispatch({ type: 'SET_SEARCH_TERM', payload: term });
+  }, []);
+
+  const setContactPanel = useCallback((isOpen, contact = null) => {
     dispatch({ 
-      type: ACTIONS.SET_LOADING, 
-      payload: { [key]: value } 
+      type: 'SET_CONTACT_PANEL', 
+      payload: { isOpen, contact } 
     });
   }, []);
 
-  const setPagination = useCallback((key, value) => {
+  const setConnectionStatus = useCallback((status) => {
+    dispatch({ type: 'SET_CONNECTION_STATUS', payload: status });
+  }, []);
+
+  const setOnlineStatus = useCallback((isOnline) => {
+    dispatch({ type: 'SET_ONLINE_STATUS', payload: isOnline });
+  }, []);
+
+  const setScreenSize = useCallback((width) => {
     dispatch({ 
-      type: ACTIONS.SET_PAGINATION, 
-      payload: { [key]: value } 
+      type: 'SET_SCREEN_SIZE', 
+      payload: { width } 
     });
   }, []);
 
-  const setUnreadCount = useCallback((count) => {
-    dispatch({ type: ACTIONS.SET_UNREAD_COUNT, payload: count });
-  }, []);
-
-  const setSearchQuery = useCallback((query) => {
-    dispatch({ type: ACTIONS.SET_SEARCH_QUERY, payload: query });
+  const setDropdownOpen = useCallback((isOpen) => {
+    dispatch({ type: 'SET_DROPDOWN_OPEN', payload: isOpen });
   }, []);
 
   const resetChat = useCallback(() => {
-    dispatch({ type: ACTIONS.RESET_CHAT });
+    dispatch({ type: 'RESET_CHAT' });
   }, []);
 
-  // Estados derivados otimizados com useMemo
-  const isInitialLoad = useMemo(() => state.loading.initialLoad, [state.loading.initialLoad]);
-  const isSyncing = useMemo(() => state.loading.syncing, [state.loading.syncing]);
-  const allowInfiniteScroll = useMemo(() => state.loading.allowInfiniteScroll, [state.loading.allowInfiniteScroll]);
-  const isLoadingMoreMessages = useMemo(() => state.loading.isLoadingMoreMessages, [state.loading.isLoadingMoreMessages]);
-
-  const messagesPage = useMemo(() => state.pagination.messagesPage, [state.pagination.messagesPage]);
-  const hasMoreMessages = useMemo(() => state.pagination.hasMoreMessages, [state.pagination.hasMoreMessages]);
-  const contactsPage = useMemo(() => state.pagination.contactsPage, [state.pagination.contactsPage]);
-  const hasMoreContacts = useMemo(() => state.pagination.hasMoreContacts, [state.pagination.hasMoreContacts]);
-
-  const hasMessages = useMemo(() => state.messages.length > 0, [state.messages.length]);
-  const hasContacts = useMemo(() => state.contacts.length > 0, [state.contacts.length]);
-  const hasCurrentContact = useMemo(() => !!state.currentContact, [state.currentContact]);
-
-  // Função para atualizar múltiplos estados de loading
-  const setMultipleLoading = useCallback((loadingStates) => {
-    dispatch({ 
-      type: ACTIONS.SET_LOADING, 
-      payload: loadingStates 
-    });
-  }, []);
-
-  // Função para atualizar múltiplos estados de paginação
-  const setMultiplePagination = useCallback((paginationStates) => {
-    dispatch({ 
-      type: ACTIONS.SET_PAGINATION, 
-      payload: paginationStates 
-    });
-  }, []);
+  // ✅ CORRIGIDO: Memoizar o objeto actions para evitar re-renders desnecessários
+  const actions = useMemo(() => ({
+    setCurrentContact,
+    setCurrentUser,
+    setInstances,
+    setSelectedInstance,
+    setAgentMode,
+    setError,
+    clearError,
+    setLoading,
+    setSearchTerm,
+    setContactPanel,
+    setConnectionStatus,
+    setOnlineStatus,
+    setScreenSize,
+    setDropdownOpen,
+    resetChat
+  }), [
+    setCurrentContact,
+    setCurrentUser,
+    setInstances,
+    setSelectedInstance,
+    setAgentMode,
+    setError,
+    clearError,
+    setLoading,
+    setSearchTerm,
+    setContactPanel,
+    setConnectionStatus,
+    setOnlineStatus,
+    setScreenSize,
+    setDropdownOpen,
+    resetChat
+  ]);
 
   return {
-    // Estado
-    ...state,
-    
-    // Estados derivados
-    isInitialLoad,
-    isSyncing,
-    allowInfiniteScroll,
-    isLoadingMoreMessages,
-    messagesPage,
-    hasMoreMessages,
-    contactsPage,
-    hasMoreContacts,
-    hasMessages,
-    hasContacts,
-    hasCurrentContact,
-    
-    // Ações
-    setMessages,
-    addMessage,
-    updateMessageStatus,
-    setContacts,
-    setCurrentContact,
-    setLoading,
-    setPagination,
-    setUnreadCount,
-    setSearchQuery,
-    resetChat,
-    setMultipleLoading,
-    setMultiplePagination
+    state,
+    actions
   };
 };
-
-export default useChatState;

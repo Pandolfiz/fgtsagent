@@ -1385,6 +1385,70 @@ class WhatsappService {
   }
 
   /**
+   * Inscreve o aplicativo na conta WhatsApp Business do cliente
+   * @param {string} businessAccountId - ID da conta de negócios
+   * @param {string} accessToken - Token de acesso da Meta
+   * @returns {Promise<object>} - Resposta da API
+   */
+  async subscribeAppToBusinessAccount(businessAccountId, accessToken) {
+    try {
+      logger.info(`[WHATSAPP] Inscrevendo aplicativo na conta de negócios ${businessAccountId}`);
+      logger.info(`[WHATSAPP] Token de acesso: ${accessToken ? `${accessToken.substring(0, 10)}...` : 'undefined'}`);
+      
+      // Tentar primeiro com o endpoint padrão
+      const response = await axios.post(
+        `https://graph.facebook.com/v23.0/${businessAccountId}/subscribed_apps`,
+        {
+          access_token: accessToken
+        },
+        {
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json'
+          },
+          timeout: 10000
+        }
+      );
+      
+      logger.info(`[WHATSAPP] Aplicativo inscrito com sucesso:`, response.data);
+      
+      return {
+        success: true,
+        data: response.data,
+        message: 'Aplicativo inscrito com sucesso na conta WhatsApp Business'
+      };
+      
+    } catch (error) {
+      logger.error(`[WHATSAPP] Erro ao inscrever aplicativo: ${error.message}`);
+      
+      if (error.response) {
+        logger.error(`[WHATSAPP] Resposta de erro da API:`, error.response.data);
+        
+        const errorData = error.response.data.error;
+        if (errorData) {
+          return {
+            success: false,
+            error: errorData.message || 'Erro ao inscrever aplicativo',
+            code: errorData.code,
+            details: errorData
+          };
+        }
+        
+        return {
+          success: false,
+          error: 'Erro na API da Meta',
+          details: error.response.data
+        };
+      }
+      
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  /**
    * Atualiza status de uma credencial
    * @param {string} credentialId - ID da credencial
    * @param {string} status - Novo status

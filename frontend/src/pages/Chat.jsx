@@ -1,511 +1,45 @@
-import React, { useState, useEffect, useRef } from 'react'
+import React, { useState, useEffect, useRef, useCallback, Fragment } from 'react'
+import { Dialog, Transition } from '@headlessui/react'
 import Navbar from '../components/Navbar'
-import { FaSearch, FaEllipsisV, FaPaperclip, FaMicrophone, FaSmile, FaPhone, FaVideo, FaPlus, FaArrowLeft, FaSpinner, FaExclamationTriangle, FaWallet, FaCalculator, FaFileAlt, FaTimesCircle, FaCheckCircle, FaInfoCircle, FaIdCard, FaRegCopy, FaChevronDown, FaCheck, FaClock } from 'react-icons/fa'
+import ContactPanel from '../components/ContactPanel'
+import { FaSearch, FaEllipsisV, FaPaperclip, FaMicrophone, FaSmile, FaPhone, FaVideo, FaPlus, FaArrowLeft, FaSpinner, FaExclamationTriangle, FaWallet, FaCalculator, FaFileAlt, FaTimesCircle, FaCheckCircle, FaInfoCircle, FaIdCard, FaRegCopy, FaChevronDown, FaCheck, FaClock, FaUser, FaEdit, FaRedo } from 'react-icons/fa'
 import { IoSend } from 'react-icons/io5'
 import { useNavigate } from 'react-router-dom'
-import { apiFetch } from '../utilities/apiFetch';
-import { cachedFetch } from '../utils/authCache'
 import { useClipboard } from '../hooks/useClipboard'
 
-// ✅ SEGURANÇA: Logger condicional para produção
-const secureLog = {
-  info: (message, data) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.log(message, data);
-    }
-  },
-  error: (message, error) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.error(message, error);
-    }
-  },
-  warn: (message, data) => {
-    if (process.env.NODE_ENV === 'development') {
-      console.warn(message, data);
-    }
-  }
-};
+// ✅ HOOKS CUSTOMIZADOS - Lógica modularizada
+import { useContacts } from '../hooks/useContacts'
+import { useMessages } from '../hooks/useMessages'
+import { useMessagePolling } from '../hooks/useMessagePolling'
+import { useScroll } from '../hooks/useScroll'
+import { useChatState } from '../hooks/useChatState'
 
-// ✅ SEGURANÇA: Funções de sanitização e validação robustas
-const SECURITY_CONFIG = {
-  MAX_MESSAGE_LENGTH: 1000,
-  MAX_SEARCH_LENGTH: 100,
-  RATE_LIMIT_DELAY: 1000, // 1 segundo entre envios
-  MAX_REQUESTS_PER_MINUTE: 60, // Máximo de requisições por minuto
-  BACKOFF_MULTIPLIER: 2, // Multiplicador para backoff exponencial
-  SESSION_CHECK_INTERVAL: 5 * 60 * 1000, // 5 minutos
-  DANGEROUS_PATTERNS: /javascript:|data:|vbscript:|on\w+\s*=|expression\s*\(|eval\s*\(/gi
-};
-
-// ✅ SEGURANÇA: Sanitização robusta de conteúdo
-const sanitizeContent = (content) => {
-  if (typeof content !== 'string') return '';
-  
-  // Remover caracteres de controle perigosos
-  let sanitized = content.replace(/[\u0000-\u001F\u007F-\u009F]/g, '');
-  
-  // Remover padrões perigosos (mantendo URLs seguras)
-  sanitized = sanitized.replace(SECURITY_CONFIG.DANGEROUS_PATTERNS, '');
-  
-  // Escapar HTML básico para segurança
-  sanitized = sanitized
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-  
-  return sanitized.trim();
-};
-
-// ✅ SEGURANÇA: Validação rigorosa de entrada
-const validateUserInput = (input, type = 'message') => {
-  // ✅ VALIDAÇÃO: Verificar tipo de entrada
-  if (typeof input !== 'string') {
-    return { valid: false, error: 'Input deve ser uma string' };
-  }
-  
-  // ✅ VALIDAÇÃO: Verificar se não é null ou undefined
-  if (input === null || input === undefined) {
-    return { valid: false, error: 'Input não pode ser nulo' };
-  }
-  
-  const trimmed = input.trim();
-  
-  // ✅ VALIDAÇÃO: Verificar se não é apenas espaços
-  if (!trimmed) {
-    return { valid: false, error: 'Input não pode estar vazio' };
-  }
-  
-  // ✅ VALIDAÇÃO: Verificar caracteres de controle
-  if (/[\u0000-\u001F\u007F-\u009F]/.test(trimmed)) {
-    return { valid: false, error: 'Input contém caracteres de controle inválidos' };
-  }
-  
-  switch (type) {
-    case 'message':
-      if (trimmed.length > SECURITY_CONFIG.MAX_MESSAGE_LENGTH) {
-        return { valid: false, error: `Mensagem muito longa (máximo ${SECURITY_CONFIG.MAX_MESSAGE_LENGTH} caracteres)` };
-      }
-      
-      // ✅ VALIDAÇÃO: Verificar padrões perigosos
-      if (SECURITY_CONFIG.DANGEROUS_PATTERNS.test(trimmed)) {
-        return { valid: false, error: 'Conteúdo não permitido' };
-      }
-      
-      // ✅ VALIDAÇÃO: URLs são permitidas nas mensagens
-      // Removida restrição de URLs para permitir compartilhamento de links
-      
-      return { valid: true, value: sanitizeContent(trimmed) };
-      
-    case 'search':
-      if (trimmed.length > SECURITY_CONFIG.MAX_SEARCH_LENGTH) {
-        return { valid: false, error: 'Busca muito longa' };
-      }
-      
-      // ✅ VALIDAÇÃO: Verificar padrões perigosos em busca
-      if (SECURITY_CONFIG.DANGEROUS_PATTERNS.test(trimmed)) {
-        return { valid: false, error: 'Termo de busca contém caracteres inválidos' };
-      }
-      
-      return { valid: true, value: sanitizeContent(trimmed) };
-      
-    case 'phone':
-      // ✅ VALIDAÇÃO: Formato de telefone
-      const phoneRegex = /^[0-9]{10,15}$/;
-      if (!phoneRegex.test(trimmed)) {
-        return { valid: false, error: 'Formato de telefone inválido' };
-      }
-      
-      return { valid: true, value: trimmed };
-      
-    default:
-      return { valid: true, value: sanitizeContent(trimmed) };
-  }
-};
-
-// ✅ SEGURANÇA: Obter token CSRF com validação
-const getCSRFToken = () => {
-  const token = document.querySelector('meta[name="csrf-token"]')?.getAttribute('content') || '';
-  
-  // ✅ VALIDAÇÃO: Verificar se o token tem formato válido
-  if (token && typeof token === 'string' && token.length >= 32) {
-    return token;
-  }
-  
-  return '';
-};
-
-// ✅ SEGURANÇA: Validação de estado
-const validateState = (state, type) => {
-  if (!state || typeof state !== 'object') {
-    return { valid: false, error: 'Estado inválido' };
-  }
-  
-  switch (type) {
-    case 'user':
-      if (!state.id || typeof state.id !== 'string') {
-        return { valid: false, error: 'ID de usuário inválido' };
-      }
-      return { valid: true };
-      
-    case 'contact':
-      if (!state.remote_jid || typeof state.remote_jid !== 'string') {
-        return { valid: false, error: 'ID de contato inválido' };
-      }
-      return { valid: true };
-      
-    case 'message':
-      if (!state.content || typeof state.content !== 'string') {
-        return { valid: false, error: 'Conteúdo de mensagem inválido' };
-      }
-      return { valid: true };
-      
-    default:
-      return { valid: true };
-  }
-};
-
-// ✅ SEGURANÇA: Sistema de rate limiting
-const rateLimiter = {
-  requests: [],
-  isBlocked: false,
-  blockUntil: 0,
-  
-  canMakeRequest() {
-    const now = Date.now();
-    
-    // Se está bloqueado, verificar se já pode fazer requisições novamente
-    if (this.isBlocked && now < this.blockUntil) {
-      return false;
-    }
-    
-    // Limpar requisições antigas (mais de 1 minuto)
-    this.requests = this.requests.filter(time => now - time < 60000);
-    
-    // Verificar se excedeu o limite
-    if (this.requests.length >= SECURITY_CONFIG.MAX_REQUESTS_PER_MINUTE) {
-      this.isBlocked = true;
-      this.blockUntil = now + 60000; // Bloquear por 1 minuto
-      return false;
-    }
-    
-    return true;
-  },
-  
-  recordRequest() {
-    if (this.canMakeRequest()) {
-      this.requests.push(Date.now());
-      return true;
-    }
-    return false;
-  },
-  
-  getRemainingRequests() {
-    const now = Date.now();
-    this.requests = this.requests.filter(time => now - time < 60000);
-    return Math.max(0, SECURITY_CONFIG.MAX_REQUESTS_PER_MINUTE - this.requests.length);
-  }
-};
-
-// ✅ SEGURANÇA: Garantir que token CSRF esteja carregado
-const ensureCSRFToken = async () => {
-  let token = getCSRFToken();
-  if (token) {
-    return token;
-  }
-  
-  // Se não há token, tentar carregar
-  try {
-    console.log('[CSRF] Token não encontrado, tentando carregar...');
-    const response = await fetch('/api/auth/csrf-token', {
-      method: 'GET',
-      credentials: 'include',
-      headers: {
-        'Accept': 'application/json'
-      }
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      if (data.success && data.csrfToken) {
-        const metaTag = document.querySelector('meta[name="csrf-token"]');
-        if (metaTag) {
-          metaTag.setAttribute('content', data.csrfToken);
-          console.log('[CSRF] Token carregado dinamicamente:', data.csrfToken.substring(0, 10) + '...');
-          return data.csrfToken;
-        }
-      }
-    }
-      } catch (error) {
-      console.error('[CSRF] Erro ao carregar token dinamicamente:', error);
-      throw new Error('Não foi possível obter token CSRF válido');
-    }
-    
-    // Se chegou aqui, não foi possível obter o token
-    throw new Error('Token CSRF não disponível');
-};
-
-// ✅ SEGURANÇA: Verificar sessão
-const checkSession = async () => {
-  try {
-    const response = await fetch('/api/auth/check-session', {
-      credentials: 'include',
-      headers: {
-        'X-CSRF-Token': getCSRFToken()
-      }
-    });
-    
-    if (!response.ok) {
-      window.location.href = '/login?error=session_expired&message=Sua sessão expirou. Por favor, faça login novamente.';
-      return false;
-    }
-    
-    return true;
-  } catch (error) {
-    console.error('Erro ao verificar sessão:', error);
-    return false;
-  }
-};
-
-// Função auxiliar para gerar IDs de mensagem únicos
-function generateMessageId() {
-  return `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-}
-
-// Função de debounce para evitar múltiplos cliques
-function debounce(func, wait) {
-  let timeout;
-  return function executedFunction(...args) {
-    const later = () => {
-      clearTimeout(timeout);
-      func(...args);
-    };
-    clearTimeout(timeout);
-    timeout = setTimeout(later, wait);
-  };
-}
-
-// Função robusta para formatação de valores monetários
-function formataMoeda(valor) {
-  // Se o valor for null, undefined ou não numérico, retornar null
-  if (valor === null || valor === undefined) {
-
-    return null;
-  }
-  
-  try {
-    // Garantir que estamos trabalhando com um número
-    let numero;
-    
-    // Verificar se já é um número
-    if (typeof valor === 'number') {
-
-      numero = valor;
-    } else {
-      // Tentar converter string para número
-      // Remover qualquer formatação que possa existir
-      const valorLimpo = String(valor).replace(/[^\d.,]/g, '')
-        .replace(/\./g, '#')  // Substituir temporariamente pontos
-        .replace(/,/g, '.')   // Substituir vírgulas por pontos
-        .replace(/#/g, '');   // Remover pontos temporários
-      
-      numero = parseFloat(valorLimpo);
-
-    }
-    
-    // Verificar se a conversão resultou em um número válido
-    if (isNaN(numero)) {
-
-      return null;
-    }
-    
-    // Formatar o número como moeda brasileira
-    const formatado = new Intl.NumberFormat('pt-BR', {
-      style: 'currency',
-      currency: 'BRL',
-      minimumFractionDigits: 2
-    }).format(numero);
-    
-
-    return formatado;
-  } catch (error) {
-    console.error(`Erro ao formatar valor monetário: ${error.message}`);
-    // Fallback simples
-    try {
-      return `R$ ${parseFloat(valor).toFixed(2).replace('.', ',')}`;
-    } catch (e) {
-      console.error(`Erro no fallback de formatação: ${e.message}`);
-      return null;
-    }
-  }
-}
+// ✅ UTILITÁRIOS - Funções reutilizáveis
+import { sanitizeContent, formatTimestamp, formatDateSeparator } from '../utils/chatUtils'
+import { debounce } from '../utils/debounce'
 
 export default function Chat() {
-  const [contacts, setContacts] = useState([])
-  const [displayContacts, setDisplayContacts] = useState([]) // Estado para exibição ordenada
-  const [messages, setMessages] = useState([])
-  const [newMessage, setNewMessage] = useState('')
-  const [currentContact, setCurrentContact] = useState(null)
-  // ✅ SISTEMA DE ESTADOS UNIFICADO E SEM CONFLITOS
-  const [loadingState, setLoadingState] = useState({
-    // Estados de carregamento específicos
-    contacts: false,           // Carregamento de contatos
-    messages: false,           // Carregamento de mensagens
-    instances: false,          // Carregamento de instâncias
-    moreContacts: false,       // Carregamento de mais contatos
-    moreMessages: false,       // Carregamento de mais mensagens
-    
-    // Estados de sincronização
-    syncing: false,            // Sincronização em andamento
-    updating: false,           // Atualização em andamento
-    
-    // Estados de controle de scroll
-    initialLoad: false,        // Carregamento inicial (para ancoragem)
-    allowInfiniteScroll: false, // Permite scroll infinito
-    
-    // Estados de paginação
-    contactsPage: 1,
-    messagesPage: 1,
-    hasMoreContacts: true,
-    hasMoreMessages: true
-  });
-
-  // ✅ Função unificada para gerenciar estados
-  const setLoading = (type, value) => {
-    setLoadingState(prev => ({ ...prev, [type]: value }));
-  };
-
-  // ✅ Estados derivados para compatibilidade (não alterar diretamente)
-  const isLoading = loadingState.contacts || loadingState.messages || loadingState.instances;
-  const isSyncing = loadingState.syncing;
-  const isUpdating = loadingState.updating;
-  const isInitialLoad = loadingState.initialLoad;
-  const isLoadingMoreContacts = loadingState.moreContacts;
-  const isLoadingMoreMessages = loadingState.moreMessages;
-  const allowInfiniteScroll = loadingState.allowInfiniteScroll;
-  const contactsPage = loadingState.contactsPage;
-  const messagesPage = loadingState.messagesPage;
-  const hasMoreContacts = loadingState.hasMoreContacts;
-  const hasMoreMessages = loadingState.hasMoreMessages;
-
-  // ✅ Função para atualizar estado de paginação
-  const setPagination = (type, value) => {
-    setLoadingState(prev => ({ ...prev, [type]: value }));
-  };
-
-  const [isSendingMessage, setIsSendingMessage] = useState(false) // Controle de envio
-  const [lastMessageTimestamp, setLastMessageTimestamp] = useState(0) // Timestamp do último envio
-  const [currentUser, setCurrentUser] = useState(null)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [isMobileView, setIsMobileView] = useState(window.innerWidth < 768)
-  const [clipboardFeedback, setClipboardFeedback] = useState('') // Feedback do clipboard
-  
-  // ✅ Hook para operações de clipboard
-  const { copyToClipboard, readFromClipboard, isClipboardSupported } = useClipboard()
-  const [screenWidth, setScreenWidth] = useState(window.innerWidth)
-  const [error, setError] = useState(null)
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const [connectionStatus, setConnectionStatus] = useState(null)
-  const [autoResponseContacts, setAutoResponseContacts] = useState({})
-
-  const [lastSyncTime, setLastSyncTime] = useState(null)
-  const messagesContainerRef = useRef(null);
-  const lastMessageIdRef = useRef(null) // Referência para o último ID de mensagem
-  const timeoutsRef = useRef([])
-  const intervalsRef = useRef([])
-  
-  // ✅ SEGURANÇA: Função de cleanup seguro
-  const cleanupResources = () => {
-    // Limpar todos os timeouts
-    timeoutsRef.current.forEach(timeoutId => {
-      if (timeoutId) {
-        clearTimeout(timeoutId);
-      }
-    });
-    timeoutsRef.current = [];
-    
-    // Limpar todos os intervals
-    intervalsRef.current.forEach(intervalId => {
-      if (intervalId) {
-        clearInterval(intervalId);
-      }
-    });
-    intervalsRef.current = [];
-  };
-  
   const navigate = useNavigate()
-  const [agentMode, setAgentMode] = useState('full');
   
-  // Estados para gerenciar instâncias
-  const [instances, setInstances] = useState([])
+  // ✅ REFS - Apenas para DOM (definir primeiro)
+  const messagesContainerRef = useRef(null)
+  const contactsContainerRef = useRef(null)
+  const messageInputRef = useRef(null)
+  const lastMessageRef = useRef(null)
+  const currentIntervalRef = useRef(null)
+  const timeoutsRef = useRef([])
+  const scrollTimeoutRef = useRef(null) // ✅ Ref para debounce do scroll das mensagens
+  const contactsScrollTimeoutRef = useRef(null) // ✅ Ref para debounce do scroll de contatos
   
-
-  const [selectedInstanceId, setSelectedInstanceId] = useState('all') // 'all' para todas as instâncias
-  const [dropdownOpen, setDropdownOpen] = useState(false)
-  const dropdownRef = useRef(null)
-  const currentIntervalRef = useRef(30000); // ✅ Ref para polling adaptativo
-  const lastMessageRef = useRef(null); // ✅ Ref para última mensagem (evitar loops)
-  const scrollTimeoutRef = useRef(null); // ✅ Ref para debounce do scroll
-  const contactsContainerRef = useRef(null); // ✅ Ref para container de contatos
-  const contactsScrollTimeoutRef = useRef(null); // ✅ Ref para debounce do scroll de contatos
-  const [contactInstances, setContactInstances] = useState({}) // Mapa de contato -> instância
+  // ✅ ESTADOS LOCAIS MÍNIMOS - Apenas UI
+  const [newMessage, setNewMessage] = useState('')
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
+  const [isContactPanelOpen, setIsContactPanelOpen] = useState(false)
+  const [selectedContactForPanel, setSelectedContactForPanel] = useState(null)
   
-  // Estados para UX melhorada
-  const [isAtBottom, setIsAtBottom] = useState(true)
-  const [unreadCount, setUnreadCount] = useState(0)
-  const [isOnline, setIsOnline] = useState(navigator.onLine)
-  const [retryQueue, setRetryQueue] = useState([]) // ✅ Fila de operações para retry
-  const [lastStatusUpdate, setLastStatusUpdate] = useState('1970-01-01T00:00:00Z') // ✅ Controla última atualização de status
-  
-  const CONTACTS_PER_PAGE = 15
-  const MESSAGES_PER_PAGE = 20
-  
-  // Estilos para dispositivos móveis usando variáveis CSS personalizadas
-  const mobileStyles = {
-    mainContainer: {
-      height: 'calc(100vh - 4rem)',
-      maxHeight: 'calc(100vh - 4rem)',
-      marginBottom: '0px',
-      padding: '0rem',
-      width: '100%'
-    },
-    messagesContainer: {
-      height: 'auto',
-      maxHeight: 'calc(100vh - 12rem)',
-      padding: '0rem'
-    },
-    pageContainer: {
-      padding: '0',
-      margin: '0',
-      height: '100vh',
-      minHeight: '100vh',
-      maxHeight: '100vh',
-      display: 'flex',
-      flexDirection: 'column',
-      background: 'linear-gradient(to bottom right, rgb(4 47 46), rgb(12 74 110), rgb(23 37 84))',
-      overflow: 'hidden',
-      width: '100vw'
-    },
-    contentContainer: {
-      padding: '0.5rem',
-      paddingBottom: '0.5rem',
-      margin: '0',
-      flex: '1',
-      display: 'flex',
-      flexDirection: 'column',
-      overflow: 'hidden',
-      width: '100%'
-    },
-    messageInputContainer: {
-      margin: '0',
-      padding: '0rem',
-      borderTop: '1px solid rgba(8, 145, 178, 0.2)'
-    }
-  };
-
-  // Estado para controlar quando deve rolar a tela
-  // Removido: variáveis de scroll complexo não necessárias
-
-  // Estados para os dados do contato
+  // Estados para dados do contato/lead
   const [contactData, setContactData] = useState({
+    leadId: null,
     saldo: null,
     simulado: null,
     erroConsulta: null,
@@ -515,210 +49,649 @@ export default function Chat() {
     descricaoStatus: null,
     valorProposta: null,
     linkFormalizacao: null,
-    chavePix: null
-  });
+    chavePix: null,
+    cpf: null
+  })
+  
+  // Estados para feedback de cópia
+  const [copiedId, setCopiedId] = useState(false)
+  const [copiedPix, setCopiedPix] = useState(false)
+  const [copiedLink, setCopiedLink] = useState(false)
+  
+  // Estados para modais e funcionalidades do painel lateral
+  const [editModalOpen, setEditModalOpen] = useState(false)
+  const [proposalsHistoryModalOpen, setProposalsHistoryModalOpen] = useState(false)
+  const [providerModalOpen, setProviderModalOpen] = useState(false)
+  const [createProposalModalOpen, setCreateProposalModalOpen] = useState(false)
+  const [selectedLead, setSelectedLead] = useState(null)
+  const [proposalsHistory, setProposalsHistory] = useState([])
+  const [repeatingQuery, setRepeatingQuery] = useState(null)
+  
+  // Estados para edição de lead
+  const [editingLead, setEditingLead] = useState({})
+  const [isSavingLead, setIsSavingLead] = useState(false)
+  const [saveError, setSaveError] = useState('')
+  
+  // Estados para histórico de propostas
+  const [isLoadingProposals, setIsLoadingProposals] = useState(false)
+  
+  // Estados para repetir consulta
+  const [repeatError, setRepeatError] = useState('')
+  const [selectedLeadForQuery, setSelectedLeadForQuery] = useState(null)
+  const [selectedProvider, setSelectedProvider] = useState('cartos')
+  const [availableBanks, setAvailableBanks] = useState([])
+  const [selectedBank, setSelectedBank] = useState('')
+  const [loadingBanks, setLoadingBanks] = useState(false)
+  
+  // Estados para criar proposta
+  const [selectedLeadForProposal, setSelectedLeadForProposal] = useState(null)
+  const [proposalFormData, setProposalFormData] = useState({})
+  const [isCreatingProposal, setIsCreatingProposal] = useState(false)
+  const [createProposalError, setCreateProposalError] = useState('')
+  
+  // ✅ ESTADOS PARA FUNCIONALIDADES DA VERSÃO ANTERIOR
+  const [instances, setInstances] = useState([])
+  const [selectedInstanceId, setSelectedInstanceId] = useState('all')
+  const [dropdownOpen, setDropdownOpen] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState(null)
+  const [lastSyncTime, setLastSyncTime] = useState(null)
+  const dropdownRef = useRef(null)
+  
+  // ✅ HOOKS EXTERNOS
+  const { copyToClipboard } = useClipboard()
 
-  // [ADICIONAR estados locais para feedback de cópia]
-  const [copiedPix, setCopiedPix] = useState(false);
-  const [copiedId, setCopiedId] = useState(false);
-  const [copiedLink, setCopiedLink] = useState(false);
+  // ✅ ESTADO UNIFICADO - Definir primeiro
+  const { 
+    state, 
+    actions 
+  } = useChatState()
 
-  // Log inicial para diagnóstico
-  useEffect(() => {
+  // ✅ DESTRUCTURING DO ESTADO UNIFICADO
+  const { 
+    currentContact, 
+    currentUser, 
+    isMobileView, 
+    searchTerm, 
+    error 
+  } = state
+
+  // ✅ HOOKS CUSTOMIZADOS - Toda lógica complexa abstraída
+  const { 
+    contacts: displayContacts, 
+    loading: contactsLoading, 
+    pagination,
+    fetchContacts, 
+    loadMoreContacts,
+    syncContacts: refreshContacts,
+    updateContact // ✅ ADICIONADO: Para atualizar estado do contato após toggle AI
+  } = useContacts({ currentUser, selectedInstanceId })
+
+  const { 
+    messages, 
+    setMessages, // ✅ ADICIONADO: Para o useMessagePolling
+    addMessage, 
+    loading: messagesLoading, 
+    fetchMessages,
+    loadMoreMessages, // ✅ ADICIONADO: Função para scroll infinito
+    isAtBottom,
+    unreadCount,
+    checkIfAtBottom,
+    // ✅ ADICIONADO: Estados para condições do scroll infinito
+      hasMoreMessages,
+    isLoadingMoreMessages,
+    allowInfiniteScroll,
+    isInitialLoad
+  } = useMessages({ currentContact, messagesContainerRef })
+
+  const { 
+    resumePolling: startPolling, 
+    pausePolling: stopPolling, 
+    isPolling 
+  } = useMessagePolling({ 
+    currentContact, 
+    messages, 
+    setMessages: setMessages, // ✅ CORRIGIDO: Usar setMessages diretamente do useMessages
+    setLoading: () => {}, // Placeholder - não usado no hook atual
+    isInitialLoad: messagesLoading.initialLoad,
+    lastMessageRef,
+    currentIntervalRef,
+    timeoutsRef
+  })
+
+  const { 
+    scrollToBottom 
+  } = useScroll({ 
+    messagesContainerRef,
+    loadMoreMessages: loadMoreMessages, // ✅ CORRIGIDO: Usar a função do useMessages
+    checkIfAtBottom: checkIfAtBottom, // ✅ CORRIGIDO: Usar a função do useMessages
+    // ✅ ADICIONADO: Parâmetros para condições do scroll infinito (igual ao backup)
+    hasMoreMessages: hasMoreMessages,
+    isLoadingMoreMessages: isLoadingMoreMessages,
+    allowInfiniteScroll: allowInfiniteScroll,
+    isInitialLoad: isInitialLoad,
+    currentContact: currentContact
+  })
+
+  // ✅ SCROLL INFINITO PARA MENSAGENS (baseado no backup)
+  const handleScrollImmediate = useCallback((e) => {
+    const container = e.target;
+    const { scrollTop, scrollHeight, clientHeight } = container;
     
-  }, []);
-
-  // ✅ SEGURANÇA: Listener para detectar mudanças na conectividade e verificar sessão
-  useEffect(() => {
-    const handleOnline = () => {
-      setIsOnline(true);
-      console.log('[NETWORK] ✅ Conexão restaurada - processando fila de retry');
-      // Processar fila de retry quando voltar online
-      if (retryQueue.length > 0) {
-        processRetryQueue();
+    // ✅ Ações IMEDIATAS (não podem ter delay)
+    // ✅ CORREÇÃO: Detecção mais precisa do final (tolerância de 5px)
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 5;
+    
+    // ✅ OTIMIZAÇÃO: Só atualizar estado se mudou (evita re-renders desnecessários)
+    if (isAtBottom !== isNearBottom) {
+      checkIfAtBottom(isNearBottom);
+    }
+    
+    // Resetar contador imediatamente se no final
+    if (isNearBottom && unreadCount > 0) {
+      // setUnreadCount(0); // TODO: Implementar se necessário
+    }
+  }, [isAtBottom, checkIfAtBottom, unreadCount]);
+  
+  const handleScrollDebounced = useCallback((e) => {
+    const container = e.target;
+    const { scrollTop } = container;
+    
+    // ✅ CORREÇÃO: Log de debug para scroll infinito
+    console.log('[SCROLL-DEBUG] 🎯 Scroll debounced:', {
+      scrollTop,
+      hasMoreMessages,
+      isLoadingMoreMessages,
+      allowInfiniteScroll,
+      isInitialLoad,
+      currentContactId: currentContact?.remote_jid,
+      conditions: {
+        scrollTopLessThan100: scrollTop < 100,
+        hasMoreMessages: hasMoreMessages,
+        notLoadingMore: !isLoadingMoreMessages,
+        allowInfiniteScroll: allowInfiniteScroll,
+        notInitialLoad: !isInitialLoad,
+        hasContact: !!currentContact?.remote_jid
       }
-    };
+    });
     
-    const handleOffline = () => {
-      setIsOnline(false);
-      console.log('[NETWORK] ❌ Conexão perdida - modo offline ativado');
-    };
-    
-    // ✅ SEGURANÇA: Verificação periódica de sessão
-    const sessionCheckInterval = setInterval(async () => {
-      if (currentUser && !document.hidden) {
-        const sessionValid = await checkSession();
-        if (!sessionValid) {
-          setError('Sessão expirada. Redirecionando...');
-        }
-      }
-    }, SECURITY_CONFIG.SESSION_CHECK_INTERVAL);
-    
-    window.addEventListener('online', handleOnline);
-    window.addEventListener('offline', handleOffline);
-    
-    return () => {
-      window.removeEventListener('online', handleOnline);
-      window.removeEventListener('offline', handleOffline);
-      clearInterval(sessionCheckInterval);
-    };
-  }, [retryQueue, currentUser]);
+    // ✅ Ações PESADAS com debounce (podem ter delay)
+    // Carregar mensagens antigas só após parar de rolar
+    // ✅ MÚLTIPLAS PROTEÇÕES: Evitar conflitos com ancoragem
+    if (scrollTop < 100 && 
+        hasMoreMessages && 
+        !isLoadingMoreMessages && 
+        allowInfiniteScroll && 
+        !isInitialLoad &&
+        currentContact?.remote_jid) {
+      
+      console.log('[SCROLL-DEBUG] ✅ Todas as condições atendidas - chamando loadMoreMessages');
+      loadMoreMessages();
+    } else {
+      console.log('[SCROLL-DEBUG] ❌ Condições não atendidas para scroll infinito:', {
+        scrollTopLessThan100: scrollTop < 100,
+        hasMoreMessages: hasMoreMessages,
+        notLoadingMore: !isLoadingMoreMessages,
+        allowInfiniteScroll: allowInfiniteScroll,
+        notInitialLoad: !isInitialLoad,
+        hasContact: !!currentContact?.remote_jid
+      });
+    }
+  }, [hasMoreMessages, isLoadingMoreMessages, allowInfiniteScroll, isInitialLoad, currentContact, loadMoreMessages]);
 
-  // ✅ Função para processar fila de retry
-  const processRetryQueue = async () => {
-    if (!isOnline || retryQueue.length === 0) return;
+  const handleScroll = useCallback((e) => {
+    // ✅ Executar ações imediatas
+    handleScrollImmediate(e);
     
-    console.log(`[RETRY] 🔄 Processando ${retryQueue.length} operações pendentes`);
+    // ✅ OTIMIZAÇÃO: Debounce mínimo apenas para scroll infinito (10ms)
+    if (scrollTimeoutRef.current) {
+      clearTimeout(scrollTimeoutRef.current);
+    }
     
-    for (const operation of retryQueue) {
+    scrollTimeoutRef.current = setTimeout(() => {
+      handleScrollDebounced(e);
+    }, 10);
+  }, [handleScrollImmediate, handleScrollDebounced]);
+
+  // ✅ LOADING STATES UNIFICADOS
+  const isLoading = contactsLoading.contacts || messagesLoading.messages
+  const isSyncing = contactsLoading.syncing
+
+  // ✅ EFEITOS SIMPLIFICADOS - Apenas integração
+  useEffect(() => {
+    // Só buscar usuário se não tiver um já carregado
+    if (currentUser?.id) return;
+    
+    async function getCurrentUser() {
       try {
-        await operation.execute();
-        console.log(`[RETRY] ✅ Operação executada: ${operation.type}`);
-      } catch (error) {
-        console.error(`[RETRY] ❌ Falha na operação ${operation.type}:`, error);
+        console.log("Iniciando fetchUserFromApi...");
+        const response = await fetch('/api/auth/me', {
+          credentials: 'include'
+        });
+        
+        const data = await response.json();
+      
+      if (!data || !data.success) {
+        if (data && data.status === 401) {
+          navigate('/login?error=auth_required&message=Você precisa estar autenticado para acessar o chat.');
+            return;
+        }
+        
+        console.error(`Erro ao buscar usuário:`, data);
+          actions.setError(`Erro ao buscar usuário: ${data?.message || 'Erro desconhecido'}`);
+          return;
+      }
+      
+      // Verificar e extrair o objeto user da resposta
+      if (data.success && data.user) {
+          actions.setCurrentUser(data.user);
+      } else if (data.id) {
+          actions.setCurrentUser(data);
+      } else {
+        console.error('Formato de resposta inesperado:', data);
+          actions.setError('Formato de resposta inesperado da API');
+      }
+    } catch (error) {
+        console.error('Erro ao buscar usuário:', error);
+        actions.setError('Erro ao buscar usuário');
       }
     }
     
-    setRetryQueue([]);
-  };
+    getCurrentUser();
+  }, [navigate, currentUser?.id]) // ✅ CORRIGIDO: Removido actions das dependências
 
-  // ✅ SEGURANÇA: Cleanup de timeouts e intervals quando o componente for desmontado
-  useEffect(() => {
-    return () => {
-      // Usar função de cleanup robusta
-      cleanupResources();
+  // ✅ REMOVIDO: useEffect duplicado - o useContacts já gerencia o carregamento inicial
+
+  // ✅ REMOVIDO: useEffect que causava loop infinito
+  // O carregamento de mensagens será feito diretamente na seleção de contato
+
+  // ✅ CARREGAR INSTÂNCIAS REAIS DO WHATSAPP
+  const fetchInstances = useCallback(async () => {
+    try {
+        console.log('[INSTANCES] 🔄 Carregando instâncias do WhatsApp...');
       
-      // ✅ Cleanup adicional de refs específicos
-      if (scrollTimeoutRef.current) {
-        clearTimeout(scrollTimeoutRef.current);
-        scrollTimeoutRef.current = null;
-      }
-      
-      if (contactsScrollTimeoutRef.current) {
-        clearTimeout(contactsScrollTimeoutRef.current);
-        contactsScrollTimeoutRef.current = null;
-      }
-    };
-  }, []);
-
-  // Fechar dropdown quando clicar fora
-  useEffect(() => {
-    function handleClickOutside(event) {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        setDropdownOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, []);
-
-  // Funções utilitárias para gerenciar timeouts e intervals
-  const createTimeout = (callback, delay) => {
-    const timeoutId = setTimeout(callback, delay);
-    timeoutsRef.current.push(timeoutId);
-    return timeoutId;
-  };
-
-  const createInterval = (callback, delay) => {
-    const intervalId = setInterval(callback, delay);
-    intervalsRef.current.push(intervalId);
-    return intervalId;
-  };
-
-  const clearTimeoutSafe = (timeoutId) => {
-    clearTimeout(timeoutId);
-    timeoutsRef.current = timeoutsRef.current.filter(id => id !== timeoutId);
-  };
-
-  const clearIntervalSafe = (intervalId) => {
-    clearInterval(intervalId);
-    intervalsRef.current = intervalsRef.current.filter(id => id !== intervalId);
-  };
-
-  // Detectar mudanças de tamanho da tela
-  useEffect(() => {
-    const handleResize = () => {
-      const width = window.innerWidth;
-      const height = window.innerHeight;
-      setScreenWidth(width);
-      setIsMobileView(width < 768);
-      
-      // Ajustar o viewport height em dispositivos móveis para lidar com barras de navegação
-      if (width < 768) {
-        // Subtrair altura do navbar e espaçamentos
-        const adjustedHeight = height - 20; // 20px de espaçamento
-        document.documentElement.style.setProperty('--vh', `${adjustedHeight * 0.01}px`);
-        
-        // Detectar iOS
-        const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !window.MSStream;
-        if (isIOS) {
-          document.body.classList.add('ios-device');
+      const response = await fetch('/api/whatsapp-credentials', {
+              credentials: 'include'
+            });
+          
+                if (response.ok) {
+            const data = await response.json();
+          if (data.success && data.data) {
+            // Log para debug - ver todos os status
+            console.log('[INSTANCES] 🔍 Status das credenciais:', data.data.map(cred => ({
+              id: cred.id,
+              agent_name: cred.agent_name,
+              status: cred.status,
+              connection_type: cred.connection_type
+            })));
+            
+            // Não filtrar por status - mostrar todas as instâncias
+            const validInstances = data.data;
+            
+            // Formatar instâncias para o formato esperado
+            const formattedInstances = validInstances.map(cred => ({
+              id: cred.id,
+              agent_name: cred.agent_name || cred.instance_name || `Instância ${cred.phone}`,
+              instance_name: cred.instance_name || `WhatsApp ${cred.phone}`,
+              phone: cred.phone,
+              status: cred.status,
+              connected: cred.status === 'open' || cred.status === 'connected' || cred.status === 'active'
+            }));
+            
+            console.log('[INSTANCES] ✅ Instâncias carregadas:', formattedInstances);
+            setInstances(formattedInstances);
+            
+            // Verificar se há instâncias conectadas
+            const connectedInstances = formattedInstances.filter(inst => inst.connected);
+            console.log('[INSTANCES] 🔗 Instâncias conectadas:', connectedInstances);
+            console.log('[INSTANCES] 📊 Status de conexão:', {
+              total: formattedInstances.length,
+              connected: connectedInstances.length,
+              willBeConnected: connectedInstances.length > 0
+            });
+            
+            setConnectionStatus({ 
+              connected: connectedInstances.length > 0,
+              totalInstances: formattedInstances.length,
+              connectedInstances: connectedInstances.length
+            });
+                    } else {
+            console.log('[INSTANCES] ⚠️ Nenhuma instância encontrada');
+          setInstances([]);
+            setConnectionStatus({ connected: false, totalInstances: 0, connectedInstances: 0 });
+              }
         } else {
-          document.body.classList.remove('ios-device');
+          console.error('[INSTANCES] ❌ Erro ao carregar instâncias:', response.status);
+        setInstances([]);
+          setConnectionStatus({ connected: false, totalInstances: 0, connectedInstances: 0 });
+        }
+      } catch (error) {
+        console.error('[INSTANCES] ❌ Erro ao buscar instâncias:', error);
+      setInstances([]);
+        setConnectionStatus({ connected: false, totalInstances: 0, connectedInstances: 0 });
+      }
+  }, []);
+
+  useEffect(() => {
+    if (currentUser?.id) {
+      fetchInstances();
+    }
+    
+    // Simular última sincronização
+    setLastSyncTime(new Date().toISOString());
+  }, [currentUser?.id, fetchInstances])
+
+  // ✅ HANDLERS SIMPLIFICADOS - Apenas coordenação (igual ao backup)
+  const handleContactSelect = (contact) => {
+    console.log('[CONTACT] 📱 Selecionando contato:', contact.name || contact.push_name);
+    console.log('[CONTACT] 🔍 Contato atual:', currentContact?.name || currentContact?.push_name);
+    console.log('[CONTACT] 🔍 Remote JID atual:', currentContact?.remote_jid);
+    console.log('[CONTACT] 🔍 Remote JID novo:', contact?.remote_jid);
+    console.log('[CONTACT] 📊 Total de contatos disponíveis:', displayContacts.length);
+    console.log('[CONTACT] 📊 Instância selecionada:', selectedInstanceId);
+    
+    // ✅ UX: PROTEÇÃO - Se for o mesmo contato, não recarregar
+    if (currentContact?.remote_jid === contact?.remote_jid) {
+      console.log('[CONTACT] ⚠️ Mesmo contato já selecionado - mantendo histórico');
+        return;
+      }
+      
+    console.log('[CONTACT] ✅ Contato DIFERENTE detectado - carregando novo histórico');
+    
+    // ✅ UX: Transição imediata sem estados de carregamento visíveis
+    actions.setCurrentContact(contact);
+    setNewMessage('');
+    
+      // ✅ UX: Carregar mensagens do NOVO contato COM reset (contato diferente)
+    if (contact?.remote_jid) {
+      console.log('[CONTACT] 📩 Carregando mensagens do contato selecionado:', contact.remote_jid);
+      fetchMessages(contact.remote_jid, 1, true); // ← reset=true para contato diferente
+      startPolling();
+      } else {
+      console.error('[CONTACT] ❌ Contato sem remote_jid!');
+      stopPolling();
+    }
+  }
+
+  const handleSendMessage = async () => {
+    if (!newMessage.trim() || !currentContact || isSendingMessage) return
+
+    setIsSendingMessage(true)
+    
+    try {
+      const messageId = `temp_${Date.now()}`
+      const tempMessage = {
+        id: messageId,
+        content: newMessage,
+        from_me: true,
+        role: 'ME', // Definir como ME (mensagem nossa)
+        created_at: new Date().toISOString(),
+        temp: true
+      }
+
+      // Adicionar mensagem temporária
+      addMessage(tempMessage)
+      setNewMessage('')
+      
+      // Scroll automático
+      setTimeout(() => scrollToBottom(true), 50)
+
+      // Enviar para API (usando endpoint correto do backup)
+      const response = await fetch('/api/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          conversationId: currentContact.remote_jid,
+          content: newMessage,
+          recipientId: currentContact.phone || currentContact.remote_jid,
+          role: 'ME',
+          messageId: messageId
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.message) {
+          // Substituir mensagem temporária pela real
+          addMessage(data.message)
         }
       }
+    } catch (error) {
+      console.error('Erro ao enviar mensagem:', error)
+      actions.setError('Erro ao enviar mensagem')
+    } finally {
+      setIsSendingMessage(false)
     }
+  }
 
-    // Executar imediatamente para definir o valor inicial
-    handleResize();
+  const handleCopyMessage = useCallback((content) => {
+    copyToClipboard(content)
+  }, [copyToClipboard])
 
-    window.addEventListener('resize', handleResize)
-    return () => {
-      window.removeEventListener('resize', handleResize)
+  const handleOpenContactPanel = useCallback((contact) => {
+    console.log('[DEBUG-PANEL] 🚀 Abrindo painel lateral para contato:', contact);
+    setSelectedContactForPanel(contact)
+    setIsContactPanelOpen(true)
+    console.log('[DEBUG-PANEL] ✅ Estados atualizados - painel deve aparecer');
+  }, [])
+
+  const handleCloseContactPanel = useCallback(() => {
+    setIsContactPanelOpen(false)
+    setSelectedContactForPanel(null)
+  }, [])
+
+  // ✅ FUNÇÃO PARA BUSCAR DADOS DO LEAD POR TELEFONE
+  const fetchLeadData = useCallback(async (phone) => {
+    if (!phone) return;
+    
+    try {
+      console.log('[LEAD-DATA] 🔍 Buscando dados do lead para telefone:', phone);
+      
+      // Resetar dados anteriores
+      setContactData({
+        leadId: null,
+        saldo: null,
+        simulado: null,
+        erroConsulta: null,
+        proposta: null,
+        erroProposta: null,
+        statusProposta: null,
+        descricaoStatus: null,
+        valorProposta: null,
+        linkFormalizacao: null,
+        chavePix: null,
+        cpf: null
+      });
+      
+      // Buscar todos os leads e filtrar por telefone
+      const response = await fetch('/api/leads', {
+              credentials: 'include'
+            });
+            
+      if (response.ok) {
+        const data = await response.json();
+        console.log('[LEAD-DATA] 📊 Resposta da API:', data);
+        
+        if (data.success && data.data && data.data.length > 0) {
+          console.log('[LEAD-DATA] 📋 Leads encontrados:', data.data.length);
+          console.log('[LEAD-DATA] 🔍 Telefones nos leads:', data.data.map(l => ({ id: l.id, phone: l.phone, name: l.name })));
+          
+          // Filtrar leads por telefone
+          const lead = data.data.find(l => l.phone === phone);
+          
+          if (!lead) {
+            console.log('[LEAD-DATA] ⚠️ Nenhum lead encontrado para telefone:', phone);
+            console.log('[LEAD-DATA] 🔍 Telefone buscado:', phone);
+            console.log('[LEAD-DATA] 🔍 Telefones disponíveis:', data.data.map(l => l.phone));
+            return;
+          }
+          
+          console.log('[LEAD-DATA] ✅ Lead encontrado:', lead);
+          
+          // Atualizar dados do contato
+          setContactData(prev => ({
+            ...prev,
+            leadId: lead.id,
+            cpf: lead.cpf,
+            saldo: lead.balance,
+            simulado: lead.simulation,
+            erroConsulta: lead.balance_error,
+            erroProposta: lead.proposal_error
+          }));
+          
+          // Buscar propostas do lead
+          if (lead.id) {
+            const proposalsResponse = await fetch(`/api/leads/${lead.id}/proposals`, {
+          credentials: 'include'
+        });
+        
+            if (proposalsResponse.ok) {
+              const proposalsData = await proposalsResponse.json();
+              if (proposalsData.success && proposalsData.data && proposalsData.data.length > 0) {
+                const proposal = proposalsData.data[0]; // Pegar a proposta mais recente
+                
+                console.log('[LEAD-DATA] ✅ Proposta encontrada:', proposal);
+                
+                setContactData(prev => ({
+            ...prev,
+                  proposta: proposal.proposal_id,
+                  statusProposta: proposal.status,
+                  descricaoStatus: proposal.status_description,
+                  valorProposta: proposal.value,
+                  linkFormalizacao: proposal['Link de formalização'],
+                  chavePix: proposal.chavePix
+          }));
+          }
+        }
+      }
+            } else {
+          console.log('[LEAD-DATA] ⚠️ Nenhum lead encontrado na resposta da API');
+        }
+        } else {
+        console.error('[LEAD-DATA] ❌ Erro ao buscar lead:', response.status);
+            }
+          } catch (error) {
+      console.error('[LEAD-DATA] ❌ Erro ao buscar dados do lead:', error);
     }
   }, [])
 
-  // Adicionar estilos CSS para o iOS
-  useEffect(() => {
-    // Remover margens e paddings do corpo da página
-    document.body.style.margin = '0';
-    document.body.style.padding = '0';
-    document.body.style.overflow = 'hidden';
-    document.documentElement.style.margin = '0';
-    document.documentElement.style.padding = '0';
-    document.documentElement.style.overflow = 'hidden';
+  // ✅ FUNÇÃO PARA TOGGLE AI (igual ao backup)
+  const toggleAutoResponse = async (contactId, e) => {
+    e.stopPropagation();
     
-    // Criar um estilo para dispositivos iOS - usando textContent para evitar XSS
-    const style = document.createElement('style');
-    style.textContent = `
-      .ios-device .message-input-container {
-        padding-bottom: env(safe-area-inset-bottom, 20px);
-      }
+    try {
+      console.log('[TOGGLE-AI] 🚀 Alternando AI para contato:', contactId);
       
-      html, body {
-        margin: 0 !important;
-        padding: 0 !important;
-        overflow: hidden !important;
-        height: 100% !important;
-      }
-      
-      .message-input-container {
-        margin-bottom: 0 !important;
-        padding-bottom: 0 !important;
-      }
-      
-      .container.mx-auto {
-        margin-bottom: 0 !important;
-        padding-bottom: 0 !important;
-      }
-    `;
-    document.head.appendChild(style);
+      const response = await fetch(`/api/contacts/${contactId}/toggle-ai`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+      const data = await response.json();
+      if (data.success) {
+          console.log('[TOGGLE-AI] ✅ AI toggle atualizado:', data.message);
+          
+          // ✅ Atualizar o estado do contato na lista local imediatamente
+          updateContact(contactId, { agent_state: data.contact.agent_state });
+          console.log('[TOGGLE-AI] 🔄 Estado local atualizado para:', data.contact.agent_state);
+          
+          // Mostrar feedback visual temporário
+          const button = e.target.closest('button');
+          if (button) {
+            const originalText = button.textContent;
+            button.textContent = data.contact.agent_state === 'ai' ? 'AI ✓' : 'AI';
+          setTimeout(() => {
+              button.textContent = originalText;
+            }, 1000);
+          }
+          }
+        } else {
+        const errorData = await response.json();
+        console.error('[TOGGLE-AI] ❌ Erro na resposta:', errorData.message);
+        actions.setError(errorData.message || 'Erro ao alternar AI');
+        }
+      } catch (error) {
+      console.error('[TOGGLE-AI] ❌ Erro ao alternar AI:', error);
+      actions.setError('Erro de conexão ao alternar AI');
+    }
+  }
+
+  // ✅ FUNÇÕES PARA SELETOR DE INSTÂNCIAS
+  const getSelectedInstanceText = useCallback(() => {
+    if (contactsLoading.contacts) return 'Carregando...';
+    if (selectedInstanceId === 'all') return 'Todas as instâncias';
     
-    return () => {
-      document.head.removeChild(style);
-      document.body.style.margin = '';
-      document.body.style.padding = '';
-      document.body.style.overflow = '';
-      document.documentElement.style.margin = '';
-      document.documentElement.style.padding = '';
-      document.documentElement.style.overflow = '';
-    };
+    const selectedInstance = instances.find(instance => instance.id === selectedInstanceId);
+    return selectedInstance?.agent_name || selectedInstance?.instance_name || `Instância ${selectedInstanceId}`;
+  }, [contactsLoading.contacts, selectedInstanceId, instances]);
+
+  const handleInstanceSelect = useCallback((instanceId) => {
+    console.log(`[INSTANCE-SELECT] 🔄 Selecionando instância: ${instanceId}`);
+    console.log(`[INSTANCE-SELECT] 📊 Estado atual selectedInstanceId: ${selectedInstanceId}`);
+    console.log(`[INSTANCE-SELECT] 📊 Contato atual: ${currentContact?.name || 'Nenhum'}`);
+    
+    // ✅ CORREÇÃO: Limpar contato selecionado quando mudar de instância
+    if (currentContact) {
+      console.log(`[INSTANCE-SELECT] 🧹 Limpando contato selecionado: ${currentContact.name}`);
+      actions.setCurrentContact(null);
+    }
+    
+    setSelectedInstanceId(instanceId);
+    setDropdownOpen(false);
+    
+    // ✅ REMOVIDO: fetchContacts manual - o useContacts já gerencia via useEffect
+    console.log(`[INSTANCE-SELECT] 📞 Instância selecionada, useContacts irá recarregar automaticamente`);
+  }, [selectedInstanceId, currentContact, actions]);
+
+  const formatLastSyncTime = useCallback((timestamp) => {
+    if (!timestamp) return '';
+    const date = new Date(timestamp);
+      const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    
+    if (diffMins < 1) return 'Agora';
+    if (diffMins < 60) return `${diffMins}min`;
+    if (diffMins < 1440) return `${Math.floor(diffMins / 60)}h`;
+    return date.toLocaleDateString('pt-BR');
   }, []);
 
-  // Adicionar estilos globais para customizar as barras de scroll
+  // ✅ SCROLL INFINITO PARA LISTA DE CONVERSAS
+  const handleContactsScrollImmediate = useCallback((e) => {
+    const container = e.target;
+    const { scrollTop, scrollHeight, clientHeight } = container;
+    
+    // ✅ Detectar quando está próximo do final (100px do bottom)
+    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
+    
+    if (isNearBottom && !contactsLoading.moreContacts && pagination.hasMoreContacts && currentUser) {
+      console.log('[CONTACTS] 🔄 Próximo ao final da lista - carregando mais contatos');
+      loadMoreContacts();
+    }
+  }, [contactsLoading.moreContacts, pagination.hasMoreContacts, currentUser, loadMoreContacts]);
+  
+  const handleContactsScrollDebounced = useCallback((e) => {
+    // ✅ Ações pesadas com debounce se necessário
+    // Por enquanto não há ações pesadas para contatos
+  }, []);
+  
+  const handleContactsScroll = useCallback((e) => {
+    // ✅ Executar ações imediatas
+    handleContactsScrollImmediate(e);
+    
+    // ✅ Debounce para ações pesadas (150ms)
+    if (contactsScrollTimeoutRef.current) {
+      clearTimeout(contactsScrollTimeoutRef.current);
+    }
+    
+    contactsScrollTimeoutRef.current = setTimeout(() => {
+      handleContactsScrollDebounced(e);
+    }, 150);
+  }, [handleContactsScrollImmediate, handleContactsScrollDebounced]);
+
+  // ✅ ESTILO PERSONALIZADO DA SCROLLBAR
   useEffect(() => {
     const style = document.createElement('style');
     style.textContent = `
@@ -743,2892 +716,458 @@ export default function Chat() {
       }
     `;
     document.head.appendChild(style);
+
     return () => {
-      document.head.removeChild(style);
+      // Limpar o estilo quando o componente desmontar
+      if (document.head.contains(style)) {
+        document.head.removeChild(style);
+      }
     };
   }, []);
 
-  // Função para testar a conexão com a API
+  // ✅ CLEANUP DOS TIMEOUTS
   useEffect(() => {
-    async function checkConnection() {
-      try {
-        console.log("Testando conexão com a API...");
-        const response = await fetch('/api/contacts/count', {
-          credentials: 'include'
-        });
-        
-        if (!response.ok) {
-          throw new Error(`Erro ao verificar conectividade: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        
-        setConnectionStatus({
-          connected: data.success,
-          timestamp: new Date().toISOString(),
-          count: data.count
-        });
-        
-        // Teste de conexão concluído
-      } catch (error) {
-        console.error("Erro ao testar conexão:", error);
-        setConnectionStatus({
-          connected: false,
-          error: error.message,
-          timestamp: new Date().toISOString()
-        });
+    return () => {
+      if (scrollTimeoutRef.current) {
+        clearTimeout(scrollTimeoutRef.current);
+        scrollTimeoutRef.current = null;
       }
-    }
-    
-    checkConnection();
+      
+      if (contactsScrollTimeoutRef.current) {
+        clearTimeout(contactsScrollTimeoutRef.current);
+        contactsScrollTimeoutRef.current = null;
+      }
+    };
   }, []);
 
-  // Função auxiliar para obter o usuário atual via API
-  const fetchUserFromApi = async () => {
+  // ✅ BUSCAR DADOS DO LEAD QUANDO CONTATO É SELECIONADO
+  useEffect(() => {
+    console.log('[DEBUG] 🔍 useEffect currentContact:', currentContact);
+    console.log('[DEBUG] 🔍 currentContact?.phone:', currentContact?.phone);
+    console.log('[DEBUG] 🔍 currentContact?.remote_jid:', currentContact?.remote_jid);
+    
+    // Extrair telefone do contato (phone ou do remote_jid)
+    const phone = currentContact?.phone || (currentContact?.remote_jid ? currentContact.remote_jid.split('_')[1] : null);
+    
+    if (phone) {
+      console.log('[DEBUG] ✅ Chamando fetchLeadData com telefone:', phone);
+      fetchLeadData(phone);
+    } else {
+      console.log('[DEBUG] ⚠️ Não há telefone no contato atual');
+    }
+  }, [currentContact?.phone, currentContact?.remote_jid, fetchLeadData]);
+
+  // ✅ FUNÇÃO PARA FORMATAR MOEDA (igual ao backup)
+  const formataMoeda = useCallback((valor) => {
+    if (!valor || valor === null || valor === undefined || valor === '') return null;
+    
+    // Se já é uma string formatada, retornar
+    if (typeof valor === 'string' && valor.includes('R$')) return valor;
+    
+    // Converter para número
+    const numero = typeof valor === 'string' ? parseFloat(valor.replace(/[^\d,.-]/g, '').replace(',', '.')) : valor;
+    
+    if (isNaN(numero)) return null;
+    
+    return new Intl.NumberFormat('pt-BR', {
+      style: 'currency',
+      currency: 'BRL'
+    }).format(numero);
+  }, []);
+
+  // ✅ FUNÇÕES PARA BOTÕES DO PAINEL LATERAL (baseadas no Dashboard)
+  const handleEditLead = useCallback(async (leadData) => {
+    console.log('[CHAT] 📝 Editando lead:', leadData);
     try {
-      console.log("Iniciando fetchUserFromApi...");
-      const data = await cachedFetch('/api/auth/me', {
+      // Buscar dados completos do lead
+      const response = await fetch(`/api/leads/${leadData.id}`, {
         credentials: 'include'
       });
       
-      if (!data || !data.success) {
-        if (data && data.status === 401) {
-          // Redirecionar para a página de login se não estiver autenticado
-          navigate('/login?error=auth_required&message=Você precisa estar autenticado para acessar o chat.');
-          return null;
-        }
-        
-        console.error(`Erro ao buscar usuário:`, data);
-        throw new Error(`Erro ao buscar usuário: ${data?.message || 'Erro desconhecido'}`);
-      }
-  
-      
-      // Verificar e extrair o objeto user da resposta
-      if (data.success && data.user) {
-
-        return data.user; // Retornar o objeto user, não a resposta completa
-      } else if (data.id) {
-        // Se a API retornar o usuário diretamente sem wrapper
-
-        return data;
-      } else {
-        console.error('Formato de resposta inesperado:', data);
-        throw new Error('Formato de resposta inválido da API');
-      }
-    } catch (error) {
-      console.error('Erro ao buscar usuário da API:', error);
-      throw error;
-    }
-  }
-
-  // Obter o usuário atual
-  useEffect(() => {
-    async function getCurrentUser() {
-      try {
-        setLoading('contacts', true);
-        setError(null);
-        
-        // Tenta obter do backend via API
-        const userData = await fetchUserFromApi();
-        
-        if (userData && userData.id) {
-          // Usuário autenticado
-          setCurrentUser(userData);
-          
-          // Após obter o usuário, atualiza o status da conexão para garantir
-          try {
-            const response = await fetch('/api/contacts/count', {
-              credentials: 'include'
-            });
-            const data = await response.json();
-            
-            setConnectionStatus(prev => ({
-              ...prev,
-              connected: data.success,
-              timestamp: new Date().toISOString(),
-              withUser: true
-            }));
-          } catch (error) {
-            console.error("Erro ao verificar contatos:", error);
+      if (response.ok) {
+      const data = await response.json();
+        if (data.success) {
+          setEditingLead(data.data);
+          setEditModalOpen(true);
           }
-        } else if (userData === null) {
-          // Usuário não autenticado - o redirecionamento já ocorreu em fetchUserFromApi
-          return;
-        } else {
-          console.error("Dados de usuário recebidos, mas sem ID válido:", userData);
-          throw new Error('Dados de usuário inválidos');
         }
-      } catch (error) {
-        console.error('Erro ao obter usuário:', error);
-        setError(`Erro ao obter dados do usuário: ${error.message}. Por favor, tente novamente.`);
-      } finally {
-        setLoading('contacts', false);
-      }
+    } catch (error) {
+      console.error('[CHAT] ❌ Erro ao buscar dados do lead:', error);
     }
-    
-    getCurrentUser();
-  }, [navigate]);
-
-  // Buscar o modo do agente ao montar o componente
-  useEffect(() => {
-    async function fetchAgentMode() {
-      try {
-        const res = await apiFetch('/api/agents/mode');
-        if (!res) return;
-        const json = await res.json();
-        if (json.success && json.data?.mode) {
-          setAgentMode(json.data.mode);
-        }
-      } catch (err) {
-        console.error('Erro ao buscar modo do agente:', err);
-      }
-    }
-    fetchAgentMode();
   }, []);
 
-  // ✅ REMOVIDO: Funções duplicadas de sincronização
-  // Backend agora coordena a sincronização automaticamente
-
-  // Função para verificar se o agente AI está ativo
-  const isAgentAiActive = (contact) => {
-    if (!contact) return false;
-    return contact.agent_state === 'ai';
-  };
-
-  // Função para obter o texto de exibição da instância selecionada
-  const getSelectedInstanceText = () => {
-    if (loadingState.instances) return 'Carregando...';
-    if (selectedInstanceId === 'all') return 'Todas as instâncias';
-    
-    const selectedInstance = instances.find(instance => instance.id === selectedInstanceId);
-    return selectedInstance?.agent_name || selectedInstance?.instance_name || `Instância ${selectedInstanceId}`;
-  };
-
-  // Função para selecionar uma instância
-  const handleInstanceSelect = (instanceId) => {
-    console.log(`[INSTANCE-SELECT] ��� Selecionando instância: ${instanceId}`);
-    
-    // ✅ LIMPAR CONTATO ATUAL quando instância muda
-    if (currentContact) {
-      console.log(`[INSTANCE-SELECT] ��� Limpando contato atual: ${currentContact.name || currentContact.push_name}`);
-      setCurrentContact(null);
-    }
-    
-    setSelectedInstanceId(instanceId);
-    setDropdownOpen(false);
-  };
-
-  // Função para obter o nome da instância de um contato
-  const getContactInstanceName = (contact) => {
-
-    
-    // Se já temos instance_id (quando filtrado por instância específica ou quando o contato tem instance_id)
-    if (contact.instance_id) {
-      const instance = instances.find(inst => inst.id === contact.instance_id);
-      const result = instance?.agent_name || instance?.instance_name || null;
-
-      return result;
-    }
-    
-    // Se estamos vendo "todas as instâncias" e o contato não tem instance_id, usar o mapa de contatos
-    if (selectedInstanceId === 'all') {
-      const instanceId = contactInstances[contact.remote_jid];
-
-      
-      if (instanceId) {
-        const instance = instances.find(inst => inst.id === instanceId);
-        const instanceName = instance?.agent_name || instance?.instance_name || null;
-        
-
-        return instanceName;
-      } else {
-
-      }
-    }
-    
-
-    return null;
-  };
-
-  // Função para formatar o nome do contato com instância (quando aplicável)
-  const formatContactName = (contact) => {
-    const baseName = contact.name || contact.push_name || 'Contato';
-    
-    // Se "Todas as instâncias" estiver selecionada, incluir nome da instância
-    if (selectedInstanceId === 'all') {
-      const instanceName = getContactInstanceName(contact);
-      if (instanceName) {
-        return { name: baseName, instanceName: instanceName };
-      }
-    }
-    
-    return { name: baseName, instanceName: null };
-  };
-
-  // Função para buscar instâncias dos contatos (SIMPLIFICADA - usar instance_id direto da tabela contacts)
-  const fetchContactInstances = async (contacts) => {
+  // ✅ FUNÇÃO PARA BUSCAR BANCOS DISPONÍVEIS
+  const fetchAvailableBanks = useCallback(async () => {
     try {
-      console.log('[CONTACT-INSTANCES] 🔍 Processando instâncias dos contatos...');
-      
-      const instanceMap = {};
-      
-      // Usar diretamente o instance_id da tabela contacts
-      contacts.forEach((contact) => {
-        if (contact.instance_id) {
-          instanceMap[contact.remote_jid] = contact.instance_id;
-          console.log(`[CONTACT-INSTANCES] Contato ${contact.name || contact.push_name} -> Instância ${contact.instance_id}`);
-        }
-      });
+      setLoadingBanks(true);
+      console.log('[CHAT] Iniciando busca de bancos...');
 
-      console.log(`[CONTACT-INSTANCES] Mapa de instâncias criado:`, Object.keys(instanceMap).length, 'contatos com instância');
-      
-      // Verificar se há instâncias diferentes
-      const uniqueInstances = [...new Set(Object.values(instanceMap))];
-      
-      if (uniqueInstances.length > 1) {
-        console.log('[CONTACT-INSTANCES] Múltiplas instâncias detectadas, mudando para "todas as instâncias"');
-        // Se ainda não estava em "all", mudar automaticamente
-        if (selectedInstanceId !== 'all') {
-          setSelectedInstanceId('all');
-        }
-      } else if (uniqueInstances.length === 1) {
-        console.log('[CONTACT-INSTANCES] Uma única instância detectada');
-      } else {
-        console.log('[CONTACT-INSTANCES] Nenhuma instância detectada nos contatos');
-      }
-      
-      setContactInstances(instanceMap);
-      
-    } catch (error) {
-      console.warn('[CONTACT-INSTANCES] Erro ao processar instâncias dos contatos (não crítico):', error.message);
-      setContactInstances({});
-    }
-  };
-
-  // Função para buscar instâncias do usuário
-  const fetchInstances = async () => {
-    try {
-      setLoading('instances', true);
-      
-      const response = await fetch('/api/whatsapp-credentials', {
-        method: 'GET',
-        credentials: 'include',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (!response?.ok) {
-        if (response?.status === 401) {
-          navigate('/login?error=session_expired&message=Sua sessão expirou. Por favor, faça login novamente.');
-          return;
-        }
-        
-        // Se não há credenciais (404) ou outro erro, não é crítico
-        if (response?.status === 404) {
-          console.log('[INSTANCES] Nenhuma credencial WhatsApp encontrada - usuário pode não ter configurado ainda');
-          setInstances([]);
-          return;
-        }
-        
-        // Para outros erros, apenas logar sem quebrar a aplicação
-        console.warn(`[INSTANCES] Aviso: ${response?.status || 'desconhecido'} ao buscar instâncias - continuando sem instâncias`);
-        setInstances([]);
-        return;
-      }
-      
-      const data = await response.json();
-      
-      if (data.success && data.data) {
-        // ✅ Filtrar instâncias ativas (incluindo mais status válidos)
-        const activeInstances = data.data.filter(instance => {
-          // Considerar instâncias com status válidos para uso
-          const validStatuses = ['connected', 'open', 'pending', 'ready'];
-          const isActive = validStatuses.includes(instance.status);
-          
-          return isActive;
-        });
-        
-        setInstances(activeInstances);
-        
-        if (activeInstances.length > 0) {
-          console.log(`✅ ${activeInstances.length} instância(s) WhatsApp encontrada(s)`);
-        } else {
-          console.log('[INSTANCES] Nenhuma instância ativa encontrada');
-          setInstances([]);
-        }
-      } else {
-        console.log('[INSTANCES] Resposta da API sem dados de instâncias');
-        setInstances([]);
-      }
-    } catch (error) {
-      console.warn('[INSTANCES] Erro ao buscar instâncias (não crítico):', error.message);
-      setInstances([]);
-      // Não mostrar erro para não interferir na UX se não houver instâncias
-    } finally {
-      setLoading('instances', false);
-    }
-  };
-
-  // ✅ REMOVIDO: Função de sincronização duplicada
-  // Backend agora coordena a sincronização automaticamente
-
-  // Função otimizada para buscar contatos com paginação
-  const fetchContacts = async (instanceId = null, page = 1, reset = true) => {
-    try {
-      if (reset) {
-          setLoading('contacts', true);
-        setError(null);
-          setPagination('contactsPage', 1);
-          setPagination('hasMoreContacts', true);
-      } else {
-          setLoading('moreContacts', true);
-      }
-      
-      const instanceFilter = instanceId && instanceId !== 'all' ? instanceId : null;
-      console.log(`[CONTACTS] Buscando página ${page} (${CONTACTS_PER_PAGE} contatos)${instanceFilter ? ` - instância: ${instanceFilter}` : ' - todas'}`);
-      
-      // Construir URL da API com paginação e filtro de instância
-      let apiUrl = `/api/contacts?page=${page}&limit=${CONTACTS_PER_PAGE}`;
-      if (instanceFilter) {
-        apiUrl += `&instance=${instanceFilter}`;
-        const instanceName = instances.find(i => i.id === instanceFilter)?.agent_name || 'Desconhecida';
-        console.log(`[CONTACTS] 🔍 Filtrando por instância: ${instanceName} (${instanceFilter})`);
-      }
-      
-        const startTime = Date.now();
-      const response = await fetch(apiUrl, {
-          credentials: 'include'
-        });
-        
-        if (!response.ok) {
-          if (response.status === 401) {
-            navigate('/login?error=session_expired&message=Sua sessão expirou. Por favor, faça login novamente.');
-            return;
-          }
-          
-          // Se não há contatos (404) ou outro erro, não é crítico
-          if (response.status === 404) {
-            console.log('[CONTACTS] Nenhum contato encontrado - pode ser primeiro acesso');
-            setContacts([]);
-            setDisplayContacts([]);
-            setPagination('hasMoreContacts', false);
-            return;
-          }
-          
-          const errorData = await response.json();
-          if (response.status === 500 && instanceFilter) {
-            console.error(`[CONTACTS] ❌ Erro 500 para instância ${instanceFilter}: ${errorData.message}`);
-            throw new Error(`Erro ao filtrar por instância "${instanceFilter}": ${errorData.message}`);
-          }
-          throw new Error(errorData.message || `Erro ${response.status} ao buscar contatos`);
-        }
-        
-        const data = await response.json();
-        const duration = Date.now() - startTime;
-        
-              // Página carregada com sucesso
-        
-        if (!data.success) {
-          throw new Error(data.message || 'Erro ao buscar contatos');
-        }
-        
-        const contactsList = data.contacts || [];
-        // ✅ Sanitizar contatos para corrigir dados inconsistentes
-        const sanitizedContacts = contactsList.map(sanitizeContact).filter(Boolean);
-        // ✅ Backend já coordena a sincronização automaticamente
-        const hasMore = data.hasMore || sanitizedContacts.length === CONTACTS_PER_PAGE;
-      
-        if (sanitizedContacts.length > 0) {
-          // Buscar última mensagem para exibição (não para ordenação)
-        const contactsWithLastMessagePromises = sanitizedContacts.map(async (contact) => {
-          try {
-            const messagesResponse = await fetch(`/api/chat/messages/${contact.remote_jid}/last`, {
-              credentials: 'include'
-            });
-            
-            if (messagesResponse.ok) {
-              const messageData = await messagesResponse.json();
-              if (messageData.success && messageData.message) {
-                return {
-                  ...contact,
-                  last_message_time: messageData.message.timestamp || messageData.message.created_at,
-                  last_message: messageData.message.content
-                };
-              }
-            }
-          } catch (error) {
-              // Silenciar erros individuais
-          }
-          return contact;
-        });
-        
-        const contactsWithLastMessages = await Promise.all(contactsWithLastMessagePromises);
-        
-          // Backend já ordena por update_at - manter ordem original
-          const sortedContacts = contactsWithLastMessages;
-          
-
-        
-        if (reset) {
-          // Primeira carga - substituir lista
-          setContacts(sortedContacts);
-          setDisplayContacts(sortedContacts);
-          
-          // Buscar instâncias apenas da primeira página
-          if (instances.length > 0) {
-            console.log('[CONTACTS] 🔍 Buscando instâncias dos contatos carregados...');
-            fetchContactInstances(sortedContacts);
-          } else {
-            console.log('[CONTACTS] ⏸️ Nenhuma instância disponível - primeiro acesso');
-          }
-          
-          // ✅ PROTEÇÃO CRÍTICA: Não sobrescrever contato durante carregamento inicial
-          if (!isMobileView && sortedContacts.length > 0 && !isInitialLoad && !currentContact) {
-            const firstContact = sortedContacts[0];
-            setCurrentContact(firstContact);
-            console.log('[CONTACTS] ✅ Contato auto-selecionado:', firstContact.push_name || firstContact.name);
-            
-            // ✅ CORREÇÃO: Marcar como carregamento inicial para ativar ancoragem automática
-            setLoading('initialLoad', true);
-            
-            // ✅ CORREÇÃO: Carregar mensagens do contato auto-selecionado
-            if (firstContact?.remote_jid) {
-              console.log('[CONTACTS] 📩 Carregando mensagens do contato auto-selecionado:', firstContact.remote_jid);
-              fetchMessages(firstContact.remote_jid, 1, true);
-            }
-          } else if (isInitialLoad) {
-            console.log('[CONTACTS] ⚠️ Bloqueada auto-seleção durante carregamento inicial');
-          } else if (currentContact) {
-            console.log('[CONTACTS] ⚠️ Bloqueada auto-seleção - contato já selecionado:', currentContact.push_name || currentContact.name);
-          } else if (sortedContacts.length === 0) {
-            console.log('[CONTACTS] ⏸️ Nenhum contato encontrado - primeiro acesso');
-          }
-        } else {
-          // Carregamento adicional - anexar à lista existente (backend já ordena)
-          setContacts(prevContacts => {
-            const newContacts = [...prevContacts, ...sortedContacts];
-            const uniqueContacts = newContacts.filter((contact, index, self) => 
-              index === self.findIndex(c => c.remote_jid === contact.remote_jid)
-            );
-            return uniqueContacts; // Backend já ordena por update_at
-          });
-          
-          setDisplayContacts(prevContacts => {
-            const newContacts = [...prevContacts, ...sortedContacts];
-            const uniqueContacts = newContacts.filter((contact, index, self) => 
-              index === self.findIndex(c => c.remote_jid === contact.remote_jid)
-            );
-            return uniqueContacts; // Backend já ordena por update_at
-          });
-          
-          // Buscar instâncias dos novos contatos
-          if (instances.length > 0) {
-            console.log('[CONTACTS] 🔍 Buscando instâncias dos novos contatos...');
-            fetchContactInstances(sortedContacts);
-          } else {
-            console.log('[CONTACTS] ⏸️ Nenhuma instância disponível - primeiro acesso');
-          }
-        }
-        
-        setPagination('hasMoreContacts', hasMore);
-        setPagination('contactsPage', page);
-        
-                } else {
-        if (reset) {
-          if (instanceFilter) {
-            console.log(`[CONTACTS] ✅ Nenhum contato encontrado para a instância "${instanceFilter}"`);
-            console.log(`[CONTACTS] 💡 Esta instância não possui conversas ativas ainda`);
-          } else {
-            console.log('[CONTACTS] Nenhum contato encontrado');
-          }
-          setContacts([]);
-          setDisplayContacts([]);
-        }
-        setPagination('hasMoreContacts', false);
-        }
-      } catch (error) {
-      console.error('[CONTACTS] Erro ao buscar contatos:', error);
-        // ✅ Usar tratamento robusto de erro
-        handleNetworkError(error, 'buscar contatos');
-      } finally {
-        setLoading('contacts', false);
-        setLoading('moreContacts', false);
-    }
-  };
-
-  // Buscar instâncias quando o usuário estiver disponível
-  useEffect(() => {
-    if (currentUser) {
-      fetchInstances();
-    }
-  }, [currentUser]);
-
-  // Recarregar contatos quando a instância selecionada mudar
-  useEffect(() => {
-    if (currentUser) {
-      // ✅ PROTEÇÃO: Não interferir durante carregamento inicial
-      if (isInitialLoad) {
-        console.log('[INSTANCE-CHANGE] ⏸️ Adiando mudança de instância - carregamento inicial em andamento');
-        return;
-      }
-      
-      // ✅ UX: Não recarregar se não há instâncias (primeiro acesso)
-      if (instances.length === 0) {
-        console.log('[INSTANCE-CHANGE] ⏸️ Nenhuma instância disponível - primeiro acesso');
-        return;
-      }
-      
-      // Limpar mapa de instâncias apenas quando NÃO for "todas as instâncias"
-      if (selectedInstanceId !== 'all') {
-        setContactInstances({});
-      }
-      // Reset pagination states
-      setPagination('contactsPage', 1);
-      setPagination('hasMoreContacts', true);
-      
-      // ✅ Delay para evitar conflito com ancoragem
-      const delayedFetchTimeoutId = setTimeout(() => {
-        fetchContacts(selectedInstanceId === 'all' ? null : selectedInstanceId, 1, true);
-      }, 200); // 200ms de delay
-      timeoutsRef.current.push(delayedFetchTimeoutId);
-    }
-  }, [selectedInstanceId, currentUser, instances.length]);
-
-  // Buscar instâncias dos contatos quando as instâncias forem carregadas
-  useEffect(() => {
-    if (instances.length > 0 && contacts.length > 0 && Object.keys(contactInstances).length === 0) {
-      console.log('[CONTACT-INSTANCES] 🔍 Buscando instâncias dos contatos (primeira vez)...');
-      fetchContactInstances(contacts);
-    } else if (instances.length === 0 && contacts.length > 0) {
-      console.log('[CONTACT-INSTANCES] ⏸️ Nenhuma instância disponível - primeiro acesso');
-    }
-  }, [instances, contacts, contactInstances]);
-
-
-
-  // Buscar instâncias dos contatos quando as instâncias do usuário forem carregadas
-  useEffect(() => {
-    if (instances.length > 0 && contacts.length > 0) {
-      console.log('[CONTACT-INSTANCES] 🔍 Buscando instâncias dos contatos...');
-      
-      // ✅ Delay para evitar conflito com ancoragem
-      const delayedInstancesFetchTimeoutId = setTimeout(() => {
-        fetchContactInstances(contacts);
-      }, 300); // 300ms de delay
-      timeoutsRef.current.push(delayedInstancesFetchTimeoutId);
-    } else if (instances.length === 0 && contacts.length > 0) {
-      console.log('[CONTACT-INSTANCES] ⏸️ Nenhuma instância disponível - primeiro acesso');
-    }
-  }, [instances, contacts]);
-
-  // ✅ Handler de scroll para contatos com debounce
-  const handleContactsScrollImmediate = (e) => {
-    const container = e.target;
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    
-    // ✅ Detectar quando está próximo do final (100px do bottom)
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-    
-    if (isNearBottom && hasMoreContacts && !isLoadingMoreContacts && currentUser) {
-      console.log('[CONTACTS] 🔄 Próximo ao final da lista - carregando mais contatos');
-      loadMoreContacts();
-    }
-  };
-  
-  const handleContactsScrollDebounced = (e) => {
-    // ✅ Ações pesadas com debounce se necessário
-    // Por enquanto não há ações pesadas para contatos
-  };
-  
-  const handleContactsScroll = (e) => {
-    // ✅ Executar ações imediatas
-    handleContactsScrollImmediate(e);
-    
-    // ✅ Debounce para ações pesadas (150ms)
-    if (contactsScrollTimeoutRef.current) {
-      clearTimeout(contactsScrollTimeoutRef.current);
-    }
-    
-    contactsScrollTimeoutRef.current = setTimeout(() => {
-      handleContactsScrollDebounced(e);
-    }, 150);
-  };
-
-  // Função para carregar mais contatos (scroll infinito)
-  const loadMoreContacts = () => {
-    if (!isLoadingMoreContacts && hasMoreContacts && currentUser) {
-      const nextPage = contactsPage + 1;
-      console.log(`[CONTACTS] 📄 Carregando mais contatos - página ${nextPage}`);
-      fetchContacts(selectedInstanceId === 'all' ? null : selectedInstanceId, nextPage, false);
-    }
-  };
-
-  // Função para carregar mensagens antigas (scroll infinito)
-  const loadMoreMessages = () => {
-    console.log('[SCROLL-INFINITO] 🔄 Tentativa de carregar mais mensagens:', {
-      isLoadingMoreMessages,
-      hasMoreMessages,
-      currentContact: currentContact?.remote_jid,
-      messagesPage,
-      allowInfiniteScroll
-    });
-    
-    if (!isLoadingMoreMessages && hasMoreMessages && currentContact) {
-      setLoading('moreMessages', true);
-      const nextPage = messagesPage + 1;
-      console.log(`[SCROLL-INFINITO] ✅ Carregando página ${nextPage} de mensagens antigas`);
-      fetchMessages(currentContact.remote_jid, nextPage, false);
-    } else {
-      console.log('[SCROLL-INFINITO] ❌ Condições não atendidas para carregar mais mensagens');
-    }
-  };
-
-  // ✅ Função UNIFICADA para scroll com opções flexíveis
-  const scrollToPosition = (position = 'bottom', options = {}) => {
-    const container = messagesContainerRef.current;
-    if (!container) return;
-    
-    const { immediate = false, smooth = false, duringInitialLoad = false } = options;
-    
-    // ✅ Não interferir durante carregamento inicial (comportamento original)
-    if (!duringInitialLoad && isInitialLoad) return;
-    
-    if (position === 'bottom') {
-      const maxScroll = container.scrollHeight - container.clientHeight;
-      
-      if (immediate) {
-        // ✅ Scroll instantâneo sem animação (comportamento original de scrollToBottom)
-        container.scrollTop = maxScroll;
-      } else if (smooth) {
-        // ✅ Scroll suave (opção nova)
-        container.scrollTo({ top: maxScroll, behavior: 'smooth' });
-      } else {
-        // ✅ Scroll padrão (comportamento original de forceScrollToEnd)
-        container.scrollTop = maxScroll;
-      }
-      
-      // ✅ Manter comportamentos originais
-      setIsAtBottom(true);
-      setUnreadCount(0);
-    }
-  };
-
-  // ✅ Função para scroll INSTANTÂNEO para o final (mensagens recentes) - MANTIDA PARA COMPATIBILIDADE
-  const scrollToBottom = () => {
-    scrollToPosition('bottom', { immediate: true });
-  };
-
-  // ✅ Função com debounce para scroll - MANTIDA PARA COMPATIBILIDADE
-  const debouncedScrollToEnd = debounce(() => {
-    scrollToPosition('bottom', { immediate: true });
-  }, 100);
-
-  // ✅ Função para forçar ancoragem no final - MANTIDA PARA COMPATIBILIDADE
-  const forceScrollToEnd = () => {
-    scrollToPosition('bottom', { immediate: true });
-    return () => scrollToPosition('bottom', { immediate: true });
-  };
-
-  // ✅ SEGURANÇA: Função utilitária para sanitizar mensagens do banco (corrige dados inconsistentes)
-  const sanitizeMessage = (msg) => {
-    if (!msg || typeof msg !== 'object') return null;
-    
-    // ✅ Corrigir role NULL ou inválido (Bug encontrado: 5 mensagens com role NULL)
-    let role = msg.role;
-    if (!role || !['ME', 'AI', 'USER'].includes(role)) {
-      // Determinar role baseado em sender_id vs recipient_id
-      role = msg.sender_id === currentUser?.id ? 'ME' : 'USER';
-      console.warn(`[SANITIZE] Mensagem ${msg.id} tinha role inválido "${msg.role}", corrigido para "${role}"`);
-    }
-    
-    // ✅ SEGURANÇA: Sanitizar conteúdo da mensagem
-    const sanitizedContent = sanitizeContent(msg.content || '');
-    
-    // ✅ Garantir que propriedades essenciais existam
-    return {
-      ...msg,
-      id: msg.id || `temp-${Date.now()}-${Math.random()}`,
-      role: role,
-      content: sanitizedContent,
-      created_at: msg.created_at || msg.timestamp || new Date().toISOString(),
-      is_read: msg.is_read ?? false,
-      temp: msg.temp || false
-    };
-  };
-
-  // ✅ Função utilitária para sanitizar contatos
-  const sanitizeContact = (contact) => {
-    if (!contact || typeof contact !== 'object') return null;
-    
-    return {
-      ...contact,
-      remote_jid: contact.remote_jid || contact.id || '',
-      name: contact.name || contact.push_name || 'Contato',
-      phone: contact.phone || (contact.remote_jid || '').split('@')[0] || '',
-      instance_id: contact.instance_id || null,
-      lead_id: contact.lead_id || null
-    };
-  };
-
-  // ✅ SEGURANÇA: Função utilitária para validar entrada do usuário (usando a versão global)
-  const validateUserInputLocal = (input, type = 'message') => {
-    return validateUserInput(input, type);
-  };
-
-  // ✅ SEGURANÇA: Função para tratamento robusto de erros de rede
-  const handleNetworkError = (error, context = 'operação') => {
-    console.error(`[NETWORK ERROR] ${context}:`, error);
-    
-    // ✅ SEGURANÇA: Verificar se é erro de autenticação
-    if (error.message?.includes('401') || error.message?.includes('403')) {
-      setError('Sessão expirada. Redirecionando para login...');
-      setTimeout(() => {
-        window.location.href = '/login?error=session_expired';
-      }, 2000);
-      return;
-    }
-    
-    // ✅ UX: Não mostrar erros para casos onde não há credenciais (primeiro acesso)
-    if (error.message?.includes('404') && (context.includes('contatos') || context.includes('instâncias'))) {
-      console.log(`[NETWORK] ${context} - 404 (primeiro acesso, não é erro)`);
-      return; // Não mostrar erro para primeiro acesso
-    }
-    
-    if (!navigator.onLine) {
-      setError('Sem conexão com a internet. Verifique sua conexão.');
-      return;
-    }
-    
-    if (error.name === 'TypeError' && error.message?.includes('fetch')) {
-      setError('Erro de conexão com o servidor. Tente novamente.');
-      return;
-    }
-    
-    if (error.message?.includes('JSON')) {
-      setError('Resposta inválida do servidor. Tente atualizar a página.');
-      return;
-    }
-    
-    // ✅ SEGURANÇA: Não expor detalhes internos do erro
-    const userFriendlyMessage = error.message?.includes('security') || error.message?.includes('validation') 
-      ? 'Dados inválidos ou não permitidos'
-      : `Erro na ${context}. Tente novamente.`;
-    
-    setError(userFriendlyMessage);
-  };
-
-  // ✅ Detectar posição do scroll com debounce otimizado para performance
-  
-  const handleScrollImmediate = (e) => {
-    const container = e.target;
-    const { scrollTop, scrollHeight, clientHeight } = container;
-    
-    // ✅ Ações IMEDIATAS (não podem ter delay)
-    const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-    setIsAtBottom(isNearBottom); // Estado crítico - sem delay
-    
-    // Resetar contador imediatamente se no final
-    if (isNearBottom) {
-      setUnreadCount(0);
-    }
-  };
-  
-  const handleScrollDebounced = (e) => {
-    const container = e.target;
-    const { scrollTop } = container;
-    
-    // ✅ CORREÇÃO: Log de debug para scroll infinito
-    console.log('[SCROLL-DEBUG] 🎯 Scroll debounced:', {
-      scrollTop,
-      hasMoreMessages,
-      isLoadingMoreMessages,
-      allowInfiniteScroll,
-      isInitialLoad,
-      currentContactId: currentContact?.remote_jid
-    });
-    
-    // ✅ Ações PESADAS com debounce (podem ter delay)
-    // Carregar mensagens antigas só após parar de rolar
-    // ✅ MÚLTIPLAS PROTEÇÕES: Evitar conflitos com ancoragem
-    if (scrollTop < 100 && 
-        hasMoreMessages && 
-        !isLoadingMoreMessages && 
-        allowInfiniteScroll && 
-        !isInitialLoad &&
-        currentContact?.remote_jid) {
-      
-      console.log('[SCROLL-DEBUG] ✅ Todas as condições atendidas - chamando loadMoreMessages');
-      loadMoreMessages();
-    } else {
-      console.log('[SCROLL-DEBUG] ❌ Condições não atendidas para scroll infinito');
-    }
-  };
-  
-  const handleScroll = (e) => {
-    // ✅ Executar ações imediatas
-    handleScrollImmediate(e);
-    
-    // ✅ Debounce para ações pesadas (150ms)
-    if (scrollTimeoutRef.current) {
-      clearTimeout(scrollTimeoutRef.current);
-    }
-    
-    scrollTimeoutRef.current = setTimeout(() => {
-      handleScrollDebounced(e);
-    }, 150);
-  };
-
-  // Função para verificar se deve mostrar separador de data
-  const shouldShowDateSeparator = (currentMsg, previousMsg) => {
-    if (!previousMsg) return true; // Primeira mensagem sempre mostra data
-    
-    const currentDate = new Date(currentMsg.created_at).toDateString();
-    const previousDate = new Date(previousMsg.created_at).toDateString();
-    return currentDate !== previousDate;
-  };
-
-  // Função para formatar data do separador
-  const formatDateSeparator = (dateString) => {
-    const date = new Date(dateString);
-    const today = new Date();
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    
-    if (date.toDateString() === today.toDateString()) {
-      return 'Hoje';
-    } else if (date.toDateString() === yesterday.toDateString()) {
-      return 'Ontem';
-    } else {
-      return date.toLocaleDateString('pt-BR', { 
-        weekday: 'long', 
-        year: 'numeric', 
-        month: 'long', 
-        day: 'numeric' 
-      });
-    }
-  };
-
-  // Função aprimorada para buscar mensagens com scroll infinito
-  const fetchMessages = async (contactId, page = 1, reset = true) => {
-    if (!contactId) return;
-    
-    console.log('[FETCH-MSGS] 📨 Carregando mensagens:', { contactId, page, reset });
-    
-    try {
-      if (reset) {
-        console.log('[FETCH-MSGS] 🔄 RESETANDO estado das mensagens');
-        // ✅ Estados básicos para reset (sem duplicações)
-        setMessages([]);
-          setPagination('messagesPage', 1);
-          setPagination('hasMoreMessages', true);
-        setUnreadCount(0);
-                 // ✅ CORREÇÃO: NÃO resetar lastStatusUpdate para preservar polling
-         // setLastStatusUpdate('1970-01-01T00:00:00Z');
-      } else {
-        console.log('[FETCH-MSGS] ➕ Adicionando mensagens sem reset');
-      }
-      
-      const response = await fetch(`/api/chat/messages/${contactId}?page=${page}&limit=${MESSAGES_PER_PAGE}`, {
+      const response = await fetch('/api/partner-credentials', {
         credentials: 'include'
       });
       
       if (!response.ok) {
-        throw new Error(`Erro ${response.status} ao buscar mensagens`);
+        throw new Error(`Erro HTTP ${response.status}: ${response.statusText}`);
       }
-      
+
       const data = await response.json();
-      
-      if (data.success && data.messages) {
-        const newMessages = data.messages;
-        const hasMore = data.hasMore || newMessages.length === MESSAGES_PER_PAGE;
-        
-        // Atualizar estado de paginação
-        setPagination('hasMoreMessages', hasMore);
-        setPagination('messagesPage', page);
-        
-        if (reset) {
-          // Primeira carga - reverter para ordem cronológica (antigas → recentes)
-          // para exibir como chat tradicional (mensagens recentes no final da tela)
-          const chronologicalMessages = [...newMessages].reverse();
-          // ✅ Sanitizar mensagens para corrigir dados inconsistentes do banco
-          const sanitizedMessages = chronologicalMessages.map(sanitizeMessage).filter(Boolean);
-          setMessages(sanitizedMessages);
-          
-          // ✅ Estados atualizados ANTES da ancoragem
-          setIsAtBottom(true);
-          
-          // ✅ CRÍTICO: Garantir que loading de mensagens seja false ANTES da ancoragem
-          setLoading('messages', false);
-          
-          // ✅ CORREÇÃO: Definir initialLoad para ativar ancoragem automática
-          setLoading('initialLoad', true);
-          
-          // Ancoragem programada
-          
-        } else {
-          // Carregamento adicional - inserir mensagens antigas no INÍCIO
-          const container = messagesContainerRef.current;
-          const oldScrollHeight = container?.scrollHeight || 0;
-          
-          setMessages(prevMessages => {
-            // ✅ Sanitizar novas mensagens antes de combinar
-            const sanitizedNewMessages = newMessages.map(sanitizeMessage).filter(Boolean);
-            // newMessages vem em ordem reversa (mais recente primeiro) para inserir no topo
-            const combinedMessages = [...sanitizedNewMessages, ...prevMessages];
-            // Remover duplicatas baseado no ID
-            const uniqueMessages = combinedMessages.filter((msg, index, self) => 
-              index === self.findIndex(m => m.id === msg.id)
-            );
-            return uniqueMessages;
-          });
-          
-          // ✅ Preservar posição do scroll após carregar mensagens antigas (com cleanup)
-          const preserveScrollTimeoutId = setTimeout(() => {
-            if (container) {
-              const newScrollHeight = container.scrollHeight;
-              // ✅ Usar função unificada para preservar posição
-              container.scrollTop += (newScrollHeight - oldScrollHeight);
-            }
-          }, 50);
-          timeoutsRef.current.push(preserveScrollTimeoutId); // ✅ Gerenciar cleanup
+      console.log('[CHAT] Resposta da API de bancos:', data);
+
+      if (data.success && data.data) {
+        // Filtrar apenas credenciais ativas
+        const activeCredentials = data.data.filter(cred => cred.status === 'active');
+        console.log('[CHAT] Bancos ativos encontrados:', activeCredentials.length);
+        setAvailableBanks(activeCredentials);
+
+        // Selecionar o primeiro banco por padrão se houver
+        if (activeCredentials.length > 0) {
+          setSelectedBank(activeCredentials[0].id);
+          console.log('[CHAT] Banco padrão selecionado:', activeCredentials[0].name);
         }
-        
-              } else {
-          if (reset) {
-            setMessages([]);
-            setPagination('hasMoreMessages', false);
-            setIsAtBottom(true);
-            setLoading('initialLoad', false); // ✅ Resetar estado (sem mensagens)
-          }
-        }
-    } catch (error) {
-      console.error('Erro ao buscar mensagens:', error);
-      // ✅ Usar tratamento robusto de erro
-      handleNetworkError(error, 'buscar mensagens');
-      // ✅ Resetar estado em caso de erro
-      if (reset) {
-        setLoading('initialLoad', false); // ✅ Resetar estado
-        }
-      } finally {
-      setLoading('moreMessages', false);
-    }
-  };
-
-
-
-  // Busca a lista de contatos do usuário quando o usuário é carregado
-  useEffect(() => {
-    if (!currentUser?.id) {
-      console.log("Usuário não disponível para buscar contatos");
-      return;
-    }
-    
-    // ✅ PROTEÇÃO CRÍTICA: Não recarregar contatos durante carregamento inicial
-    if (isInitialLoad) {
-      console.log('[CONTACTS] ⏸️ Adiando fetchContacts inicial - carregamento em andamento');
-      return;
-    }
-    
-    // ✅ UX: Tentar buscar contatos mesmo sem instâncias (primeiro acesso)
-    console.log('[CONTACTS] Iniciando busca de contatos...');
-    fetchContacts(selectedInstanceId === 'all' ? null : selectedInstanceId, 1, true);
-  }, [currentUser, isMobileView, navigate, isInitialLoad]); // ✅ Adicionada dependência isInitialLoad para re-execução quando necessário
-
-  // Sincronização inteligente - atualizar contatos a cada 30 segundos
-  useEffect(() => {
-    if (!currentUser?.id) return;
-
-    console.log('[CHAT] Iniciando sincronização inteligente...');
-    
-    const intervalId = setInterval(() => {
-      console.log('[CHAT] 🔄 Sincronização inteligente - atualizando contatos...');
-      console.log('[CHAT] 📊 Estado atual:', {
-        isInitialLoad,
-        currentContact: !!currentContact,
-        messagesLength: messages.length,
-        isSyncing
-      });
-      syncContacts();
-    }, 30000); // 30 segundos
-      
-    return () => {
-      console.log('[CHAT] Parando sincronização inteligente...');
-      clearInterval(intervalId);
-    };
-  }, []); // Remover dependência currentUser para evitar múltiplas execuções
-
-
-
-  // Removido: useEffect de limpeza desnecessário que interferia com auto scroll
-
-  // Busca as mensagens para o contato selecionado (otimizado com paginação)
-  useEffect(() => {
-    if (!currentContact || !currentUser?.id) return;
-    
-    let isMounted = true;
-    
-    // NOTA: fetchMessages agora é chamado diretamente no handleSelectContact
-    // Este useEffect agora foca apenas no polling de novas mensagens
-    
-    // ✅ POLLING ADAPTATIVO CORRIGIDO
-    let intervalId;
-    
-    const getAdaptiveInterval = () => {
-      // Determinar intervalo baseado na atividade
-      if (document.hidden) {
-        return 60000; // 1 minuto quando aba oculta
-      } else if (isAtBottom) {
-        return 15000; // 15 segundos quando no final (usuário ativo)
       } else {
-        return 30000; // 30 segundos padrão
+        console.error('Erro ao carregar bancos:', data.message);
+        setAvailableBanks([]);
       }
-    };
-    
-    const pollMessages = async () => {
-      try {
-        // ✅ CORREÇÃO: Não fazer polling durante sincronização
-        if (!document.hidden && isMounted && !isSyncing) {
-          
-          // 1. Buscar mensagens novas desde a última verificação
-          const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
-          const lastUpdate = lastStatusUpdate || '1970-01-01T00:00:00Z';
-          
-          const response = await fetch(`/api/chat/messages/${currentContact.remote_jid}?since=${encodeURIComponent(lastUpdate)}&after_id=${lastMessageId || ''}`, {
+    } catch (error) {
+      console.error('Erro ao buscar bancos disponíveis:', error);
+      setAvailableBanks([]);
+    } finally {
+      setLoadingBanks(false);
+      console.log('[CHAT] Busca de bancos concluída');
+    }
+  }, []);
+
+  const handleCreateProposal = useCallback(async (leadData) => {
+    console.log('[CHAT] ➕ Criando proposta para lead:', leadData);
+    try {
+      // Buscar dados completos do lead
+      const response = await fetch(`/api/leads/${leadData.id}`, {
             credentials: 'include'
           });
           
-          // ✅ CORREÇÃO: Declarar data no escopo correto
-          let data = null;
-          
-          if (response.ok && isMounted) {
-            data = await response.json();
-            console.log('[POLLING] 📨 Resposta da API:', data);
-            
-            if (data.success && data.messages && data.messages.length > 0) {
-              // ✅ CORREÇÃO: Verificar se é uma mensagem nova
-              const lastMessageId = messages.length > 0 ? messages[messages.length - 1].id : null;
-              console.log('[POLLING] 🔍 Comparando IDs:', {
-                novasMensagens: data.messages.length,
-                ultimaMensagem: lastMessageId,
-                totalMensagens: messages.length,
-                mensagensCompletas: messages.map(m => ({ id: m.id, temp: m.temp, content: m.content?.substring(0, 20) }))
-              });
-              
-              // ✅ CORREÇÃO: SEMPRE processar mensagens para verificar se são novas
-                const sanitizedMessages = data.messages.map(msg => sanitizeMessage(msg)).filter(Boolean);
-              console.log('[POLLING] 🧹 Mensagens processadas:', sanitizedMessages.length);
-              
-              if (sanitizedMessages.length > 0) {
-                // ✅ UNIFICADO: Processar mensagens novas E atualizações de status em uma única operação
-                  setMessages(prevMessages => {
-                    const updatedMessages = [...prevMessages];
-                  let hasNewMessages = false;
-                  let hasStatusChanges = false;
-                  
-                  // ✅ CORREÇÃO: Manter ordem cronológica das mensagens
-                  const sortedSanitizedMessages = [...sanitizedMessages].sort((a, b) => {
-                    const timeA = new Date(a.timestamp || a.created_at).getTime();
-                    const timeB = new Date(b.timestamp || b.created_at).getTime();
-                    return timeA - timeB; // Ordem cronológica: mais antiga → mais recente
-                  });
-                  
-                  sortedSanitizedMessages.forEach(newMsg => {
-                    const existingIndex = updatedMessages.findIndex(msg => msg.id === newMsg.id);
-                    
-                    if (existingIndex >= 0) {
-                      // ✅ ATUALIZAR: Mensagem existente (pode ter novo status)
-                      const existingMsg = updatedMessages[existingIndex];
-                      if (existingMsg.status !== newMsg.status) {
-                        console.log('[POLLING] ✨ Atualizando status:', newMsg.id, existingMsg.status, '→', newMsg.status);
-                        updatedMessages[existingIndex] = { ...existingMsg, status: newMsg.status };
-                        hasStatusChanges = true;
-                      }
-                    } else {
-                      // ✅ ADICIONAR: Nova mensagem (manter ordem cronológica)
-                      updatedMessages.push(newMsg);
-                      hasNewMessages = true;
-                      console.log('[POLLING] ✨ Adicionada nova mensagem:', newMsg.id);
-                    }
-                  });
-                  
-                  // ✅ CORREÇÃO: Ordenar mensagens por timestamp após todas as operações
-                  const finalMessages = updatedMessages.sort((a, b) => {
-                    const timeA = new Date(a.timestamp || a.created_at).getTime();
-                    const timeB = new Date(b.timestamp || b.created_at).getTime();
-                    return timeA - timeB; // Ordem cronológica: mais antiga → mais recente
-                  });
-                  
-                  if (hasNewMessages) {
-                    console.log('[POLLING] ✅ Histórico atualizado com novas mensagens');
-                    
-                    // ✅ Auto-scroll e contadores
-                    if (isAtBottom) {
-                      setTimeout(() => scrollToBottom(), 100);
-                    } else {
-                      setUnreadCount(prev => prev + sanitizedMessages.filter(msg => !updatedMessages.some(existing => existing.id === msg.id)).length);
-                    }
-                  }
-                  
-                  if (hasStatusChanges) {
-                    console.log('[POLLING] ✅ Status atualizados nas mensagens existentes');
-                  }
-                  
-                  console.log('[POLLING] 🔍 Ordem final das mensagens:', finalMessages.length, 'mensagens');
-                  return finalMessages;
-                });
-              }
-              } else {
-                console.log('[POLLING] ⚠️ Resposta da API sem sucesso ou sem mensagem');
-              }
-          } else {
-            console.log('[POLLING] ❌ Erro na resposta da API:', response.status);
-          }
-
-                    // ✅ SIMPLIFICAÇÃO: Status já processado na lógica unificada acima
-          console.log('[POLLING] 🔍 Status das mensagens já incluído e processado na resposta principal');
-        }
-              } catch (error) {
-        console.error('[POLLING] ❌ Erro no polling:', error);
-        }
-    };
-    
-    // ✅ Sistema de polling reativo
-    const scheduleNextPoll = () => {
-      if (!isMounted) return;
-      
-      const newInterval = getAdaptiveInterval();
-      currentIntervalRef.current = newInterval;
-      
-      // ✅ SILENCIOSO: Polling em background sem logs excessivos
-      
-      intervalId = setTimeout(() => {
-        if (isMounted) {
-          // ✅ SILENCIOSO: Polling executando em background
-          pollMessages().finally(() => {
-            scheduleNextPoll(); // ✅ Reagenda com novo intervalo
-          });
-        }
-      }, newInterval);
-    };
-    
-    // Iniciar polling reativo
-    scheduleNextPoll();
-    
-    // ✅ CORREÇÃO: Removido handleVisibilityChange que estava causando loop infinito
-    // O intervalo adaptativo já ajusta baseado em document.hidden
-      
-    return () => {
-      isMounted = false;
-      clearTimeout(intervalId); // ✅ Corrigido: clearTimeout em vez de clearInterval
-    };
-  }, [currentContact?.remote_jid, currentUser?.id]); // ✅ Dependências mínimas para evitar reinicializações desnecessárias
-
-  // ✅ useEffect para garantir ancoragem INSTANTÂNEA após carregamento de mensagens
-  useEffect(() => {
-    // ✅ PROTEÇÃO CRÍTICA: Não fazer ancoragem durante sincronização de contatos
-    if (isSyncing) {
-      console.log('[ANCHOR] ⏸️ Ancoragem adiada - sincronização de contatos em andamento');
-      return;
-    }
-    
-    if (messages.length > 0 && isInitialLoad && messagesContainerRef.current && !isLoading && isAtBottom) {
-      console.log('[ANCHOR] 🎯 Iniciando ancoragem automática para mensagens');
-      console.log('[ANCHOR] 📊 Estado para ancoragem:', {
-        messagesLength: messages.length,
-        isInitialLoad,
-        hasContainer: !!messagesContainerRef.current,
-        isLoading,
-        isAtBottom
-      });
-      
-      // ✅ PROTEÇÃO EXTRA: Verificar se ainda é o mesmo contato
-      const firstMessageContactId = messages[0]?.remote_jid;
-      const currentContactId = currentContact?.remote_jid;
-      
-      if (firstMessageContactId && currentContactId && firstMessageContactId !== currentContactId) {
-        console.log('[ANCHOR] ⚠️ Contato mudou durante ancoragem, cancelando');
-        setLoading('initialLoad', false);
-        return;
-      }
-      
-      // ✅ Aguardar COMPLETAMENTE o DOM ser renderizado (DUPLO rAF)
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          // ✅ Forçar recálculo de layout ANTES do scroll
-          if (messagesContainerRef.current) {
-            messagesContainerRef.current.offsetHeight; // Trigger reflow
-            
-            const container = messagesContainerRef.current;
-            // Layout verificado, aplicando scroll
-            
-            console.log('[ANCHOR] 📍 Aplicando scroll para o final das mensagens');
-            const scrollFunction = forceScrollToEnd();
-            scrollFunction();
-            
-            // ✅ Verificação final e fallback robusto
-            setTimeout(() => {
-              const isAtEnd = Math.abs(container.scrollTop - (container.scrollHeight - container.clientHeight)) < 5;
-              // Verificação final do scroll
-              if (!isAtEnd) {
-                console.log('[ANCHOR] 🔧 Scroll final não aplicado, forçando...');
-                // ✅ Usar função unificada para scroll final
-                scrollToPosition('bottom', { immediate: true, duringInitialLoad: true });
-              } else {
-                console.log('[ANCHOR] ✅ Scroll final aplicado com sucesso');
-              }
-            }, 10);
-          }
-          
-          // ✅ CRÍTICO: Só resetar initialLoad APÓS toda verificação
-          setLoading('initialLoad', false);
-          
-          // ✅ CORREÇÃO: Habilitar scroll infinito após ancoragem completa
-          setLoading('allowInfiniteScroll', true);
-          console.log('[ANCHOR] ✅ Ancoragem concluída - scroll infinito habilitado');
-        });
-      });
-    }
-  }, [messages.length, isInitialLoad, currentContact?.remote_jid, isAtBottom, isSyncing]); // ✅ Adicionada dependência isSyncing
-
-
-
-
-
-
-
-
-
-  // ✅ Função para sincronização MANUAL de contatos (botão) - UX OTIMIZADA
-  const syncContactsManual = async () => {
-    if (!currentUser?.id) return;
-    
-    try {
-      // ✅ UX: Mostrar feedback visual mínimo apenas no botão
-      setLoading('syncing', true);
-      console.log('[SYNC-MANUAL] 🔄 Sincronização manual silenciosa iniciada...');
-      
-      // ✅ UX: Sincronização sempre executa em background sem interferir na interface
-      await syncContactsInternal();
-      
-    } catch (error) {
-      console.error('[SYNC-MANUAL] ❌ Erro na sincronização manual:', error);
-      // ✅ UX: Apenas mostrar erro real, não bloquear interface
-      setError('Erro na sincronização. Tente novamente.');
-      setTimeout(() => setError(null), 3000);
-    } finally {
-      setLoading('syncing', false);
-    }
-  };
-
-  // ✅ Função para sincronização AUTOMÁTICA de contatos (polling) - NÃO afeta histórico de mensagens
-  const syncContacts = async () => {
-    if (!currentUser?.id) return;
-    
-    try {
-      console.log('[SYNC-AUTO] 🔄 Sincronização automática iniciada...');
-      
-      // ✅ CORREÇÃO: Permitir sincronização mesmo com contato selecionado
-      if (currentContact && messages.length > 0) {
-        console.log('[SYNC-AUTO] 🔄 Sincronização automática com contato selecionado - atualizando contatos em background');
-      }
-      
-      // ✅ Usar função interna para sincronização
-      await syncContactsInternal();
-      
-    } catch (error) {
-      console.error('[SYNC-AUTO] ❌ Erro na sincronização automática:', error);
-    }
-  };
-
-  // ✅ Função INTERNA para sincronização de contatos (UX OTIMIZADA)
-  const syncContactsInternal = async () => {
-    // ✅ UX: Sincronização silenciosa - não bloquear interface
-    console.log('[SYNC-INTERNAL] 🔄 Sincronização silenciosa em background...');
-    
-    // ✅ UX: Buscar apenas atualizações incrementais
-      const contactsResponse = await fetch(`/api/contacts?page=1&limit=${CONTACTS_PER_PAGE}`, {
-        credentials: 'include'
-      });
-      
-      if (!contactsResponse.ok) {
-        throw new Error(`Erro ${contactsResponse.status} ao buscar contatos`);
-      }
-      
-      const contactsData = await contactsResponse.json();
-      
-      if (!contactsData.success) {
-        throw new Error(contactsData.message || 'Erro ao buscar contatos');
-      }
-      
-      const contactsList = contactsData.contacts || [];
-      
-      if (contactsList.length > 0) {
-        // Buscar última mensagem dos primeiros contatos para exibição (otimizado)
-        const contactsWithLastMessagePromises = contactsList.slice(0, 5).map(async (contact) => {
-          try {
-            const messagesResponse = await fetch(`/api/chat/messages/${contact.remote_jid}/last`, {
-              credentials: 'include'
-            });
-            
-            if (messagesResponse.ok) {
-              const messageData = await messagesResponse.json();
-              if (messageData.success && messageData.message) {
-                return {
-                  ...contact,
-                  last_message_time: messageData.message.timestamp || messageData.message.created_at,
-                  last_message: messageData.message.content
-                };
-              }
-            }
-          } catch (error) {
-            // Silenciar erros
-          }
-          return contact;
-        });
-        
-        const updatedContacts = await Promise.all(contactsWithLastMessagePromises);
-        
-        // Atualizar apenas os contatos que mudaram
-        setContacts(prevContacts => {
-          const newContacts = [...prevContacts];
-          
-          updatedContacts.forEach(updatedContact => {
-            const existingIndex = newContacts.findIndex(c => c.remote_jid === updatedContact.remote_jid);
-            if (existingIndex >= 0) {
-              // Verificar se houve mudança real
-              const existing = newContacts[existingIndex];
-              if (existing.last_message_time !== updatedContact.last_message_time ||
-                  existing.last_message !== updatedContact.last_message) {
-                newContacts[existingIndex] = updatedContact;
-              }
-            } else {
-              // Novo contato
-              newContacts.unshift(updatedContact);
-            }
-          });
-          
-          // Backend já ordena por update_at (sincronizado)
-          return newContacts;
-        });
-        
-        setDisplayContacts(prevContacts => {
-          const newContacts = [...prevContacts];
-          
-          updatedContacts.forEach(updatedContact => {
-            const existingIndex = newContacts.findIndex(c => c.remote_jid === updatedContact.remote_jid);
-            if (existingIndex >= 0) {
-              const existing = newContacts[existingIndex];
-              if (existing.last_message_time !== updatedContact.last_message_time ||
-                  existing.last_message !== updatedContact.last_message) {
-                newContacts[existingIndex] = updatedContact;
-              }
-            } else {
-              newContacts.unshift(updatedContact);
-            }
-          });
-          
-          // Backend já ordena por update_at (sincronizado)
-          return newContacts;
-        });
-        
-        // 🔧 CORREÇÃO: Buscar instâncias dos contatos atualizados
-        if (instances.length > 0 && updatedContacts.length > 0) {
-          console.log('[SYNC] 🔍 Buscando instâncias dos contatos atualizados...');
-          fetchContactInstances(updatedContacts);
-        } else if (instances.length === 0) {
-          console.log('[SYNC] ⏸️ Nenhuma instância disponível - primeiro acesso');
-        }
-        
-      // ✅ UX: Atualizar metadados do contato atual silenciosamente (sem reset)
-        if (currentContact) {
-          const updatedCurrentContact = contactsList.find(c => c.remote_jid === currentContact.remote_jid);
-          if (updatedCurrentContact) {
-          // ✅ UX: Atualizar apenas metadados, preservar estado da conversa
-          setCurrentContact(prev => ({
-            ...prev,
-            ...updatedCurrentContact,
-            // Preservar dados críticos para não quebrar a experiência
-            last_message_time: prev.last_message_time || updatedCurrentContact.last_message_time,
-            last_message: prev.last_message || updatedCurrentContact.last_message
-          }));
-          }
-        }
-      }
-      
-      setLastSyncTime(new Date());
-    console.log('[SYNC-INTERNAL] ✅ Sincronização interna concluída');
-  };
-
-  // Função para sincronização completa das mensagens (equivalente ao refresh)
-  const syncMessagesComplete = async () => {
-    if (!currentContact?.remote_jid) return;
-    
-    console.log('[SYNC] 🔄 Iniciando sincronização completa das mensagens');
-    
-    try {
-      // ✅ CORREÇÃO: Desabilitar polling temporariamente para evitar conflitos
-      const wasPollingEnabled = !isInitialLoad;
-      setLoading('initialLoad', true); // Desabilita polling
-      
-      // ✅ CORREÇÃO: Marcar que estamos sincronizando para evitar conflitos
-      setLoading('syncing', true);
-      
-      // ✅ CORREÇÃO: Preservar estado das mensagens existentes
-      const existingMessages = messages.length > 0 ? [...messages] : [];
-      console.log('[SYNC] 💾 Preservando', existingMessages.length, 'mensagens existentes');
-      
-      // Resetar apenas paginação, não as mensagens
-      setPagination('messagesPage', 1);
-      setPagination('hasMoreMessages', true);
-      setUnreadCount(0);
-      // ✅ CORREÇÃO: NÃO resetar lastStatusUpdate para preservar polling
-      // setLastStatusUpdate('1970-01-01T00:00:00Z');
-      setLoading('messages', true);
-      
-      // ✅ CORREÇÃO: Recarregar mensagens SEM resetar histórico
-      await fetchMessages(currentContact.remote_jid, 1, false);
-      
-      console.log('[SYNC] 📊 Estado após fetchMessages:', {
-        messagesLength: messages.length,
-        isLoading: isLoading,
-        isInitialLoad: isInitialLoad
-      });
-      
-      // ✅ CORREÇÃO: Forçar scroll após renderização das mensagens
-      console.log('[SYNC] ⏳ Aguardando renderização das mensagens...');
-      
-      // Aguardar renderização completa do DOM com múltiplas tentativas
-      const waitForRender = () => {
-        const container = messagesContainerRef.current;
-        if (container && container.scrollHeight > 0 && messages.length > 0) {
-          console.log('[SYNC] ✅ Mensagens renderizadas, executando scroll...');
-          
-          // Forçar recálculo de layout
-          container.offsetHeight;
-          
-          // ✅ Scroll para o final usando função unificada
-          scrollToPosition('bottom', { immediate: true, duringInitialLoad: true });
-          
-          console.log('[SYNC] 📊 Scroll executado:', {
-            scrollTop: container.scrollTop,
-            scrollHeight: container.scrollHeight,
-            clientHeight: container.clientHeight,
-            messagesLength: messages.length,
-            isAtEnd: Math.abs(container.scrollTop - (container.scrollHeight - container.clientHeight)) < 5
-          });
-          
-          // Verificação adicional após um pequeno delay
-          setTimeout(() => {
-            const isAtEnd = Math.abs(container.scrollTop - (container.scrollHeight - container.clientHeight)) < 5;
-            if (!isAtEnd) {
-              // ✅ Usar função unificada para scroll forçado
-              scrollToPosition('bottom', { immediate: true, duringInitialLoad: true });
-              console.log('[SYNC] ✅ Scroll forçado para o final após verificação');
-            } else {
-              console.log('[SYNC] ✅ Scroll já está no final');
-            }
-          }, 50);
-          
-          // ✅ CORREÇÃO: Reabilitar polling após scroll (se estava habilitado antes)
-          setTimeout(() => {
-            if (wasPollingEnabled) {
-          setLoading('initialLoad', false);
-              console.log('[SYNC] ✅ Polling reabilitado após sincronização');
-            }
-          }, 100);
-        } else {
-          console.log('[SYNC] ⏳ Aguardando renderização...', {
-            containerExists: !!container,
-            scrollHeight: container?.scrollHeight || 0,
-            messagesLength: messages.length
-          });
-          setTimeout(waitForRender, 100); // Tentar novamente em 100ms
-        }
-      };
-      
-      // Iniciar processo de espera
-      setTimeout(waitForRender, 200);
-      
-      console.log('[SYNC] ✅ Sincronização completa concluída');
-    } catch (error) {
-      console.error('[SYNC] ❌ Erro na sincronização completa:', error);
-      // ✅ CORREÇÃO: Reabilitar polling em caso de erro
-              setLoading('initialLoad', false);
-    } finally {
-      setLoading('messages', false);
-    }
-  };
-
-  const handleRefresh = async () => {
-    setIsRefreshing(true);
-    setError(null);
-    
-    try {
-      // Buscar usuário novamente
-      const userData = await fetchUserFromApi();
-      
-      if (!userData || !userData.id) {
-        throw new Error('Não foi possível obter dados do usuário');
-      }
-      
-      setCurrentUser(userData);
-      
-      // Buscar contatos novamente
-      const contactsResponse = await fetch('/api/contacts', {
-        credentials: 'include'
-      });
-      
-      if (!contactsResponse.ok) {
-        throw new Error(`Erro ${contactsResponse.status} ao buscar contatos`);
-      }
-      
-      const contactsData = await contactsResponse.json();
-      
-      if (!contactsData.success) {
-        throw new Error(contactsData.message || 'Erro ao buscar contatos');
-      }
-      
-      // Extrair a lista de contatos do objeto de resposta
-      const contactsList = contactsData.contacts || [];
-      
-      if (contactsList.length > 0) {
-        setContacts(contactsList);
-        
-        // Backend já ordena por update_at (sincronizado com última mensagem)
-        const sortedContacts = contactsList;
-        setDisplayContacts(sortedContacts);
-        
-        // ✅ PROTEÇÃO CRÍTICA: Não sobrescrever contato durante carregamento inicial
-        if (!isMobileView && !currentContact && !isInitialLoad && contactsList.length > 0) {
-          const firstContact = sortedContacts[0];
-          setCurrentContact(firstContact);
-          console.log('[REFRESH] ✅ Contato auto-selecionado:', firstContact.push_name || firstContact.name);
-          
-          // ✅ CORREÇÃO: Marcar como carregamento inicial para ativar ancoragem automática
-          setLoading('initialLoad', true);
-          
-          // ✅ CORREÇÃO: Carregar mensagens do contato auto-selecionado
-          if (firstContact?.remote_jid) {
-            console.log('[REFRESH] 📩 Carregando mensagens do contato auto-selecionado:', firstContact.remote_jid);
-            fetchMessages(firstContact.remote_jid, 1, true);
-          }
-        } else if (isInitialLoad) {
-          console.log('[REFRESH] ⚠️ Bloqueada auto-seleção durante carregamento inicial');
-        } else if (contactsList.length === 0) {
-          console.log('[REFRESH] ⏸️ Nenhum contato encontrado - primeiro acesso');
-        }
-      }
-      
-      setConnectionStatus({
-        connected: true,
-        timestamp: new Date().toISOString(),
-        refreshed: true
-      });
-      
-      console.log('Dados recarregados com sucesso');
-    } catch (error) {
-      console.error('Erro ao recarregar dados:', error);
-      setError(`Erro ao recarregar dados: ${error.message}. Por favor, tente novamente.`);
-    } finally {
-      setIsRefreshing(false);
-    }
-  };
-
-  // ✅ SIMPLIFICADO: Função para alternar a resposta automática para um contato
-  const toggleAutoResponse = async (contactId, e) => {
-    e.stopPropagation(); // Evita que o clique ative a seleção do contato
-    
-    // Encontrar o contato na lista
-    const contactIndex = contacts.findIndex(c => {
-      const cId = c.id || c.remote_jid;
-      return cId === contactId;
-    });
-    
-    if (contactIndex === -1) {
-      console.error(`Contato não encontrado com ID: ${contactId}`);
-      return;
-    }
-    
-    const contact = contacts[contactIndex];
-    
-    // Determinar o estado atual e o novo estado
-    const currentState = contact.agent_state === 'ai';
-    const newAgentState = currentState ? 'human' : 'ai';
-    
-    // ✅ SIMPLIFICADO: Atualizar apenas agent_state - backend coordena sincronização
-    const newContacts = [...contacts];
-    newContacts[contactIndex] = {
-      ...contact,
-      agent_state: newAgentState
-    };
-    setContacts(newContacts);
-    
-    // Atualizar também o estado de exibição
-    setDisplayContacts(prev => {
-      const displayIndex = prev.findIndex(c => {
-        const cId = c.id || c.remote_jid;
-        return cId === contactId;
-      });
-      
-      if (displayIndex === -1) return prev;
-      
-      const newDisplay = [...prev];
-      newDisplay[displayIndex] = {
-        ...prev[displayIndex],
-        agent_state: newAgentState
-      };
-      
-      return newDisplay;
-    });
-    
-    // Se for o contato atual, atualize-o também
-    if (currentContact && (currentContact.id === contactId || currentContact.remote_jid === contactId)) {
-      const updatedCurrentContact = {
-        ...currentContact,
-        agent_state: newAgentState
-      };
-      setCurrentContact(updatedCurrentContact);
-    }
-    
-    try {
-      // Extrair o remote_jid correto para a chamada de API
-      const remoteJid = contact.remote_jid || contactId;
-      
-      // ✅ SIMPLIFICADO: Enviar apenas agent_state - backend coordena sincronização
-      const response = await fetch(`/api/contacts/${remoteJid}/state`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify({
-          agent_state: newAgentState
-        })
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`Erro na resposta da API (${response.status}):`, errorText);
-        
-        try {
-          const errorData = JSON.parse(errorText);
-          throw new Error(errorData.error || `Erro ${response.status} ao atualizar estado do agente`);
-        } catch (e) {
-          throw new Error(`Erro ${response.status} ao atualizar estado do agente: ${errorText}`);
-        }
-      }
-      
-      const data = await response.json();
-      
-      if (!data.success) {
-        throw new Error(data.error || 'Erro ao atualizar estado do agente');
-      }
-      
-      console.log(`Estado do agente atualizado com sucesso para: ${newAgentState}`);
-      
-    } catch (error) {
-      console.error('Erro ao atualizar estado do agente na API:', error);
-      
-      // Em caso de erro na API, reverte a mudança local
-      const revertedContacts = [...contacts];
-      revertedContacts[contactIndex] = {
-        ...contact,
-        agent_state: currentState ? 'ai' : 'human'
-      };
-      setContacts(revertedContacts);
-      
-      // Reverter também no estado de exibição
-      setDisplayContacts(prev => {
-        const displayIndex = prev.findIndex(c => {
-          const cId = c.id || c.remote_jid;
-          return cId === contactId;
-        });
-        
-        if (displayIndex === -1) return prev;
-        
-        const newDisplay = [...prev];
-        newDisplay[displayIndex] = {
-          ...prev[displayIndex],
-          agent_state: currentState ? 'ai' : 'human'
-        };
-        
-        return newDisplay;
-      });
-      
-      // Se for o contato atual, reverta-o também
-      if (currentContact && (currentContact.id === contactId || currentContact.remote_jid === contactId)) {
-        setCurrentContact({
-          ...currentContact,
-          agent_state: currentState ? 'ai' : 'human'
-        });
-      }
-      
-      // Notificar o usuário sobre o erro
-      setError(`Erro ao atualizar estado do agente: ${error.message}`);
-    }
-  };
-
-  // ✅ SEGURANÇA: Função processadora de envio de mensagens - separada para poder aplicar debounce
-  const processSendMessage = async (messageContent, messageId) => {
-    // ✅ SEGURANÇA: Verificar sessão antes de enviar
-    const sessionValid = await checkSession();
-    if (!sessionValid) {
-      setError('Sessão expirada. Redirecionando para login...');
-      return;
-    }
-    
-    // ✅ SEGURANÇA: Validação robusta de entrada
-    const validation = validateUserInput(messageContent, 'message');
-    if (!validation.valid) {
-      setError(validation.error);
-      return;
-    }
-    
-    // ✅ SEGURANÇA: Validar estado do usuário e contato
-    const userValidation = validateState(currentUser, 'user');
-    const contactValidation = validateState(currentContact, 'contact');
-    
-    if (!userValidation.valid) {
-      setError(`Erro de estado: ${userValidation.error}`);
-      return;
-    }
-    
-    if (!contactValidation.valid) {
-      setError(`Erro de estado: ${contactValidation.error}`);
-      return;
-    }
-    
-    const sanitizedContent = validation.value;
-    
-    // ✅ SEGURANÇA: Verificar se é a mesma mensagem sendo enviada novamente em um curto período
-    if (lastMessageIdRef.current === messageId) {
-      console.log('Ignorando envio duplicado com mesmo ID:', messageId);
-      return;
-    }
-    
-    // ✅ SEGURANÇA: Rate limiting robusto
-    if (!rateLimiter.canMakeRequest()) {
-      const remaining = rateLimiter.getRemainingRequests();
-      setError(`Muitas requisições. Aguarde um momento. (${remaining} restantes)`);
-      return;
-    }
-    
-    const now = Date.now();
-    if (now - lastMessageTimestamp < SECURITY_CONFIG.RATE_LIMIT_DELAY) {
-      console.log('Ignorando clique rápido:', now - lastMessageTimestamp, 'ms desde o último envio');
-      setError('Aguarde um momento antes de enviar outra mensagem');
-      return;
-    }
-    
-    try {
-      // ✅ SEGURANÇA: Registrar requisição no rate limiter
-      if (!rateLimiter.recordRequest()) {
-        setError('Limite de requisições excedido. Tente novamente em alguns segundos.');
-        return;
-      }
-      
-      setIsSendingMessage(true);
-      // Atualizar timestamp e ID da última mensagem
-      setLastMessageTimestamp(now);
-      lastMessageIdRef.current = messageId;
-      
-      // ✅ Adicionar mensagem sanitizada temporariamente ao estado local para feedback imediato
-      const tempMsg = {
-        id: messageId,
-        content: sanitizedContent, // ✅ Usar conteúdo sanitizado
-        sender_id: currentUser.id,
-        receiver_id: currentContact?.phone || currentContact?.remote_jid,
-        created_at: new Date().toISOString(),
-        is_read: false,
-        from_me: true,
-        role: 'ME',
-        temp: true // Marcar como temporária
-      };
-      
-      // Adicionar a mensagem temporária imediatamente ao estado
-      setMessages(prev => [...prev, tempMsg]);
-      
-      // ✅ EXPERIÊNCIA DO USUÁRIO: Scroll automático imediato para mostrar a mensagem
-      setTimeout(() => {
-        scrollToPosition('bottom', { immediate: true });
-        console.log('[SEND] ✅ Scroll automático após envio de mensagem');
-      }, 50);
-      
-      const payload = {
-        conversationId: currentContact.remote_jid,
-        content: sanitizedContent, // ✅ Usar conteúdo sanitizado
-        recipientId: currentContact.phone,
-        role: 'ME',
-        messageId: messageId // Enviar ID único para backend
-      };
-      
-      secureLog.info('Enviando nova mensagem:', { conversationId: payload.conversationId, contentLength: payload.content.length });
-      
-      // ✅ SEGURANÇA: Garantir token CSRF válido antes de enviar
-      const csrfToken = await ensureCSRFToken();
-      if (!csrfToken) {
-        setError('Erro de segurança: Token CSRF não disponível');
-        return;
-      }
-      
-      const headers = {
-        'Content-Type': 'application/json',
-        'X-CSRF-Token': csrfToken
-      };
-      
-      // ✅ SEGURANÇA: Log apenas em desenvolvimento
-      if (process.env.NODE_ENV === 'development') {
-        console.log('[CSRF] Token incluído na requisição:', csrfToken.substring(0, 10) + '...');
-      }
-      
-      const response = await fetch('/api/messages', {
-        method: 'POST',
-        headers,
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-      
-      console.log('Status da resposta:', response.status);
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        
-        // Remover a mensagem temporária em caso de erro
-        setMessages(prev => prev.filter(msg => msg.id !== messageId));
-        
-        throw new Error(errorData.message || `Erro ${response.status} ao enviar mensagem`);
-      }
-      
-      const data = await response.json();
-      console.log('Resposta completa do envio de mensagem:', data);
-      
-      // Verificar se é sucesso total ou parcial (mensagem pendente)
-      if (data.success) {
-        // Sucesso total - mensagem enviada
-        const newMsg = data.message;
-        if (newMsg) {
-          // Remover a mensagem temporária e substituir pela mensagem real
-          setMessages(prev => {
-            const withoutTemp = prev.filter(msg => msg.id !== messageId);
-            
-            // Adicionar a mensagem confirmada pela API
-            const processedMsg = {
-              ...newMsg,
-              from_me: true,
-              role: newMsg.role || 'ME'
-            };
-            
-            return [...withoutTemp, processedMsg];
-          });
-          
-          // ✅ EXPERIÊNCIA DO USUÁRIO: Scroll automático após confirmação
-          setTimeout(() => {
-            scrollToPosition('bottom', { immediate: true });
-            console.log('[SEND] ✅ Scroll automático após confirmação da mensagem');
-          }, 100);
-        }
-      } else {
-        // Verificar se é status 202 (mensagem salva mas pendente)
-        if (response.status === 202) {
-          // Mensagem salva mas não enviada (Evolution API offline)
-          const newMsg = data.message;
-          if (newMsg) {
-            // Remover a mensagem temporária e substituir pela mensagem pendente
-            setMessages(prev => {
-              const withoutTemp = prev.filter(msg => msg.id !== messageId);
-              
-              // Adicionar a mensagem pendente
-              const processedMsg = {
-                ...newMsg,
-                from_me: true,
-                role: newMsg.role || 'ME',
-                status: 'pending'
-              };
-              
-              return [...withoutTemp, processedMsg];
-            });
-            
-            // ✅ EXPERIÊNCIA DO USUÁRIO: Scroll automático após mensagem pendente
-            setTimeout(() => {
-              scrollToPosition('bottom', { immediate: true });
-              console.log('[SEND] ✅ Scroll automático após mensagem pendente');
-            }, 100);
-          }
-          
-          // Mostrar aviso sobre Evolution API offline
-          if (data.warning) {
-            setError(`⚠️ ${data.warning}. ${data.feedback}`);
-            setTimeout(() => setError(null), 5000); // Limpar após 5 segundos
-          }
-        } else {
-          // Erro real - remover mensagem temporária
-          setMessages(prev => prev.filter(msg => msg.id !== messageId));
-          throw new Error(data.message || 'Erro ao enviar mensagem');
-        }
-      }
-      
-      console.log(`Mensagem enviada com sucesso. Agent state: ${currentContact?.agent_state || 'indefinido'}`);
-      
-    } catch (error) {
-      console.error('Erro ao enviar mensagem:', error);
-      setError('Erro ao enviar mensagem. Por favor, tente novamente.');
-    } finally {
-      // Garantir ao menos 500ms de "cooldown" entre envios
-      const timeoutId = setTimeout(() => {
-        setIsSendingMessage(false);
-      }, 500);
-      
-      // Limpar timeout se o componente for desmontado
-      return () => clearTimeout(timeoutId);
-    }
-  };
-  
-  // Aplicando debounce na função de processamento
-  const debouncedSendMessage = useRef(
-    debounce(processSendMessage, 300) // 300ms de debounce
-  ).current;
-  
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    console.log("handleSendMessage chamado");
-    
-    // Verificação simples e clara
-    if (!newMessage.trim()) {
-      console.log("Mensagem vazia, não enviando");
-      return;
-    }
-    
-    if (isSendingMessage) {
-      console.log("Já existe uma mensagem sendo enviada");
-      return;
-    }
-    
-    // Gerar ID único para esta tentativa de envio
-    const messageId = generateMessageId();
-    const messageContent = newMessage;
-    
-    // Limpar o campo de mensagem imediatamente
-    setNewMessage('');
-    
-    // Chamar a função diretamente, sem debounce
-    processSendMessage(messageContent, messageId);
-  };
-
-  const handleCreateContact = async () => {
-    if (!currentUser) {
-      setError('Você precisa estar logado para criar contatos');
-      return;
-    }
-    
-    const name = prompt('Digite o nome do contato:');
-    if (!name) return;
-    
-    const phone = prompt('Digite o número de telefone (com DDD, ex: 5527999999999):');
-    if (!phone) return;
-    
-    try {
-      const payload = {
-        name,
-        phone
-      };
-      
-      console.log('Criando novo contato:', payload);
-      
-      const response = await fetch('/api/contacts', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        credentials: 'include',
-        body: JSON.stringify(payload)
-      });
-      
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.message || `Erro ${response.status} ao criar contato`);
-      }
-      
-      const data = await response.json();
-      console.log('Resposta completa da criação de contato:', data);
-      
-      if (!data.success) {
-        throw new Error(data.message || 'Erro ao criar contato');
-      }
-      
-      // Extrair o contato da resposta da API
-      const newContact = data.contact;
-      
-      if (!newContact) {
-        console.warn('API retornou sucesso mas sem objeto de contato');
-        // Criar um contato temporário com os dados fornecidos
-        const tempContact = {
-          id: `temp-${Date.now()}`,
-        name: name,
-        phone: phone,
-          remote_jid: `${currentUser.id}_${phone}`,
-        last_message: '',
-          last_message_time: new Date().toISOString(),
-        unread_count: 0,
-          online: false
-        };
-        
-        setContacts(prev => [tempContact, ...prev]);
-        setCurrentContact(tempContact);
-      } else {
-        console.log('Contato criado com sucesso:', newContact);
-        
-        // Adicionar contato à lista e selecioná-lo
-        setContacts(prev => [newContact, ...prev]);
-        setCurrentContact(newContact);
-      }
-    } catch (error) {
-      console.error('Erro ao criar contato:', error);
-      setError('Erro ao criar contato. Por favor, tente novamente.');
-    }
-  };
-
-  // Formatação de data
-  // Função para formatar horário da última sincronização
-  const formatLastSyncTime = (date) => {
-    if (!date) return null;
-    return date.toLocaleTimeString('pt-BR', { 
-      hour: '2-digit', 
-      minute: '2-digit',
-      second: '2-digit'
-    });
-  };
-
-  const formatDate = (dateString) => {
-    if (!dateString) return '';
-    try {
-      const messageDate = new Date(dateString);
-      
-      // Verificar se a data é válida
-      if (isNaN(messageDate.getTime())) {
-        console.error(`Data inválida: ${dateString}`);
-        return '';
-      }
-      
-      const now = new Date();
-      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      
-      // Apenas hora para mensagens de hoje
-      if (messageDate >= today) {
-        return messageDate.toLocaleTimeString('pt-BR', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        });
-      } 
-      // "Ontem" para mensagens de ontem
-      else if (messageDate >= yesterday) {
-        return `Ontem ${messageDate.toLocaleTimeString('pt-BR', { 
-          hour: '2-digit', 
-          minute: '2-digit' 
-        })}`;
-      } 
-      // "dd/mm" para mensagens de dias anteriores
-      else {
-        const formattedDate = messageDate.toLocaleDateString('pt-BR', {
-          day: '2-digit',
-          month: '2-digit'
-        });
-        const formattedTime = messageDate.toLocaleTimeString('pt-BR', {
-          hour: '2-digit',
-          minute: '2-digit'
-        });
-        return `${formattedDate} ${formattedTime}`;
-      }
-    } catch (error) {
-      console.error(`Erro ao formatar data ${dateString}:`, error);
-      return '';
-    }
-  };
-
-  // ✅ UX: Função para selecionar contato com transição suave
-  const handleSelectContact = (contact) => {
-    console.log('[CONTACT] 📱 Selecionando contato:', contact.name || contact.push_name);
-    console.log('[CONTACT] 🔍 Contato atual:', currentContact?.name || currentContact?.push_name);
-    console.log('[CONTACT] 🔍 Remote JID atual:', currentContact?.remote_jid);
-    console.log('[CONTACT] 🔍 Remote JID novo:', contact?.remote_jid);
-    
-    // ✅ UX: PROTEÇÃO - Se for o mesmo contato, não recarregar
-    if (currentContact?.remote_jid === contact?.remote_jid) {
-      console.log('[CONTACT] ⚠️ Mesmo contato já selecionado - mantendo histórico');
-      return;
-    }
-    
-    console.log('[CONTACT] ✅ Contato DIFERENTE detectado - carregando novo histórico');
-    
-    // ✅ UX: Transição imediata sem estados de carregamento visíveis
-    setCurrentContact(contact);
-    setLoading('allowInfiniteScroll', false);
-    setLoading('initialLoad', true);
-    
-    // ✅ UX: Limpar timeouts para evitar conflitos
-    timeoutsRef.current.forEach(timeoutId => clearTimeout(timeoutId));
-    timeoutsRef.current = [];
-    
-    if (contact?.remote_jid) {
-      // ✅ UX: Carregar mensagens do NOVO contato COM reset (contato diferente)
-      fetchMessages(contact.remote_jid, 1, true); // ← reset=true para contato diferente
-      
-      // ✅ UX: Habilitar scroll infinito rapidamente para não interferir na experiência
-      const enableSystemsTimeoutId = setTimeout(() => {
-        setLoading('allowInfiniteScroll', true);
-      }, 500); // Reduzido para 500ms para resposta mais rápida
-      timeoutsRef.current.push(enableSystemsTimeoutId);
-    } else {
-      console.error('[CONTACT] ❌ Contato sem remote_jid!');
-      setLoading('initialLoad', false);
-    }
-  };
-
-  // Função para voltar para a lista de contatos (mobile)
-  const handleBackToContacts = () => {
-    setCurrentContact(null);
-    
-    // Manter ordem atual (backend já ordena por update_at)
-    const sortedContacts = [...contacts];
-    
-    setDisplayContacts(sortedContacts);
-    console.log('Reordenando contatos ao voltar para a lista');
-  };
-
-
-
-  // ✅ Efeito para atualizar última mensagem - CORRIGIDO para evitar loops  
-  useEffect(() => {
-    // Só executar se houver mensagens
-    if (!messages.length || !currentContact) return;
-    
-    // Obter a última mensagem
-    const lastMessage = messages[messages.length - 1];
-    
-    // ✅ Evitar updates desnecessários - verificar se realmente mudou
-    if (lastMessageRef.current?.id === lastMessage.id) return;
-    lastMessageRef.current = lastMessage;
-    
-    // ✅ Usar callback mais específico para evitar dependência circular
-    setContacts(prevContacts => {
-      const shouldUpdate = prevContacts.some(contact => {
-        const isCurrentContact = (contact.id || contact.remote_jid) === (currentContact.id || currentContact.remote_jid);
-        return isCurrentContact && (
-          contact.last_message !== lastMessage.content ||
-          contact.last_message_time !== lastMessage.created_at
-        );
-      });
-      
-      if (!shouldUpdate) return prevContacts; // ✅ Evitar re-render desnecessário
-      
-      return prevContacts.map(contact => {
-        if ((contact.id || contact.remote_jid) === (currentContact.id || currentContact.remote_jid)) {
-          return {
-            ...contact,
-            last_message: lastMessage.content,
-            last_message_time: lastMessage.created_at || new Date().toISOString()
-          };
-        }
-        return contact;
-      });
-    });
-  }, [currentContact?.id, currentContact?.remote_jid]); // ✅ Removido 'messages' das dependências
-  
-  // ✅ Efeito separado para detectar nova mensagem (sem modificar contacts)
-  useEffect(() => {
-    if (!messages.length || !currentContact) return;
-    
-    const lastMessage = messages[messages.length - 1];
-    
-    // Só atualizar a ref quando mensagem realmente mudar
-    if (lastMessageRef.current?.id !== lastMessage.id) {
-      lastMessageRef.current = lastMessage;
-      // Trigger da atualização será pelo useEffect acima
-    }
-  }, [messages.length]); // ✅ Usar apenas length para evitar loops
-  
-  // Efeito para manter o displayContacts atualizado quando contacts mudar
-  // mas não durante a interação com um contato específico
-  useEffect(() => {
-    // Não reordenar imediatamente se um contato estiver selecionado
-    // Isso evita mudanças confusas na UI
-    if (!currentContact) {
-      const sortedContacts = [...contacts]; // Backend já ordena por update_at
-      
-      setDisplayContacts(sortedContacts);
-      console.log('Atualizando ordem de exibição dos contatos (sem contato selecionado)');
-    }
-  }, [contacts, currentContact]);
-
-  // Buscar dados do contato quando um contato é selecionado
-  useEffect(() => {
-    if (!currentContact || !currentUser?.id) return;
-    
-    async function fetchContactData() {
-      try {
-
-        
-        // ✅ UX: Carregamento silencioso - não mostrar spinner desnecessário
-        // setLoading('messages', true); // Removido para melhor UX
-        
-        // Buscar dados do contato de forma otimizada
-        const fetchContactData = async () => {
-          try {
-            const directResponse = await fetch(`/api/dev/direct-data?contactId=${currentContact.remote_jid}`, {
-              credentials: 'include'
-            });
-            
-            if (!directResponse.ok) {
-              throw new Error(`Erro ao acessar dados: ${directResponse.status}`);
-            }
-            
-            const directData = await directResponse.json();
-            
-            if (directData.success) {
-              // Converter explicitamente para número
-              let saldo = null;
-              let simulado = null;
-              let valorProposta = null;
-              
-              if (directData.balance !== null && directData.balance !== undefined) {
-                saldo = Number(directData.balance);
-                console.log(`Saldo direto recebido: ${directData.balance} -> convertido para ${saldo}`);
-              }
-              
-              if (directData.simulation !== null && directData.simulation !== undefined) {
-                simulado = Number(directData.simulation);
-                console.log(`Simulado direto recebido: ${directData.simulation} -> convertido para ${simulado}`);
-              }
-              
-              // Processar valor da proposta - verificando todos os possíveis campos
-              const valorPropostaRaw = directData.proposal_amount || directData.valor_proposta;
-              if (valorPropostaRaw !== null && valorPropostaRaw !== undefined) {
-                valorProposta = Number(valorPropostaRaw);
-                console.log(`Valor da proposta recebido: ${valorPropostaRaw} -> convertido para ${valorProposta}`);
-              }
-              
-              // Verificar vários campos possíveis para link e pix
-              const linkFormalizacao = directData.formalization_link || directData.link_formalizacao;
-              const chavePix = directData.pix_key || directData.chave_pix;
-              
-              return {
-                success: true,
-                saldo,
-                simulado,
-                proposta: directData.proposal_id,
-                erroProposta: null,
-                statusProposta: directData.proposal_status,
-                descricaoStatus: directData.proposal_status && `Status da proposta: ${directData.proposal_status}`,
-                valorProposta: valorProposta,
-                linkFormalizacao: linkFormalizacao || null,
-                chavePix: chavePix || null
-              };
-            }
-            return null;
-          } catch (error) {
-            console.error('Erro ao buscar dados diretos:', error);
-            return null;
-          }
-        };
-        
-        // Função específica para buscar detalhes da proposta do Supabase
-        const fetchProposalData = async (proposalId) => {
-          if (!proposalId) return null;
-          
-          try {
-            // Buscando dados da proposta
-            const response = await fetch(`/api/proposals/${proposalId}`, {
-              credentials: 'include'
-            });
-            
-            if (!response.ok) {
-              throw new Error(`Erro ao buscar dados da proposta: ${response.status}`);
-            }
-            
+      if (response.ok) {
             const data = await response.json();
-            // Dados da proposta obtidos
-            
-            if (data.success && data.proposal) {
-              return {
-                valorProposta: data.proposal.amount || data.proposal.valor || null,
-                linkFormalizacao: data.proposal.formalization_link || data.proposal.link_formalizacao || null,
-                chavePix: data.proposal.pix_key || data.proposal.chave_pix || null,
-                statusDetalhado: data.proposal.status_detail || data.proposal.status_detalhado || null
-              };
-            }
-            return null;
-          } catch (error) {
-            console.error('Erro ao buscar dados da proposta do Supabase:', error);
-            return null;
+        if (data.success) {
+          const leadData = data.data;
+          
+          // Preparar dados do formulário
+          const formData = {
+            name: leadData.name || '',
+            cpf: leadData.cpf || '',
+            rg: leadData.rg || '',
+            motherName: leadData.mother_name || leadData.motherName || '',
+            email: leadData.email || '',
+            birthDate: leadData.birth || leadData.birthDate || '',
+            phone: leadData.phone || '',
+            postalCode: leadData.cep || leadData.postalCode || '',
+            addressNumber: leadData.numero || leadData.address_number || leadData.addressNumber || '',
+            chavePix: leadData.pix_key || leadData.chave_pix || leadData.chavePix || ''
+          };
+          
+          setProposalFormData(formData);
+          setSelectedLeadForProposal(leadData);
+          setCreateProposalModalOpen(true);
+          
+          // Buscar bancos disponíveis imediatamente
+          fetchAvailableBanks();
+        }
+      }
+    } catch (error) {
+      console.error('[CHAT] ❌ Erro ao buscar dados do lead:', error);
+      setCreateProposalError('Erro ao carregar dados do lead');
+    }
+  }, [fetchAvailableBanks]);
+
+  // Função para validar campos obrigatórios
+  const validateProposalForm = useCallback(() => {
+    const requiredFields = [
+      { key: 'name', label: 'Nome' },
+      { key: 'cpf', label: 'CPF' },
+      { key: 'rg', label: 'RG' },
+      { key: 'motherName', label: 'Nome da Mãe' },
+      { key: 'email', label: 'Email' },
+      { key: 'birthDate', label: 'Data de Nascimento' },
+      { key: 'maritalStatus', label: 'Estado Civil' },
+      { key: 'phone', label: 'Telefone' },
+      { key: 'postalCode', label: 'CEP' },
+      { key: 'addressNumber', label: 'Número do Endereço' },
+      { key: 'chavePix', label: 'Chave PIX' }
+    ];
+
+    const missingFields = requiredFields.filter(field => {
+      const value = proposalFormData[field.key];
+      return !value || value.trim() === '';
+    });
+
+    if (missingFields.length > 0) {
+      const fieldNames = missingFields.map(field => field.label).join(', ');
+      return `Por favor, preencha os seguintes campos obrigatórios: ${fieldNames}`;
+    }
+
+    if (!selectedBank) {
+      return 'Por favor, selecione um banco';
+    }
+
+    return null; // Validação passou
+  }, [proposalFormData, selectedBank]);
+
+  const createProposal = useCallback(async () => {
+    if (!selectedLeadForProposal) return;
+
+    // Validar todos os campos obrigatórios
+    const validationError = validateProposalForm();
+    if (validationError) {
+      setCreateProposalError(validationError);
+      return;
+    }
+
+    setIsCreatingProposal(true);
+    setCreateProposalError('');
+
+    try {
+      // Buscar dados do partner_credentials selecionado
+      const credentialsResponse = await fetch(`/api/partner-credentials/${selectedBank}`, {
+        credentials: 'include'
+      });
+      const credentialsData = await credentialsResponse.json();
+
+      if (!credentialsData.success) {
+        throw new Error('Erro ao buscar dados do banco selecionado');
+      }
+
+      const bankData = credentialsData.data;
+
+      const payload = [{
+        name: proposalFormData.name,
+        cpf: proposalFormData.cpf,
+        rg: proposalFormData.rg,
+        mother_name: proposalFormData.motherName,
+        email: proposalFormData.email,
+        birth: proposalFormData.birthDate,
+        marital_status: proposalFormData.maritalStatus,
+        phone: proposalFormData.phone,
+        cep: proposalFormData.postalCode,
+        address_number: proposalFormData.addressNumber,
+        pix_key: proposalFormData.chavePix,
+        provider: selectedProvider,
+        bank_id: selectedBank,
+        bank_name: bankData.name,
+        bank_partner_type: bankData.partner_type,
+        user_id: currentUser?.id || ''
+      }];
+
+      console.log('[CHAT] 📤 Enviando proposta para webhook:', payload);
+
+      // Enviar webhook para o n8n de forma assíncrona (fire and forget)
+      fetch('https://n8n-n8n.8cgx4t.easypanel.host/webhook/criaPropostaApp', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      }).then((webhookResponse) => {
+        console.log('[CHAT] Status da resposta do webhook:', webhookResponse.status);
+        if (webhookResponse.status >= 200 && webhookResponse.status < 300) {
+          console.log('[CHAT] ✅ Proposta criada com sucesso');
+          
+          // Ações de sucesso executadas APENAS após confirmar sucesso do webhook
+          setCreateProposalModalOpen(false);
+          setSelectedLeadForProposal(null);
+          setProposalFormData({});
+          setSelectedBank('');
+          
+          // Recarregar dados do contato
+          if (currentContact) {
+            fetchLeadData(currentContact);
           }
-        };
-        
-        // Usar o endpoint da API para obter dados reais do cliente
-        const response = await fetch(`/api/contacts/${currentContact.remote_jid}/data`, {
-          credentials: 'include'
-        });
-        
-        // API response received
-        
+        } else {
+          throw new Error(`Erro do webhook: ${webhookResponse.status}`);
+        }
+      }).catch((webhookError) => {
+        console.error('[CHAT] ❌ Erro no webhook:', webhookError);
+        throw webhookError;
+      });
+    } catch (error) {
+      console.error('[CHAT] ❌ Erro ao criar proposta:', error);
+      setCreateProposalError(error.message || 'Erro ao criar proposta');
+    } finally {
+      setIsCreatingProposal(false);
+    }
+  }, [selectedLeadForProposal, selectedBank, proposalFormData, selectedProvider, currentContact, currentUser, validateProposalForm]);
+
+  const handleViewProposalHistory = useCallback(async (leadData) => {
+    console.log('[CHAT] 📋 Visualizando histórico de propostas para lead:', leadData);
+    setIsLoadingProposals(true);
+    try {
+      const response = await fetch(`/api/leads/${leadData.id}/proposals`, {
+        credentials: 'include'
+      });
+      
         if (response.ok) {
           const data = await response.json();
           if (data.success) {
-            
-            // Melhorar a conversão e validação dos dados numéricos
-            let saldo = null;
-            let simulado = null;
-            let valorProposta = null;
-            
-            // Verificar se saldo existe e convertê-lo para número se for string
-            if (data.saldo !== null && data.saldo !== undefined) {
-              if (typeof data.saldo === 'string') {
-                // Tentar converter para número se for string
-                try {
-                  saldo = parseFloat(data.saldo);
-                  console.log(`Convertido saldo de string para número: ${saldo}`);
-                } catch (e) {
-                  console.error(`Erro ao converter saldo: ${e.message}`);
-                  saldo = null;
-                }
-              } else {
-                // Se já for número, usar diretamente
-                saldo = data.saldo;
-              }
-              
-              // Verificar validade após conversão
-              if (isNaN(saldo)) {
-                console.warn(`Saldo convertido não é um número válido: ${saldo}`);
-                saldo = null;
+          setProposalsHistory(data.data || []);
+          setSelectedLead(leadData);
+          setProposalsHistoryModalOpen(true);
               }
             }
-            
-            // Mesmo tratamento para valor simulado
-            if (data.simulado !== null && data.simulado !== undefined) {
-              if (typeof data.simulado === 'string') {
-                try {
-                  simulado = parseFloat(data.simulado);
-                  console.log(`Convertido simulado de string para número: ${simulado}`);
-                } catch (e) {
-                  console.error(`Erro ao converter simulado: ${e.message}`);
-                  simulado = null;
-                }
-              } else {
-                simulado = data.simulado;
-              }
-              
-              if (isNaN(simulado)) {
-                console.warn(`Simulado convertido não é um número válido: ${simulado}`);
-                simulado = null;
-              }
-            }
-            
-            // Processar valor da proposta da mesma forma
-            if (data.valor_proposta !== null && data.valor_proposta !== undefined) {
-              if (typeof data.valor_proposta === 'string') {
-                try {
-                  valorProposta = parseFloat(data.valor_proposta);
-                  console.log(`Convertido valor da proposta de string para número: ${valorProposta}`);
-                } catch (e) {
-                  console.error(`Erro ao converter valor da proposta: ${e.message}`);
-                  valorProposta = null;
-                }
-              } else {
-                valorProposta = data.valor_proposta;
-              }
-              
-              if (isNaN(valorProposta)) {
-                console.warn(`Valor da proposta convertido não é um número válido: ${valorProposta}`);
-                valorProposta = null;
-              }
-            }
-            
-            // Extrair os dados do contato da resposta e verificar cada campo
-            // Mapear nomes das propriedades da API para o formato esperado pelo componente com validação apropriada
-            let novosDados = {
-              saldo: saldo, // Valor já convertido e validado
-              simulado: simulado, // Valor já convertido e validado
-              erroConsulta: data.erro_consulta,
-              proposta: data.proposta,
-              erroProposta: data.erro_proposta,
-              statusProposta: data.status_proposta,
-              descricaoStatus: data.descricao_status,
-              valorProposta: valorProposta,
-              linkFormalizacao: data.link_formalizacao || null,
-              chavePix: data.chave_pix || null
-            };
-            
-            // Verificar se temos um ID de proposta para buscar dados adicionais no Supabase
-            if (data.proposta) {
-              try {
-                const proposalData = await fetchProposalData(data.proposta);
-                if (proposalData) {
-                  // Dados adicionais obtidos
-                  
-                  // Combinar os dados da API com os dados do Supabase
-                  novosDados = {
-                    ...novosDados,
-                    // Preferir valores do Supabase, mas manter valores da API como fallback
-                    valorProposta: proposalData.valorProposta !== null ? proposalData.valorProposta : novosDados.valorProposta,
-                    linkFormalizacao: proposalData.linkFormalizacao || novosDados.linkFormalizacao,
-                    chavePix: proposalData.chavePix || novosDados.chavePix,
-                    // Adicionar detalhes extras do status se disponíveis
-                    descricaoStatus: proposalData.statusDetalhado || novosDados.descricaoStatus
-                  };
-                  
-                  // Dados combinados
-                }
-              } catch (error) {
-                console.error('Erro ao buscar/combinar dados adicionais da proposta:', error);
-              }
-            }
-            
-            // Buscar CPF do lead se houver lead_id
-            if (currentContact.lead_id) {
-              try {
-                const resp = await fetch(`/api/leads/${currentContact.lead_id}/cpf`, { credentials: 'include' });
-                if (resp.ok) {
-                  const data = await resp.json();
-                  if (data.success && data.cpf) {
-                    novosDados.cpf = data.cpf;
-                  }
-                }
-              } catch (err) {
-                console.error('Erro ao buscar CPF do lead:', err);
-              }
-            }
-            
-            // Estado sendo atualizado com dados processados
-            
-            setContactData(novosDados);
-          } else {
-            console.log('API indica falha:', data);
-            
-            // Se a API retornar erro, tentar obter dados diretos
-            console.log('Tentando obter dados diretos devido a erro da API...');
-            const dadosDiretos = await fetchContactData();
-            
-            if (dadosDiretos) {
-              console.log('Usando dados diretos:', dadosDiretos);
-              setContactData(dadosDiretos);
-            } else {
-              setContactData({
-                saldo: null,
-                simulado: null,
-                erroConsulta: data.message || 'Erro desconhecido ao buscar dados',
-                proposta: null,
-                erroProposta: null,
-                statusProposta: null,
-                descricaoStatus: null,
-                valorProposta: null,
-                linkFormalizacao: null,
-                chavePix: null
-              });
-            }
-          }
-        } else {
-          console.error(`Erro HTTP ${response.status} ao buscar dados do contato`);
-          
-          // Tentar obter dados diretos em caso de erro HTTP
-          console.log('Tentando obter dados diretos devido a erro HTTP...');
-          const dadosDiretos = await fetchContactData();
-          
-          if (dadosDiretos) {
-            console.log('Usando dados diretos após erro HTTP:', dadosDiretos);
-            setContactData(dadosDiretos);
-          } else {
-            setContactData({
-              saldo: null,
-              simulado: null,
-              erroConsulta: `Erro ${response.status} ao buscar dados`,
-              proposta: null,
-              erroProposta: null,
-              statusProposta: null,
-              descricaoStatus: null,
-              valorProposta: null,
-              linkFormalizacao: null,
-              chavePix: null
-            });
-          }
-        }
-      } catch (error) {
-        console.error('Erro ao buscar dados do contato:', error);
-        setContactData({
-          saldo: null,
-          simulado: null,
-          erroConsulta: `Erro: ${error.message}`,
-          proposta: null,
-          erroProposta: null,
-          statusProposta: null,
-          descricaoStatus: null,
-          valorProposta: null,
-          linkFormalizacao: null,
-          chavePix: null
-        });
+          } catch (error) {
+      console.error('[CHAT] ❌ Erro ao buscar histórico de propostas:', error);
       } finally {
-        // ✅ UX: Não há mais flag de carregamento para desativar
-        // Dados são carregados silenciosamente em background
-      }
+      setIsLoadingProposals(false);
+    }
+  }, []);
+
+  const handleRepeatQuery = useCallback(async (leadData) => {
+    console.log('[CHAT] 🔄 Repetindo consulta para lead:', leadData);
+    setSelectedLeadForQuery(leadData);
+    setSelectedProvider('cartos');
+    setSelectedBank('');
+    setProviderModalOpen(true);
+    
+    // Buscar bancos disponíveis imediatamente
+    fetchAvailableBanks();
+  }, []);
+
+
+  const confirmRepeatQuery = useCallback(async () => {
+    if (selectedLeadForQuery) {
+      if (!selectedBank) {
+        setRepeatError('Por favor, selecione um banco');
+      return;
     }
     
-    fetchContactData();
-  }, [currentContact, currentUser?.id]);
+      setRepeatingQuery(selectedLeadForQuery.id);
+      setRepeatError('');
 
+      try {
+        const response = await fetch(`/api/leads/${selectedLeadForQuery.id}/repeat-query`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+            provider: selectedProvider,
+            bankId: selectedBank
+        })
+      });
+      
+      const data = await response.json();
+      
+      if (data.success) {
+          console.log('[CHAT] Consulta repetida com sucesso');
+          setProviderModalOpen(false);
+          setSelectedLeadForQuery(null);
+          // Recarregar dados do contato se necessário
+          if (currentContact) {
+            fetchLeadData();
+        }
+      } else {
+          setRepeatError(data.message || 'Erro ao repetir consulta');
+        }
+    } catch (error) {
+        console.error('[CHAT] Erro ao repetir consulta:', error);
+        setRepeatError('Erro ao repetir consulta: ' + error.message);
+    } finally {
+        setRepeatingQuery(null);
+      }
+    }
+  }, [selectedLeadForQuery, selectedBank, selectedProvider, currentContact]);
 
-
-  // Renderizar painel de dados do contato
-  const renderContactDataPanel = () => {
-    if (!currentContact) return null;
+  const saveLeadData = useCallback(async () => {
+    setIsSavingLead(true);
+    setSaveError('');
     
-  
-    
-    // Valores formatados com nossa função robusta
-    const saldoFormatado = formataMoeda(contactData.saldo);
-    const simuladoFormatado = formataMoeda(contactData.simulado);
-    const valorPropostaFormatado = formataMoeda(contactData.valorProposta);
-    
-
-    
-    // Mapeamento de status para versões mais legíveis
-    const getStatusLabel = (status) => {
-      const statusMap = {
-        'aprovada': 'Aprovada',
-        'em_analise': 'Em Análise',
-        'rejeitada': 'Rejeitada',
-        'pendente': 'Pendente',
-        'paid': 'Paga',
-        'processing': 'Processando',
-        'canceled': 'Cancelada',
-        'failed': 'Falhou'
+    try {
+      const dataToSend = {
+        name: editingLead.name,
+        cpf: editingLead.cpf,
+        email: editingLead.email,
+        phone: editingLead.phone,
+        status: editingLead.status,
+        rg: editingLead.rg,
+        nationality: editingLead.nationality,
+        is_pep: editingLead.is_pep,
+        birth: editingLead.birth,
+        marital_status: editingLead.marital_status,
+        person_type: editingLead.person_type,
+        mother_name: editingLead.mother_name,
+        cep: editingLead.cep,
+        estado: editingLead.estado,
+        cidade: editingLead.cidade,
+        bairro: editingLead.bairro,
+        rua: editingLead.rua,
+        numero: editingLead.numero,
+        balance: editingLead.balance,
+        pix: editingLead.pix,
+        pix_key: editingLead.pix_key,
+        simulation: editingLead.simulation,
+        balance_error: editingLead.balance_error,
+        proposal_error: editingLead.proposal_error,
+        parcelas: editingLead.parcelas,
+        provider: editingLead.provider,
+        proposal_value: editingLead.proposal_value,
+        proposal_status: editingLead.proposal_status,
+        proposal_id: editingLead.proposal_id,
+        error_reason: editingLead.error_reason,
+        ressaque_tag: editingLead.ressaque_tag
       };
-      return statusMap[status] || status || 'Pendente';
-    };
-    
-    // Mapeamento de status para classes de estilo
-    const getStatusClass = (status) => {
-      const classMap = {
-        'aprovada': 'bg-emerald-600/50 text-emerald-200',
-        'em_analise': 'bg-amber-600/50 text-amber-200',
-        'rejeitada': 'bg-red-600/50 text-red-200',
-        'pendente': 'bg-blue-600/50 text-blue-200',
-        'paid': 'bg-emerald-600/50 text-emerald-200',
-        'processing': 'bg-amber-600/50 text-amber-200',
-        'canceled': 'bg-red-600/50 text-red-200',
-        'failed': 'bg-red-600/50 text-red-200'
-      };
-      return classMap[status] || 'bg-blue-600/50 text-blue-200';
-    };
-    
-    // Verificar se estamos em carregamento inicial
-    const isLoading = contactData.saldo === null && contactData.simulado === null && !contactData.erroConsulta;
-    
 
-    
+      const res = await fetch(`/api/leads/${editingLead.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(dataToSend)
+      });
+      
+      const json = await res.json();
+      
+      if (json.success) {
+        setEditModalOpen(false);
+        // Recarregar dados do contato se necessário
+        if (currentContact) {
+          fetchLeadData();
+        }
+      } else {
+        setSaveError(json.message || 'Erro ao salvar dados');
+                }
+              } catch (err) {
+      setSaveError('Erro ao salvar dados: ' + err.message);
+      } finally {
+      setIsSavingLead(false);
+    }
+  }, [editingLead, currentContact]);
+
+  // ✅ RENDERIZAÇÃO SIMPLIFICADA
+  if (error) {
     return (
-      <div className="min-w-0 flex-1 h-full flex flex-col border-l border-cyan-800/50 flex-shrink-0 overflow-y-auto bg-white/5 backdrop-blur-sm">
-        <div className="p-3 border-b border-cyan-800/50 flex justify-between items-center">
-          <h3 className="text-lg font-semibold text-cyan-100">Dados do Cliente</h3>
-        </div>
-        {/* Caixa de CPF */}
-        <div className="p-3 pt-4 pb-0">
-          <div className="bg-white/10 rounded-lg p-3 border border-cyan-800/50 flex items-center mb-2">
-            <FaIdCard className="text-cyan-300 mr-2" />
-            <div>
-              <h4 className="text-sm font-semibold text-cyan-100">CPF</h4>
-              <p className="text-base font-mono text-cyan-200 break-all">
-                {contactData.cpf || currentContact.cpf || currentContact.lead_cpf || 'Não informado'}
-              </p>
-            </div>
-          </div>
-        </div>
-        
-        <div className="p-3 space-y-4">
-          {/* Seção de Saldo */}
-          <div className="bg-white/10 rounded-lg p-3 border border-cyan-800/50">
-            <div className="flex items-center mb-2">
-              <FaWallet className="text-cyan-300 mr-2" />
-              <h4 className="text-sm font-semibold text-cyan-100">Saldo FGTS</h4>
-            </div>
-            
-            {/* ✅ UX: Mostrar placeholder enquanto carrega, sem spinner */}
-            {contactData.saldo === null && !contactData.erroConsulta ? (
-              <div className="py-2 text-cyan-300/60">
-                <div className="h-4 bg-cyan-800/20 rounded animate-pulse"></div>
-              </div>
-            ) : saldoFormatado ? (
-              <p className="text-lg font-bold text-white">
-                {saldoFormatado}
-              </p>
-            ) : null}
-          </div>
-          
-          {/* Seção de Simulação */}
-          <div className="bg-white/10 rounded-lg p-3 border border-cyan-800/50">
-            <div className="flex items-center mb-2">
-              <FaCalculator className="text-cyan-300 mr-2" />
-              <h4 className="text-sm font-semibold text-cyan-100">Simulação</h4>
-            </div>
-            
-            {/* ✅ UX: Skeleton loading suave para simulação */}
-            {contactData.simulado === null && !contactData.erroConsulta ? (
-              <div className="py-2 text-cyan-300/60">
-                <div className="h-4 bg-cyan-800/20 rounded animate-pulse"></div>
-              </div>
-            ) : simuladoFormatado ? (
-              <p className="text-lg font-bold text-white">
-                {simuladoFormatado}
-              </p>
-            ) : null}
-        </div>
-        
-          {/* Seção de Proposta */}
-          <div className="bg-white/10 rounded-lg p-3 border border-cyan-800/50">
-            <div className="flex items-center mb-2">
-              <FaFileAlt className="text-cyan-300 mr-2" />
-              <h4 className="text-sm font-semibold text-cyan-100 flex items-center gap-2">
-                Proposta
-                {contactData.statusProposta && (
-                  <span className={`px-3 py-1 rounded-full text-xs font-medium ml-2 ${getStatusClass(contactData.statusProposta)}`}>
-                    {getStatusLabel(contactData.statusProposta)}
-                  </span>
-                )}
-              </h4>
-            </div>
-            {/* ✅ UX: Skeleton loading para proposta */}
-            {contactData.proposta === null && !contactData.erroConsulta ? (
-              <div className="py-2 text-cyan-300/60">
-                <div className="h-4 bg-cyan-800/20 rounded animate-pulse mb-2"></div>
-                <div className="h-3 bg-cyan-800/20 rounded animate-pulse w-2/3"></div>
-              </div>
-            ) : contactData.proposta ? (
-              <>
-                {/* Linha com ID e botão de copiar */}
-                <div className="mb-2 flex items-center">
-                  <div className="flex items-center gap-2 bg-gray-800/50 px-3 py-1 rounded border border-gray-700/50 w-full">
-                    <span className="text-xs text-gray-300">Id</span>
-                    <span className="text-xs font-mono text-white break-all">
-                      {contactData.proposta}
-                    </span>
-              <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(contactData.proposta);
-                        setCopiedId(true);
-                        // ✅ Timeout com cleanup gerenciado
-                        const copiedIdTimeoutId = setTimeout(() => setCopiedId(false), 1500);
-                        timeoutsRef.current.push(copiedIdTimeoutId);
-                      }}
-                      className="ml-1 text-cyan-200 hover:text-cyan-100 p-1"
-                      title="Copiar Id da proposta"
-                      aria-label="Copiar ID da proposta"
-                    >
-                      <FaRegCopy />
-              </button>
-                    {copiedId && <span className="text-xs text-emerald-300 ml-1">Copiado!</span>}
-                  </div>
-                </div>
-                {/* Linha horizontal: Caixa PIX e Valor */}
-                <div className="cards-proposta-responsive">
-                  {/* Card PIX */}
-                  {contactData.chavePix && (
-                    <div className="bg-emerald-900/30 p-2 rounded-md border border-emerald-700/50 flex flex-col justify-between">
-                      <div className="flex items-center mb-1">
-                        <FaWallet className="text-emerald-400 mr-2 mt-0.5 flex-shrink-0" />
-                        <span className="text-xs font-semibold text-emerald-200 mr-2">Chave PIX</span>
-              <button 
-                          onClick={() => {
-                            navigator.clipboard.writeText(contactData.chavePix);
-                            setCopiedPix(true);
-                            // ✅ Timeout com cleanup gerenciado
-                            const copiedPixTimeoutId = setTimeout(() => setCopiedPix(false), 1500);
-                            timeoutsRef.current.push(copiedPixTimeoutId);
-                          }}
-                          className="ml-1 text-emerald-200 hover:text-emerald-100 p-1"
-                          title="Copiar chave PIX"
-                          aria-label="Copiar chave PIX"
-                        >
-                          <FaRegCopy />
-              </button>
-                        {copiedPix && <span className="text-xs text-emerald-300 ml-1">Copiado!</span>}
-                      </div>
-                      <span className="text-xs text-emerald-300 break-all font-mono">
-                        {contactData.chavePix || 'Não informado'}
-                      </span>
-                    </div>
-                  )}
-                  {/* Card Valor */}
-                  {valorPropostaFormatado && (
-                    <div className="bg-blue-900/30 p-2 rounded-md border border-blue-700/50 flex flex-col justify-between" >
-                      <span className="text-xs font-semibold text-blue-200 mb-1">Valor</span>
-                      <span className="text-lg font-bold text-blue-300">{valorPropostaFormatado}</span>
-                    </div>
-                  )}
-                </div>
-                {/* Link de Formalização com botão de copiar */}
-                {contactData.linkFormalizacao && (
-                  <div className="mb-2 bg-blue-900/30 p-2 rounded-md border border-blue-700/50 flex items-center">
-                    <FaFileAlt className="text-blue-400 mr-2 mt-0.5 flex-shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-semibold text-blue-200 mb-1">Link de Formalização</p>
-                      <a
-                        href={contactData.linkFormalizacao}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-xs text-blue-300 underline hover:text-blue-200 break-all"
-                      >
-                        {contactData.linkFormalizacao}
-                      </a>
-            </div>
-              <button 
-                      onClick={() => {
-                        navigator.clipboard.writeText(contactData.linkFormalizacao);
-                        setCopiedLink(true);
-                        // ✅ Timeout com cleanup gerenciado
-                        const copiedLinkTimeoutId = setTimeout(() => setCopiedLink(false), 1500);
-                        timeoutsRef.current.push(copiedLinkTimeoutId);
-                      }}
-                      className="ml-2 text-blue-200 hover:text-blue-100 p-1"
-                      title="Copiar link de formalização"
-                      aria-label="Copiar link de formalização"
-                    >
-                      <FaRegCopy />
-              </button>
-                    {copiedLink && <span className="text-xs text-emerald-300 ml-1">Copiado!</span>}
-                  </div>
-                )}
-                {/* Descrição do Status */}
-                {contactData.descricaoStatus && !/^Status da proposta:/i.test(contactData.descricaoStatus) && (
-                  <div className="mt-2 bg-cyan-900/30 p-2 rounded-md border border-cyan-700/50">
-                    <div className="flex items-start">
-                      <FaInfoCircle className="text-cyan-400 mr-2 mt-0.5 flex-shrink-0" />
-                      <p className="text-xs text-cyan-200">{contactData.descricaoStatus}</p>
-            </div>
-          </div>
-        )}
-                {/* Erro da Proposta */}
-                {contactData.erroProposta && (
-                  <div className="mt-2 bg-red-900/30 p-2 rounded-md border border-red-600/50">
-                    <div className="flex items-start">
-                      <FaTimesCircle className="text-red-400 mr-2 mt-0.5 flex-shrink-0" />
-                      <p className="text-xs text-red-200">{contactData.erroProposta}</p>
-                    </div>
-                  </div>
-                )}
-              </>
-            ) : null}
-          </div>
-        </div>
-      </div>
-    );
-  };
-
-  // Função para renderizar o cabeçalho do chat com responsividade melhorada
-  const renderChatHeader = () => {
-    if (!currentContact) return null;
-    
-    return (
-      <div className="p-2 border-b border-cyan-800/50 bg-white/5 flex items-center">
-        {isMobileView && (
-          <button
-            className="mr-2 text-cyan-300 hover:text-cyan-100 p-2"
-            onClick={handleBackToContacts}
-            aria-label="Voltar para lista de contatos"
-          >
-            <FaArrowLeft className="text-lg" />
-          </button>
-        )}
-        
-        <div className="flex items-center flex-1 min-w-0">
-          <div className="relative flex-shrink-0">
-            <div className="w-10 h-10 bg-gradient-to-br from-cyan-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold shadow-md">
-              {(currentContact.name || currentContact.push_name || 'C').substring(0, 2).toUpperCase()}
-            </div>
-            {currentContact.online && (
-              <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-emerald-500 rounded-full border-2 border-emerald-950"></div>
-            )}
-          </div>
-          
-          <div className="ml-2 overflow-hidden">
-            <h3 className="font-semibold text-cyan-100 truncate">{currentContact.name || currentContact.push_name || 'Contato'}</h3>
-            <div className="flex items-center gap-2">
-            <p className="text-xs text-cyan-300 truncate">
-              {currentContact.phone || (currentContact.remote_jid || '').split('@')[0] || ''}
-            </p>
-              {instances.length > 1 && currentContact.instance_id && (
-                <span className="text-xs text-cyan-400 bg-cyan-900/30 px-1.5 py-0.5 rounded-full font-medium">
-                  {getContactInstanceName(currentContact)}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-        
-        <div className="flex space-x-3 ml-2">
-          {isUpdating && (
-            <div className="flex items-center gap-1 text-cyan-300 text-xs">
-              <FaSpinner className="w-3 h-3 animate-spin" />
-              <span>Atualizando...</span>
-            </div>
-          )}
-
-          <button className="text-cyan-300 hover:text-cyan-100 p-2" aria-label="Ligar">
-            <FaPhone className={screenWidth < 360 ? "text-sm" : "text-lg"} />
-          </button>
-          <button className="text-cyan-300 hover:text-cyan-100 p-2" aria-label="Chamada de vídeo">
-            <FaVideo className={screenWidth < 360 ? "text-sm" : "text-lg"} />
-          </button>
-          <button className="text-cyan-300 hover:text-cyan-100 p-2" aria-label="Mais opções">
-            <FaEllipsisV className={screenWidth < 360 ? "text-sm" : "text-lg"} />
-          </button>
-        </div>
-      </div>
-    );
-  };
-
-  // Renderizar tela de erro
-  if (error && !contacts.length) {
-    return (
-      <div className="min-h-screen flex flex-col" style={mobileStyles.pageContainer}>
+      <div className="min-h-screen flex flex-col bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950">
         <Navbar />
-        <div className="container mx-auto flex-1 flex flex-col" style={mobileStyles.contentContainer}>
+        <div className="container mx-auto flex-1 flex flex-col p-6">
           <div className="max-w-4xl mx-auto bg-red-900/30 border border-red-700 rounded-lg p-4 text-center">
             <FaExclamationTriangle className="text-4xl text-red-500 mx-auto mb-2" />
             <p className="text-lg font-semibold text-red-200">{error}</p>
-            <button 
-              className="mt-4 px-4 py-2 bg-red-700 hover:bg-red-600 rounded-lg text-white"
-              onClick={handleRefresh}
-            >
-              Tentar novamente
-            </button>
           </div>
         </div>
       </div>
-    );
+    )
   }
 
   return (
-    <div className="min-h-screen h-screen max-h-screen flex flex-col overflow-hidden w-full" style={mobileStyles.pageContainer}>
+    <div className="min-h-screen h-screen max-h-screen flex flex-col overflow-hidden w-full bg-gradient-to-br from-emerald-950 via-cyan-950 to-blue-950">
       <Navbar />
-      <div className="container-fluid mx-auto flex-1 flex flex-col overflow-hidden w-full" style={mobileStyles.contentContainer}>
-        {error ? (
-          <div className="max-w-4xl mx-auto bg-red-900/30 border border-red-700 rounded-lg p-4 text-center">
-            <FaExclamationTriangle className="text-4xl text-red-500 mx-auto mb-2" />
-            <p className="text-lg font-semibold text-red-200">{error}</p>
-            <button 
-              className="mt-4 px-4 py-2 bg-red-700 hover:bg-red-600 rounded-lg text-white"
-              onClick={handleRefresh}
-            >
-              Tentar novamente
-            </button>
-          </div>
-        ) : (
-          <div className="w-full h-full flex flex-col overflow-hidden" style={{margin: 0, padding: 0}}>
-            <div className="flex flex-col md:flex-row border border-cyan-800/50 rounded-lg shadow-2xl bg-white/5 backdrop-blur-sm overflow-hidden flex-1 w-full" style={mobileStyles.mainContainer}>
-              {/* Lista de contatos - oculta no modo mobile quando um contato está selecionado */}
+      
+      <div className="container-fluid mx-auto flex-1 flex flex-col overflow-hidden w-full p-6">
+        <div className="w-full h-full flex flex-col overflow-hidden">
+          <div className="flex flex-col md:flex-row border border-cyan-800/50 rounded-lg shadow-2xl bg-white/5 backdrop-blur-sm overflow-hidden flex-1 w-full">
+            
+            {/* ✅ LISTA DE CONTATOS - Componente simplificado */}
               {(!isMobileView || !currentContact) && (
                 <div className="flex-shrink-0 flex-grow-0 min-w-0 w-full md:basis-1/4 md:max-w-[25%] border-r border-cyan-800/50 flex flex-col h-full p-0">
-                  <div className="p-2 border-b border-cyan-800/50">
-                    <div className="flex justify-between items-center mb-2">
+                {/* Header dos contatos */}
+                <div className="p-2 border-b border-cyan-800/50 bg-gradient-to-r from-cyan-900/20 to-blue-900/20">
+                  <div className="flex items-center justify-between mb-3">
                       <div className="flex items-center gap-2">
                         <h2 className="text-lg font-semibold text-cyan-100">Conversas</h2>
                         {isSyncing && (
@@ -3649,13 +1188,18 @@ export default function Chat() {
                             <div className={`w-2 h-2 rounded-full ${
                               connectionStatus.connected ? 'bg-emerald-500' : 'bg-red-500'
                             }`}></div>
-                            <span>{connectionStatus.connected ? 'Conectado' : 'Desconectado'}</span>
+                            <span>
+                              {connectionStatus.connected 
+                                ? `Conectado (${connectionStatus.connectedInstances}/${connectionStatus.totalInstances})`
+                                : 'Desconectado'
+                              }
+                            </span>
                           </div>
                         )}
                       </div>
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => syncContactsManual()}
+                        onClick={refreshContacts}
                           className="p-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-700 transition-colors"
                           title="Sincronizar contatos"
                         >
@@ -3663,24 +1207,21 @@ export default function Chat() {
                         </button>
                         <button 
                           className="bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-full p-2 hover:from-cyan-500 hover:to-blue-500 transition shadow-lg"
-                          onClick={handleCreateContact}
                         >
                           <FaPlus />
                         </button>
                       </div>
                     </div>
                     
-                    {/* Seletor de Instâncias Customizado */}
+                  {/* Seletor de Instâncias */}
                     {(() => {
-                      const shouldShow = instances.length > 0 || loadingState.instances;
-                  
+                    const shouldShow = instances.length > 0 || connectionStatus === null;
                       return shouldShow && (
                       <div className="mb-3 relative" ref={dropdownRef}>
                         <button
                           type="button"
-                          onClick={() => !loadingState.instances && setDropdownOpen(!dropdownOpen)}
-                          disabled={loadingState.instances}
-                          className="w-full py-2 px-3 bg-white/10 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 border border-cyan-800/50 transition-colors duration-200 hover:bg-white/15 flex items-center justify-between cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                        onClick={() => setDropdownOpen(!dropdownOpen)}
+                        className="w-full py-2 px-3 bg-white/10 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 border border-cyan-800/50 transition-colors duration-200 hover:bg-white/15 flex items-center justify-between cursor-pointer"
                         >
                           <span className="text-left">
                             {getSelectedInstanceText()}
@@ -3693,7 +1234,7 @@ export default function Chat() {
                         </button>
 
                         {/* Dropdown Options */}
-                        {dropdownOpen && !loadingState.instances && (
+                      {dropdownOpen && (
                           <div className="absolute z-50 w-full mt-1 bg-gradient-to-br from-emerald-950/95 via-cyan-950/95 to-blue-950/95 backdrop-blur-sm border border-cyan-800/50 rounded-lg shadow-lg max-h-60 overflow-y-auto">
                             {/* Opção "Todas as instâncias" */}
                             <button
@@ -3710,7 +1251,12 @@ export default function Chat() {
                             </button>
 
                             {/* Instâncias individuais */}
-                            {instances.map((instance) => (
+                            {instances.length === 0 ? (
+                              <div className="px-3 py-2 text-center text-cyan-400 text-sm">
+                                Nenhuma instância encontrada
+                              </div>
+                            ) : (
+                              instances.map((instance) => (
                               <button
                                 key={instance.id}
                                 type="button"
@@ -3719,69 +1265,67 @@ export default function Chat() {
                                   selectedInstanceId === instance.id ? 'bg-white/20 text-cyan-100' : 'text-cyan-200'
                                 } border-b border-cyan-800/30 last:border-b-0 last:rounded-b-lg`}
                               >
+                                <div className="flex items-center gap-2">
+                                  <div className={`w-2 h-2 rounded-full ${
+                                    instance.connected ? 'bg-emerald-500' : 'bg-red-500'
+                                  }`}></div>
                                 <span>
                                   {instance.agent_name || instance.instance_name || `Instância ${instance.id}`}
                                 </span>
+                                  {instance.phone && (
+                                    <span className="text-xs text-cyan-400">
+                                      ({instance.phone})
+                                    </span>
+                                  )}
+                                </div>
                                 {selectedInstanceId === instance.id && (
                                   <FaCheck className="w-3 h-3 text-cyan-400" />
                                 )}
                               </button>
-                            ))}
+                              ))
+                            )}
                           </div>
                         )}
                       </div>
                     );
                     })()}
                     
+                  {/* Busca */}
                     <div className="relative">
+                    <FaSearch className="absolute left-3 top-1/2 transform -translate-y-1/2 text-cyan-400 w-4 h-4" />
                       <input
                         type="text"
-                        placeholder="Pesquisar conversa"
-                        className="w-full py-2 pl-10 pr-4 bg-white/10 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 border border-cyan-800/50 placeholder-cyan-300/70"
+                      placeholder="Buscar conversas..."
                         value={searchTerm}
-                        onChange={(e) => {
-                          // ✅ SEGURANÇA: Validar entrada de busca
-                          const validation = validateUserInput(e.target.value, 'search');
-                          if (validation.valid) {
-                            setSearchTerm(validation.value);
-                          }
-                        }}
-                        maxLength={SECURITY_CONFIG.MAX_SEARCH_LENGTH}
-                      />
-                      <FaSearch className="absolute left-3 top-3 text-cyan-300" />
+                      onChange={(e) => actions.setSearchTerm(e.target.value)}
+                      className="w-full pl-10 pr-4 py-2 bg-cyan-900/30 border border-cyan-800/50 rounded-lg text-cyan-100 placeholder-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                    />
                     </div>
                   </div>
+
+                {/* Lista de contatos */}
                   <div 
                     ref={contactsContainerRef}
                     className="overflow-y-auto flex-1"
                     onScroll={handleContactsScroll}
                   >
-                    {contacts.length === 0 ? (
+                  {contactsLoading.contacts ? (
                       <div className="p-6 text-center text-cyan-300">
-                        {/* ✅ UX: Estado vazio mais atrativo */}
-                        <div className="text-center">
-                          <div className="w-12 h-12 bg-cyan-600/20 rounded-full flex items-center justify-center mx-auto mb-3">
-                            <svg className="w-6 h-6 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
-                            </svg>
+                      <FaSpinner className="animate-spin text-2xl mx-auto mb-2" />
+                      <p>Carregando conversas...</p>
                           </div>
-                          <p className="text-base font-medium">Nenhuma conversa</p>
-                          <p className="text-sm mt-1 text-cyan-400">Aguardando mensagens...</p>
-                        </div>
+                  ) : displayContacts.length === 0 ? (
+                    <div className="p-6 text-center text-cyan-300">
+                      <p>Nenhuma conversa encontrada</p>
                       </div>
                     ) : (
-                      displayContacts
-                        .filter(contact => 
-                          contact.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          contact.phone?.includes(searchTerm)
-                        )
-                        .map(contact => (
+                    displayContacts.map((contact) => (
                           <div
                             key={contact.id || contact.remote_jid}
                             className={`flex items-center p-2 cursor-pointer border-b border-cyan-800/30 hover:bg-white/5 transition-colors ${
                               currentContact?.id === contact.id || currentContact?.remote_jid === contact.remote_jid ? 'bg-white/10' : ''
                             }`}
-                            onClick={() => handleSelectContact(contact)}
+                        onClick={() => handleContactSelect(contact)}
                           >
                             <div className="relative">
                               <div className="w-10 h-10 bg-gradient-to-br from-cyan-600 to-blue-600 rounded-full flex items-center justify-center text-white font-bold text-lg shadow-md">
@@ -3794,41 +1338,42 @@ export default function Chat() {
                             <div className="ml-4 flex-1 min-w-0 overflow-hidden">
                               <div className="flex justify-between">
                                 <div className="flex items-center gap-1">
-                                  {(() => {
-                                    const formattedName = formatContactName(contact);
-                                    return (
-                                      <>
-                                        <h3 className="font-semibold text-cyan-100">{formattedName.name}</h3>
-                                        {formattedName.instanceName && (
+                              <h3 className="font-semibold text-cyan-100">{contact.name || contact.push_name || 'Contato'}</h3>
+                              {contact.instance_name && (
                                           <span className="text-xs text-cyan-400 bg-cyan-900/30 px-1.5 py-0.5 rounded-full font-medium">
-                                            {formattedName.instanceName}
+                                  {contact.instance_name}
                                           </span>
                                         )}
-                                      </>
-                                    );
-                                  })()}
                                 </div>
                                 <span className="text-xs text-cyan-300 ml-1 shrink-0 whitespace-nowrap">
-                                  {contact.last_message_time && formatDate(contact.last_message_time)}
+                              {formatTimestamp(contact.last_message_time || contact.updated_at || contact.created_at)}
                                 </span>
                               </div>
                               <p className="text-sm text-cyan-300 truncate w-full">
-                                {contact.last_message || contact.phone || 'Nenhuma mensagem'}
+                            {(() => {
+                              // Lógica consistente para exibir preview da mensagem
+                              if (contact.last_message && contact.last_message.trim()) {
+                                return contact.last_message;
+                              } else {
+                                // Para contatos sem mensagem, mostrar número de telefone
+                                const phoneNumber = contact.phone || (contact.remote_jid || '').split('@')[0];
+                                return phoneNumber || 'Nenhuma mensagem';
+                              }
+                            })()}
                               </p>
                             </div>
                             
                             {/* Botão AI para ativar/desativar resposta automática do agente */}
                             <button 
-                              key={`contact-${contact.id || contact.remote_jid}`}
                               onClick={(e) => toggleAutoResponse(contact.id || contact.remote_jid, e)}
                               className={`ml-2 w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shadow-md transition-all ${
-                                isAgentAiActive(contact)
+                            contact.agent_state === 'ai'
                                   ? 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white' 
                                   : 'bg-gray-600/50 text-gray-300'
                               }`}
-                              title={isAgentAiActive(contact) ? "Desativar resposta automática" : "Ativar resposta automática"}
-                              aria-label={isAgentAiActive(contact) ? "Desativar resposta automática" : "Ativar resposta automática"}
-                              aria-pressed={isAgentAiActive(contact)}
+                          title={contact.agent_state === 'ai' ? "Desativar resposta automática" : "Ativar resposta automática"}
+                          aria-label={contact.agent_state === 'ai' ? "Desativar resposta automática" : "Ativar resposta automática"}
+                          aria-pressed={contact.agent_state === 'ai'}
                             >
                               AI
                             </button>
@@ -3843,7 +1388,7 @@ export default function Chat() {
                     )}
                     
                     {/* ✅ Skeleton loading para contatos quando carregando mais */}
-                    {isLoadingMoreContacts && (
+                    {contactsLoading.moreContacts && (
                       <div className="p-3">
                         {[...Array(3)].map((_, i) => (
                           <div key={i} className="flex items-center p-2 mb-2 animate-pulse">
@@ -3857,14 +1402,14 @@ export default function Chat() {
                       </div>
                     )}
                     
-                    {/* Botão para carregar mais contatos (agora apenas fallback manual) */}
-                    {hasMoreContacts && !isLoading && !isLoadingMoreContacts && displayContacts.length > 0 && (
+                    {/* Botão para carregar mais contatos */}
+                    {contactsLoading.hasMoreContacts && !contactsLoading.contacts && !contactsLoading.moreContacts && displayContacts.length > 0 && (
                       <div className="p-3 text-center">
                         <button
                           onClick={loadMoreContacts}
-                          className="w-full py-2 px-4 bg-white/10 hover:bg-white/20 text-cyan-100 rounded-lg transition-colors duration-200"
+                          className="px-4 py-2 bg-cyan-600/20 hover:bg-cyan-600/30 text-cyan-300 rounded-lg transition-colors text-sm"
                         >
-                          Carregar mais contatos
+                          Carregar mais conversas
                         </button>
                       </div>
                     )}
@@ -3872,19 +1417,24 @@ export default function Chat() {
                 </div>
               )}
               
-              {/* Área de mensagens */}
+            {/* ✅ ÁREA DE CHAT - Componente simplificado */}
               {currentContact ? (
-                <>
-                  <div className={`flex-shrink-0 flex-grow-0 min-w-0 w-full ${!isMobileView ? 'md:basis-2/4 md:max-w-[50%]' : ''} flex flex-col h-full p-0 relative`}>
-                  {/* Cabeçalho do chat */}
-                    {renderChatHeader()}
-                  
-                  {/* ✅ BOTÃO DE ANCORAGEM: Flutuante FIXO sobre a área de mensagens */}
-                  {!isAtBottom && messages.length > 0 && (
+              <div className="flex-1 flex flex-col min-w-0 relative">
+                
+                {/* ✅ BOTÃO DE ANCORAGEM: Flutuante FIXO sobre a área de mensagens (igual ao backup) */}
+                {(() => {
+                  const shouldShowButton = !isAtBottom && messages.length > 0;
+                  console.log('[BUTTON] 🔍 Debug botão scroll:', {
+                    isAtBottom,
+                    messagesLength: messages.length,
+                    shouldShowButton
+                  });
+                  return shouldShowButton;
+                })() && (
                     <button
                       onClick={() => {
-                        scrollToPosition('bottom', { immediate: true });
-                        console.log('[ANCHOR-BTN] ✅ Usuário clicou para ir à mensagem mais recente');
+                      console.log('[BUTTON] 🎯 Botão clicado - fazendo scroll');
+                      scrollToBottom(true);
                       }}
                       className="absolute bottom-20 right-4 z-50 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white p-3 rounded-full shadow-lg transition-all duration-200 transform hover:scale-110 group"
                       title="Ir para a mensagem mais recente"
@@ -3904,73 +1454,75 @@ export default function Chat() {
                       )}
                     </button>
                   )}
+                {/* Header do chat */}
+                <div className="p-2 border-b border-cyan-800/50 bg-gradient-to-r from-cyan-900/20 to-blue-900/20 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    {isMobileView && (
+                        <button
+                        onClick={() => actions.setCurrentContact(null)}
+                        className="text-cyan-300 hover:text-cyan-100 p-2"
+                        >
+                        <FaArrowLeft />
+                        </button>
+                    )}
+                    <div>
+                      <h3 className="font-semibold text-cyan-100">
+                        {currentContact.name || currentContact.push_name || 'Contato'}
+                      </h3>
+                      <p className="text-sm text-cyan-300">
+                        {currentContact.phone}
+                      </p>
+                  </div>
+                </div>
                   
-                  {/* Área de mensagens */}
-                  
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        console.log('[DEBUG-BUTTON] 🖱️ Botão clicado!');
+                        console.log('[DEBUG-BUTTON] 📊 currentContact:', currentContact);
+                        handleOpenContactPanel(currentContact);
+                      }}
+                      className="text-cyan-300 hover:text-cyan-100 p-2"
+                      title="Ver dados do contato"
+                    >
+                      <FaUser />
+                    </button>
+                    <button className="text-cyan-300 hover:text-cyan-100 p-2">
+                      <FaPhone />
+                    </button>
+                    <button className="text-cyan-300 hover:text-cyan-100 p-2">
+                      <FaVideo />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Mensagens */}
                     <div 
                       ref={messagesContainerRef}
                       className="flex-1 overflow-y-auto p-3 bg-gradient-to-br from-emerald-950/20 via-cyan-950/20 to-blue-950/20 relative"
                       style={{ 
                         height: '100%',
                         maxHeight: 'calc(100vh - 12rem)',
-                        // ✅ Garantir altura mínima para justify-end funcionar
                         minHeight: '300px',
-                        // ✅ Container sempre visível para ancoragem funcionar
-                        // ✅ Forçar flex para funcionar
                         display: 'flex',
-                        flexDirection: 'column'
+                    flexDirection: 'column',
+                    willChange: 'scroll-position',
+                    contain: 'layout style paint',
+                    transform: 'translateZ(0)',
+                    backfaceVisibility: 'hidden',
+                    perspective: '1000px'
                       }}
                       onScroll={handleScroll}
                     >
-                    {/* Skeleton loading para mensagens antigas */}
-                    {isLoadingMoreMessages && (
-                      <div className="flex flex-col space-y-3 p-3">
-                        {[...Array(3)].map((_, i) => (
-                          <div key={i} className="animate-pulse">
-                            <div className="flex space-x-3">
-                              <div className="h-8 w-8 bg-cyan-700/30 rounded-full"></div>
-                              <div className="flex-1 space-y-2">
-                                <div className="h-4 bg-cyan-700/30 rounded w-3/4"></div>
-                                <div className="h-3 bg-cyan-700/20 rounded w-1/2"></div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    
-                    {/* ✅ UX: Remover spinner principal - sempre mostrar conteúdo */}
-                    {(
-                      <>
-                        {isUpdating && (
-                          <div className="absolute top-2 right-2 z-10 bg-cyan-800/60 p-1.5 rounded-full shadow-md">
-                            <FaSpinner className="animate-spin text-xs text-cyan-100" />
-                          </div>
-                        )}
-                        
-
-                        
-                        {messages.length === 0 ? (
-                          <div className="flex flex-col items-center justify-center h-full text-cyan-300">
-                            {/* ✅ UX: Estado vazio elegante sem mencionar carregamento */}
-                            <div className="text-center p-8">
-                              <div className="w-16 h-16 bg-cyan-600/20 rounded-full flex items-center justify-center mx-auto mb-4">
-                                <svg className="w-8 h-8 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                                </svg>
-                              </div>
-                              <p className="text-lg font-medium">Inicie uma conversa</p>
-                              <p className="text-sm mt-2 text-cyan-400">Suas mensagens aparecerão aqui</p>
-                            </div>
-                          </div>
-                        ) : (
-                          <>
-                            {/* ✅ Spacer para empurrar mensagens para o final */}
+                  {/* Spacer para empurrar mensagens para o final */}
                             <div className="flex-grow"></div>
+                  
                           <div className="flex flex-col w-full">
                             {messages.map((msg, index) => {
                               const previousMsg = index > 0 ? messages[index - 1] : null;
-                              const showDateSeparator = shouldShowDateSeparator(msg, previousMsg);
+                      const showDateSeparator = previousMsg ? 
+                        new Date(msg.created_at).toDateString() !== new Date(previousMsg.created_at).toDateString() : 
+                        true;
                               
                               return (
                                 <React.Fragment key={msg.id}>
@@ -3979,305 +1531,781 @@ export default function Chat() {
                                     <div className="flex justify-center my-4">
                                       <div className="bg-cyan-900/30 backdrop-blur-sm text-cyan-100 px-3 py-1 rounded-full text-sm border border-cyan-800/50">
                                         {formatDateSeparator(msg.created_at)}
-                                      </div>
-                                    </div>
-                                  )}
-                                  
-                                  {(() => {
-                              // RENDERIZAÇÃO: Forçar o uso EXCLUSIVO do campo 'role' 
-                              // para determinar aparência e posição
-                              
-                              // Forçar um role válido se de alguma forma chegou à renderização sem um
-                              if (!msg.role || !['ME', 'AI', 'USER'].includes(msg.role)) {
-                                console.error(`ERRO CRÍTICO: Mensagem sem role válido chegou à renderização: ID=${msg.id}, conteúdo="${msg.content?.substring(0, 15) || ''}", role="${msg.role || 'undefined'}"`);
-                                // Aplicar correção de emergência
-                                msg.role = 'USER';
-                              }
-                              
-                              // Definir valores de estilo baseado apenas no role
-                              let justifyContent = 'flex-start'; // Padrão (USER = à esquerda)
-                              let bgColorClass = 'bg-white/10 backdrop-blur-sm text-cyan-100 rounded-tl-lg rounded-tr-lg rounded-br-lg';
-                              let borderClass = 'border-cyan-800/30';
-                              let textColorClass = 'text-cyan-300/80';
-                              
-                              // Sobrescrever para ME ou AI
-                              if (msg.role === 'ME') {
-                                justifyContent = 'flex-end';
-                                  bgColorClass = 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-tl-lg rounded-tr-lg rounded-bl-lg';
-                                borderClass = 'border-blue-700/50';
-                                textColorClass = 'text-blue-100/80';
-                              } 
-                              else if (msg.role === 'AI') {
-                                justifyContent = 'flex-end';
-                                  bgColorClass = 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white rounded-tl-lg rounded-tr-lg rounded-bl-lg';
-                                borderClass = 'border-indigo-700/50';
-                                textColorClass = 'text-indigo-100/80';
-                              }
-                              
-                              // Log para depurar problemas de renderização
-              
-                              
-                              return (
-                                <div 
-                                  key={msg.id}
-                                  className="mb-3"
-                                  style={{ 
-                                    width: '100%', 
-                                    display: 'flex', 
-                                    justifyContent: justifyContent
-                                  }}
-                                >
-                                  <div
-                                      className={`max-w-[75%] shadow-lg ${bgColorClass} p-2 border ${borderClass} ${msg.temp ? 'opacity-70' : ''}`}
+                              </div>
+                      </div>
+                    )}
+                    
+                          {/* Mensagem */}
+                          <div className={`flex ${msg.role === 'USER' ? 'justify-start' : 'justify-end'} mb-2`}>
+                            <div className={`max-w-[70%] rounded-lg p-3 ${
+                              msg.role === 'USER' 
+                                ? 'bg-white/10 text-cyan-100 border border-cyan-800/30'
+                                : msg.role === 'AI'
+                                ? 'bg-gradient-to-r from-purple-600 to-fuchsia-700 text-white'
+                                : 'bg-gradient-to-r from-cyan-600 to-blue-600 text-white'
+                            }`}>
+                              <div className="break-words">
+                                {sanitizeContent(msg.content)}
+                          </div>
+                              <div className={`text-xs mt-1 ${
+                                msg.role === 'USER' 
+                                  ? 'text-cyan-300' 
+                                  : msg.role === 'AI'
+                                  ? 'text-purple-100'
+                                  : 'text-cyan-100'
+                              }`}>
+                                {formatTimestamp(msg.created_at)}
+                                {msg.role === 'USER' && (
+                                  <button
+                                    onClick={() => handleCopyMessage(msg.content)}
+                                    className="ml-2 text-cyan-400 hover:text-cyan-200"
+                                    title="Copiar mensagem"
                                   >
-                                    <p>{sanitizeContent(msg.content)}</p>
-                                      <div className={`text-xs mt-1 text-right whitespace-nowrap ${textColorClass} flex items-center justify-end`}>
-                                      {formatDate(msg.created_at)}
-                                        {msg.temp ? (
-                                          <span className="ml-1">
-                                            <FaSpinner className="animate-spin text-xs ml-1" />
-                                          </span>
-                                        ) : msg.status === 'pending' ? (
-                                          <span className="ml-1">
-                                            <FaClock className="text-gray-400" />
-                                          </span>
-                                        ) : msg.status === 'sent' ? (
-                                          <span className="ml-1">
-                                            <FaCheck className="text-cyan-400" />
-                                          </span>
-                                        ) : msg.status === 'delivered' ? (
-                                          <span className="ml-1">
-                                            <FaCheck className="text-blue-400" />
-                                          </span>
-                                        ) : msg.status === 'read' ? (
-                                          <span className="ml-1">
-                                            <FaCheck className="text-green-400" />
-                                          </span>
-                                        ) : (msg.role === 'ME' || msg.role === 'AI') && (
-                                        <span className="ml-1">
-                                          {msg.is_read ? '✓✓' : '✓'}
-                                        </span>
+                                    <FaRegCopy className="w-3 h-3" />
+                                  </button>
                                       )}
                                     </div>
                                   </div>
                                 </div>
-                              );
-                                  })()}
                                 </React.Fragment>
                               );
                             })}
                           </div>
-                          </>
-                        )}
-                      </>
-                    )}
-                    
-
                                     </div>
                   
-                  {/* Formulário de envio de mensagem */}
-                    <div className="border-t border-cyan-800/50 bg-white/5 w-full message-input-container flex" style={mobileStyles.messageInputContainer}>
-                    <form 
-                        className="flex items-center w-full mx-1 my-1"
-                      onSubmit={handleSendMessage}
-                    >
-                        {!isMobileView || screenWidth >= 360 ? (
-                          <>
-                      <button 
-                        type="button"
-                              className="text-cyan-300 hover:text-cyan-100 px-1"
-                      >
-                              <FaSmile className={`${screenWidth < 400 ? 'text-base' : 'text-lg'}`} />
+                {/* Input de mensagem */}
+                <div className="p-3 border-t border-cyan-800/50 bg-white/5">
+                  <div className="flex items-center gap-2">
+                    <button className="text-cyan-300 hover:text-cyan-100 p-2">
+                      <FaPaperclip />
                       </button>
-                      <button 
-                        type="button"
-                              className="text-cyan-300 hover:text-cyan-100 px-1"
-                      >
-                              <FaPaperclip className={`${screenWidth < 400 ? 'text-base' : 'text-lg'}`} />
+                    <button className="text-cyan-300 hover:text-cyan-100 p-2">
+                      <FaSmile />
                       </button>
-                          </>
-                        ) : null}
-                        <div className={`flex-1 mx-1 py-2 relative`}>
+                    
+                    <div className="flex-1 relative">
                           <input
+                        ref={messageInputRef}
                             type="text"
-                            placeholder="Digite uma mensagem ou cole URLs (Ctrl+V para colar, Ctrl+C para copiar)"
-                            className="w-full py-2 px-3 bg-white/10 text-cyan-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-cyan-400/60 border border-cyan-800/50 placeholder-cyan-300/70"
                             value={newMessage}
-                            onChange={(e) => {
-                              // ✅ SEGURANÇA: Validar entrada de mensagem
-                              const validation = validateUserInput(e.target.value, 'message');
-                              if (validation.valid || e.target.value === '') {
-                                setNewMessage(e.target.value);
-                              }
-                            }}
-                            onPaste={(e) => {
-                              // ✅ Permitir colar texto - incluindo URLs
-                              e.preventDefault();
-                              const pastedText = e.clipboardData.getData('text/plain');
-                              console.log('Texto colado:', pastedText); // Debug
-                              
-                              if (pastedText && pastedText.length <= SECURITY_CONFIG.MAX_MESSAGE_LENGTH) {
-                                // Apenas verificar comprimento e caracteres básicos
-                                const cleanText = pastedText
-                                  .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove caracteres de controle
-                                  .trim();
-                                
-                                console.log('Texto limpo:', cleanText); // Debug
-                                
-                                if (cleanText && cleanText.length > 0) {
-                                  setNewMessage(cleanText);
-                                  console.log('Mensagem definida:', cleanText); // Debug
-                                }
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              // ✅ Suporte a atalhos de teclado para copiar/colar
-                              if (e.ctrlKey || e.metaKey) {
-                                switch (e.key) {
-                                  case 'c':
-                                    // Ctrl+C - Copiar texto selecionado
-                                    if (e.target.selectionStart !== e.target.selectionEnd) {
-                                      const selectedText = newMessage.substring(e.target.selectionStart, e.target.selectionEnd);
-                                      copyToClipboard(selectedText);
-                                    }
-                                    break;
-                                  case 'v':
-                                    // Ctrl+V - Colar texto (incluindo URLs)
-                                    e.preventDefault();
-                                    readFromClipboard().then(text => {
-                                      if (text && text.length <= SECURITY_CONFIG.MAX_MESSAGE_LENGTH) {
-                                        // Apenas verificar comprimento e caracteres básicos
-                                        const cleanText = text
-                                          .replace(/[\u0000-\u001F\u007F-\u009F]/g, '') // Remove caracteres de controle
-                                          .trim();
-                                        
-                                        if (cleanText && cleanText.length > 0) {
-                                          setNewMessage(cleanText);
-                                        }
-                                      }
-                                    });
-                                    break;
-                                  case 'x':
-                                    // Ctrl+X - Cortar texto selecionado
-                                    if (e.target.selectionStart !== e.target.selectionEnd) {
-                                      const selectedText = newMessage.substring(e.target.selectionStart, e.target.selectionEnd);
-                                      copyToClipboard(selectedText);
-                                      const newValue = newMessage.substring(0, e.target.selectionStart) + newMessage.substring(e.target.selectionEnd);
-                                      setNewMessage(newValue);
-                                    }
-                                    break;
-                                }
-                              }
-                            }}
-                            maxLength={SECURITY_CONFIG.MAX_MESSAGE_LENGTH}
-                            autoComplete="off"
-                            spellCheck="false"
-                            data-testid="message-input"
-                            style={{ 
-                              userSelect: 'text',
-                              WebkitUserSelect: 'text',
-                              MozUserSelect: 'text',
-                              msUserSelect: 'text'
-                            }}
-                          />
-                          
-                          {/* ✅ Botões de clipboard para melhor UX */}
-                          <div className="absolute right-2 top-1/2 transform -translate-y-1/2 flex gap-1">
-                            {/* Botão de colar */}
+                        onChange={(e) => setNewMessage(e.target.value)}
+                        onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                        placeholder="Digite sua mensagem..."
+                        className="w-full px-4 py-2 bg-cyan-900/30 border border-cyan-800/50 rounded-lg text-cyan-100 placeholder-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        disabled={isSendingMessage}
+                      />
+                    </div>
+                    
                             <button
-                              type="button"
-                              onClick={async () => {
-                                try {
-                                  const text = await readFromClipboard();
-                                  if (text && text.length <= SECURITY_CONFIG.MAX_MESSAGE_LENGTH) {
-                                    const cleanText = text
-                                      .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')
-                                      .trim();
-                                    
-                                    if (cleanText && cleanText.length > 0) {
-                                      setNewMessage(cleanText);
-                                      setClipboardFeedback('Colado!');
-                                      setTimeout(() => setClipboardFeedback(''), 2000);
-                                    }
-                                  }
-                                } catch (error) {
-                                  setClipboardFeedback('Erro ao colar');
-                                  setTimeout(() => setClipboardFeedback(''), 2000);
-                                }
-                              }}
-                              className="p-1 text-cyan-300 hover:text-cyan-100 text-xs transition-colors"
-                              title="Colar texto (Ctrl+V)"
-                              aria-label="Colar texto"
-                            >
-                              <FaRegCopy className="w-3 h-3 rotate-180" />
-                            </button>
-                            
-                            {/* Botão de copiar - apenas quando há texto */}
-                            {newMessage && (
-                              <button
-                                type="button"
-                                onClick={async () => {
-                                  const success = await copyToClipboard(newMessage);
-                                  if (success) {
-                                    setClipboardFeedback('Copiado!');
-                                    setTimeout(() => setClipboardFeedback(''), 2000);
-                                  } else {
-                                    setClipboardFeedback('Erro ao copiar');
-                                    setTimeout(() => setClipboardFeedback(''), 2000);
-                                  }
-                                }}
-                                className="p-1 text-cyan-300 hover:text-cyan-100 text-xs transition-colors"
-                                title="Copiar mensagem (Ctrl+C)"
-                                aria-label="Copiar mensagem"
-                              >
-                                <FaRegCopy className="w-3 h-3" />
-                              </button>
-                            )}
+                      onClick={handleSendMessage}
+                      disabled={!newMessage.trim() || isSendingMessage}
+                      className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:from-gray-500 disabled:to-gray-600 text-white p-2 rounded-lg transition-all duration-200"
+                    >
+                      {isSendingMessage ? (
+                        <FaSpinner className="animate-spin" />
+                      ) : (
+                        <IoSend />
+                      )}
+                    </button>
+                              </div>
+                            </div>
+                          </div>
+                        ) : (
+              /* ✅ TELA INICIAL - Quando nenhum contato está selecionado */
+              <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-emerald-950/20 via-cyan-950/20 to-blue-950/20">
+                <div className="text-center text-cyan-300">
+                  <FaPhone className="text-6xl mx-auto mb-4 opacity-50" />
+                  <h2 className="text-2xl font-semibold mb-2">Selecione uma conversa</h2>
+                  <p>Escolha um contato para começar a conversar</p>
+                                      </div>
+                                    </div>
+                                  )}
+                                  
+            {/* ✅ PAINEL LATERAL DE DADOS DO CONTATO - Integrado ao layout */}
+                                  {(() => {
+              const shouldRender = isContactPanelOpen && selectedContactForPanel;
+              // TESTE: Forçar renderização se há contato selecionado
+              const forceRender = currentContact && true;
+              
+              console.log('[DEBUG-PANEL] 🔍 Condições do painel:', {
+                isContactPanelOpen,
+                selectedContactForPanel: !!selectedContactForPanel,
+                contactData: !!contactData,
+                contactDataLeadId: contactData?.leadId,
+                shouldRender,
+                forceRender,
+                currentContact: !!currentContact
+              });
+              
+              if (shouldRender || forceRender) {
+                console.log('[DEBUG-PANEL] ✅ Renderizando ContactPanel com props:', {
+                  contact: selectedContactForPanel || currentContact,
+                  isOpen: isContactPanelOpen || forceRender,
+                  contactData: contactData
+                });
+              } else {
+                console.log('[DEBUG-PANEL] ❌ NÃO renderizando ContactPanel');
+              }
+              
+              return shouldRender || forceRender;
+            })() && (
+              <ContactPanel
+                contact={selectedContactForPanel || currentContact}
+                isOpen={isContactPanelOpen || true}
+                onClose={handleCloseContactPanel}
+                onEditLead={handleEditLead}
+                onCreateProposal={handleCreateProposal}
+                onViewProposalHistory={handleViewProposalHistory}
+                onRepeatQuery={handleRepeatQuery}
+                contactData={contactData} // ✅ ADICIONADO: Passar dados já carregados
+                instances={instances} // ✅ ADICIONADO: Passar dados das instâncias
+              />
+            )}
+                  </div>
+                </div>
+            </div>
+
+      {/* ✅ MODAIS DO PAINEL LATERAL */}
+      
+      {/* Modal de Edição de Lead */}
+      <Transition.Root show={editModalOpen} as={Fragment}>
+        <Dialog as="div" className="relative z-50" onClose={() => setEditModalOpen(false)}>
+          <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
+            <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
+          </Transition.Child>
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
+                <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700">
+                  <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
+                    Editar Dados Pessoais
+                  </Dialog.Title>
+                  
+                  {saveError && (
+                    <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm">
+                      {saveError}
+                    </div>
+                  )}
+
+                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                    {/* Coluna Esquerda */}
+                    <div className="space-y-6">
+                      {/* Informações Básicas */}
+                      <div className="border-b border-gray-600 pb-4">
+                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Informações Básicas</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Nome</label>
+                            <input
+                              type="text"
+                              value={editingLead.name || ''}
+                              onChange={(e) => setEditingLead(prev => ({ ...prev, name: e.target.value }))}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                                    </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">CPF</label>
+                            <input
+                              type="text"
+                              value={editingLead.cpf || ''}
+                              onChange={(e) => setEditingLead(prev => ({ ...prev, cpf: e.target.value }))}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                                  </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+                            <input
+                              type="email"
+                              value={editingLead.email || ''}
+                              onChange={(e) => setEditingLead(prev => ({ ...prev, email: e.target.value }))}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                                </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Telefone</label>
+                            <input
+                              type="text"
+                              value={editingLead.phone || ''}
+                              onChange={(e) => setEditingLead(prev => ({ ...prev, phone: e.target.value }))}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Documentos */}
+                      <div className="border-b border-gray-600 pb-4">
+                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Documentos</h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">RG</label>
+                            <input
+                              type="text"
+                              value={editingLead.rg || ''}
+                              onChange={(e) => setEditingLead(prev => ({ ...prev, rg: e.target.value }))}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Data de Nascimento</label>
+                            <input
+                              type="date"
+                              value={editingLead.birth || ''}
+                              onChange={(e) => setEditingLead(prev => ({ ...prev, birth: e.target.value }))}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Nome da Mãe</label>
+                            <input
+                              type="text"
+                              value={editingLead.mother_name || ''}
+                              onChange={(e) => setEditingLead(prev => ({ ...prev, mother_name: e.target.value }))}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Coluna Direita */}
+                    <div className="space-y-6">
+                      {/* Endereço */}
+                      <div className="border-b border-gray-600 pb-4">
+                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Endereço</h4>
+                        <div className="space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-300 mb-1">CEP</label>
+                              <input
+                                type="text"
+                                value={editingLead.cep || ''}
+                                onChange={(e) => setEditingLead(prev => ({ ...prev, cep: e.target.value }))}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-300 mb-1">Número</label>
+                              <input
+                                type="text"
+                                value={editingLead.numero || ''}
+                                onChange={(e) => setEditingLead(prev => ({ ...prev, numero: e.target.value }))}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Rua</label>
+                            <input
+                              type="text"
+                              value={editingLead.rua || ''}
+                              onChange={(e) => setEditingLead(prev => ({ ...prev, rua: e.target.value }))}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                              <label className="block text-sm font-medium text-gray-300 mb-1">Cidade</label>
+                              <input
+                                type="text"
+                                value={editingLead.cidade || ''}
+                                onChange={(e) => setEditingLead(prev => ({ ...prev, cidade: e.target.value }))}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-sm font-medium text-gray-300 mb-1">Estado</label>
+                              <input
+                                type="text"
+                                value={editingLead.estado || ''}
+                                onChange={(e) => setEditingLead(prev => ({ ...prev, estado: e.target.value }))}
+                                className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                                    </div>
+                  
+                      {/* Informações Financeiras */}
+                      <div>
+                        <h4 className="text-sm font-semibold text-cyan-300 mb-4">Informações Financeiras</h4>
+                        <div className="space-y-4">
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Chave PIX</label>
+                            <input
+                              type="text"
+                              value={editingLead.pix_key || ''}
+                              onChange={(e) => setEditingLead(prev => ({ ...prev, pix_key: e.target.value }))}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-sm font-medium text-gray-300 mb-1">Saldo</label>
+                            <input
+                              type="text"
+                              value={editingLead.balance || ''}
+                              readOnly
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 cursor-not-allowed opacity-60"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-8 flex justify-end gap-3">
+                      <button 
+                        type="button"
+                      className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none"
+                      onClick={() => setEditModalOpen(false)}
+                      >
+                      Cancelar
+                      </button>
+                      <button 
+                        type="button"
+                      className="inline-flex justify-center rounded-md border border-transparent bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={saveLeadData}
+                      disabled={isSavingLead}
+                    >
+                      {isSavingLead ? (
+                        <>
+                          <FaSpinner className="animate-spin mr-2 w-4 h-4" />
+                          Salvando...
+                        </>
+                      ) : (
+                        'Salvar'
+                      )}
+                    </button>
+                                    </div>
+                </Dialog.Panel>
+              </Transition.Child>
+                                  </div>
+                                </div>
+        </Dialog>
+      </Transition.Root>
+
+      {/* Modal de Histórico de Propostas */}
+      <Transition.Root show={proposalsHistoryModalOpen} as={Fragment}>
+        <Dialog as="div" className="relative z-50" onClose={() => setProposalsHistoryModalOpen(false)}>
+          <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
+            <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
+          </Transition.Child>
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
+                <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700">
+                  <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
+                    Histórico de Propostas - {selectedLead?.name}
+                  </Dialog.Title>
+                  
+                  {isLoadingProposals ? (
+                    <div className="flex justify-center items-center py-8">
+                      <FaSpinner className="w-8 h-8 text-cyan-500 animate-spin" />
+                      <span className="ml-3 text-white">Carregando propostas...</span>
+                          </div>
+                  ) : proposalsHistory.length === 0 ? (
+                    <div className="text-center py-8">
+                      <p className="text-gray-300">Nenhuma proposta encontrada para este lead.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      {proposalsHistory.map((proposal, index) => (
+                        <div key={index} className="bg-gray-800 p-4 rounded-lg border border-gray-700">
+                          <div className="flex justify-between items-start">
+                            <div>
+                              <p className="text-white font-medium">Proposta #{proposal.proposal_id}</p>
+                              <p className="text-gray-300 text-sm">Status: {proposal.status}</p>
+                              <p className="text-gray-300 text-sm">Valor: {proposal.value}</p>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  
+                  <div className="mt-6 flex justify-end">
+                    <button
+                      onClick={() => setProposalsHistoryModalOpen(false)}
+                      className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+                    >
+                      Fechar
+                    </button>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition.Root>
+
+      {/* Modal de Repetir Consulta */}
+      <Transition.Root show={providerModalOpen} as={Fragment}>
+        <Dialog as="div" className="relative z-50" onClose={() => setProviderModalOpen(false)}>
+          <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
+            <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
+          </Transition.Child>
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
+                <Dialog.Panel className="w-full max-w-md transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700">
+                  <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-4">
+                    Repetir Consulta
+                  </Dialog.Title>
+                  
+                  <div className="mb-6">
+                    <p className="text-gray-200 mb-4">
+                      Selecione qual provedor e banco deseja usar para consultar o saldo do lead <strong className="text-cyan-300">{selectedLeadForQuery?.name}</strong>:
+                    </p>
+
+                    <div className="space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-cyan-300 mb-2">Provedor</label>
+                        <select
+                          value={selectedProvider}
+                          onChange={(e) => setSelectedProvider(e.target.value)}
+                          className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                        >
+                          <option value="cartos">Cartos</option>
+                          <option value="qi">QI</option>
+                        </select>
+                                    </div>
+                  
+                      <div>
+                        <label className="block text-sm font-medium text-cyan-300 mb-2">Banco</label>
+                        {loadingBanks ? (
+                          <div className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white flex items-center">
+                            <FaSpinner className="animate-spin mr-2 w-4 h-4" />
+                            Carregando bancos...
+                          </div>
+                        ) : availableBanks.length > 0 ? (
+                          <select
+                            value={selectedBank}
+                            onChange={(e) => setSelectedBank(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          >
+                            <option value="">Selecione um banco</option>
+                            {availableBanks.map((bank) => (
+                              <option key={bank.id} value={bank.id}>
+                                {bank.name} ({bank.partner_type})
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <div className="w-full px-3 py-2 bg-gray-800 border border-red-500 rounded-lg text-red-400">
+                            Nenhum banco disponível. Cadastre credenciais na página de Parceiros.
+                          </div>
+                        )}
+                      </div>
                           </div>
                         </div>
                       
-                      {newMessage.trim() ? (
+                  {repeatError && (
+                    <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm">
+                      {repeatError}
+                    </div>
+                  )}
+
+                  <div className="flex justify-end gap-3">
                         <button
-                          type="submit"
-                            className={`${screenWidth < 360 ? 'px-2 py-2' : 'p-2'} bg-gradient-to-r from-cyan-600 to-blue-600 text-white rounded-full hover:from-cyan-500 hover:to-blue-500 transition shadow-md flex-shrink-0 mx-1`}
-                          aria-label="Enviar mensagem"
-                          disabled={isSendingMessage}
-                        >
-                            <IoSend className={`${screenWidth < 400 ? 'text-base' : 'text-lg'}`} />
+                        type="button"
+                      className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none"
+                      onClick={() => setProviderModalOpen(false)}
+                      >
+                      Cancelar
                         </button>
-                      ) : (
                         <button
                           type="button"
-                            className={`${screenWidth < 360 ? 'px-2 py-2' : 'p-2'} text-cyan-300 hover:text-cyan-100 flex-shrink-0 mx-1`}
-                        >
-                            <FaMicrophone className={`${screenWidth < 400 ? 'text-base' : 'text-lg'}`} />
-                        </button>
+                      className="inline-flex justify-center rounded-md border border-transparent bg-cyan-600 px-4 py-2 text-sm font-medium text-white hover:bg-cyan-700 focus:outline-none disabled:opacity-50 disabled:cursor-not-allowed"
+                      onClick={confirmRepeatQuery}
+                      disabled={repeatingQuery === selectedLeadForQuery?.id || !selectedBank}
+                    >
+                      {repeatingQuery === selectedLeadForQuery?.id ? (
+                        <>
+                          <FaSpinner className="animate-spin mr-2 w-4 h-4" />
+                          Consultando...
+                        </>
+                      ) : (
+                        'Repetir Consulta'
                       )}
-                    </form>
+                        </button>
+                  </div>
+                </Dialog.Panel>
+              </Transition.Child>
+            </div>
+          </div>
+        </Dialog>
+      </Transition.Root>
+
+      {/* Modal de Criar Proposta */}
+      <Transition.Root show={createProposalModalOpen} as={Fragment}>
+        <Dialog as="div" className="relative z-50" onClose={() => setCreateProposalModalOpen(false)}>
+          <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0" enterTo="opacity-100" leave="ease-in duration-200" leaveFrom="opacity-100" leaveTo="opacity-0">
+            <div className="fixed inset-0 bg-black bg-opacity-40 transition-opacity" />
+          </Transition.Child>
+          <div className="fixed inset-0 z-50 overflow-y-auto">
+            <div className="flex min-h-full items-center justify-center p-4 text-center">
+              <Transition.Child as={Fragment} enter="ease-out duration-300" enterFrom="opacity-0 scale-95" enterTo="opacity-100 scale-100" leave="ease-in duration-200" leaveFrom="opacity-100 scale-100" leaveTo="opacity-0 scale-95">
+                <Dialog.Panel className="w-full max-w-4xl transform overflow-hidden rounded-2xl bg-gray-900 p-6 text-left align-middle shadow-xl transition-all border border-cyan-700">
+                  <Dialog.Title as="h3" className="text-lg font-bold leading-6 text-white mb-6">
+                    Criar Proposta - {selectedLeadForProposal?.name}
+                  </Dialog.Title>
+                  
+                  {createProposalError && (
+                    <div className="mb-4 p-3 bg-red-500/20 border border-red-500 rounded-lg text-red-400 text-sm">
+                      {createProposalError}
+                    </div>
+                  )}
+
+                  <div className="space-y-6">
+                    {/* Dados do Lead */}
+                    <div className="border-b border-gray-600 pb-4">
+                      <h4 className="text-sm font-semibold text-cyan-300 mb-4">Dados do Lead</h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">
+                            Nome <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={proposalFormData.name || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, name: e.target.value})}
+                            className={`w-full px-3 py-2 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
+                              !proposalFormData.name ? 'border-red-500' : 'border-gray-600'
+                            }`}
+                            placeholder="Digite o nome completo"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">
+                            CPF <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={proposalFormData.cpf || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, cpf: e.target.value})}
+                            className={`w-full px-3 py-2 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
+                              !proposalFormData.cpf ? 'border-red-500' : 'border-gray-600'
+                            }`}
+                            placeholder="000.000.000-00"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">
+                            RG <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={proposalFormData.rg || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, rg: e.target.value})}
+                            className={`w-full px-3 py-2 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
+                              !proposalFormData.rg ? 'border-red-500' : 'border-gray-600'
+                            }`}
+                            placeholder="Digite o RG"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">
+                            Nome da Mãe <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={proposalFormData.motherName || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, motherName: e.target.value})}
+                            className={`w-full px-3 py-2 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
+                              !proposalFormData.motherName ? 'border-red-500' : 'border-gray-600'
+                            }`}
+                            placeholder="Nome completo da mãe"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">
+                            Email <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="email"
+                            value={proposalFormData.email || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, email: e.target.value})}
+                            className={`w-full px-3 py-2 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
+                              !proposalFormData.email ? 'border-red-500' : 'border-gray-600'
+                            }`}
+                            placeholder="email@exemplo.com"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">
+                            Data de Nascimento <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="date"
+                            value={proposalFormData.birthDate || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, birthDate: e.target.value})}
+                            className={`w-full px-3 py-2 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
+                              !proposalFormData.birthDate ? 'border-red-500' : 'border-gray-600'
+                            }`}
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">
+                            Estado Civil <span className="text-red-400">*</span>
+                          </label>
+                          <select
+                            value={proposalFormData.maritalStatus || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, maritalStatus: e.target.value})}
+                            className={`w-full px-3 py-2 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
+                              !proposalFormData.maritalStatus ? 'border-red-500' : 'border-gray-600'
+                            }`}
+                          >
+                            <option value="">Selecione o estado civil</option>
+                            <option value="single">Solteiro</option>
+                            <option value="married">Casado</option>
+                            <option value="divorced">Divorciado</option>
+                            <option value="widowed">Viúvo</option>
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">
+                            Telefone <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={proposalFormData.phone || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, phone: e.target.value})}
+                            className={`w-full px-3 py-2 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
+                              !proposalFormData.phone ? 'border-red-500' : 'border-gray-600'
+                            }`}
+                            placeholder="(00) 00000-0000"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">
+                            CEP <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={proposalFormData.postalCode || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, postalCode: e.target.value})}
+                            className={`w-full px-3 py-2 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
+                              !proposalFormData.postalCode ? 'border-red-500' : 'border-gray-600'
+                            }`}
+                            placeholder="00000-000"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">
+                            Número do Endereço <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={proposalFormData.addressNumber || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, addressNumber: e.target.value})}
+                            className={`w-full px-3 py-2 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
+                              !proposalFormData.addressNumber ? 'border-red-500' : 'border-gray-600'
+                            }`}
+                            placeholder="123"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-1">
+                            Chave PIX <span className="text-red-400">*</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={proposalFormData.chavePix || ''}
+                            onChange={(e) => setProposalFormData({...proposalFormData, chavePix: e.target.value})}
+                            className={`w-full px-3 py-2 bg-gray-800 border rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500 ${
+                              !proposalFormData.chavePix ? 'border-red-500' : 'border-gray-600'
+                            }`}
+                            placeholder="Digite a chave PIX"
+                          />
+                        </div>
                   </div>
                 </div>
                   
-                  {/* Painel de dados do contato - apenas visível em desktop */}
-                  {!isMobileView && (
-                    <div className="flex-shrink-0 flex-grow-0 min-w-0 md:basis-1/4 md:max-w-[25%] h-full flex flex-col overflow-hidden">
-                      <div className="flex-1 min-h-0 h-full overflow-y-auto">
-                        {renderContactDataPanel()}
+                    {/* Seleção de Provedor e Banco */}
+                    <div className="border-b border-gray-600 pb-4">
+                      <h4 className="text-sm font-semibold text-cyan-300 mb-4">Configurações da Proposta</h4>
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-2">Provedor</label>
+                          <select
+                            value={selectedProvider}
+                            onChange={(e) => setSelectedProvider(e.target.value)}
+                            className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          >
+                            <option value="cartos">Cartos</option>
+                            <option value="qi">QI</option>
+                          </select>
                       </div>
+
+                        <div>
+                          <label className="block text-sm font-medium text-cyan-300 mb-2">Banco</label>
+                          {loadingBanks ? (
+                            <div className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white flex items-center">
+                              <FaSpinner className="animate-spin mr-2 w-4 h-4" />
+                              Carregando bancos...
                     </div>
-                  )}
-                </>
-              ) : (
-                <div className="hidden md:flex md:w-2/3 items-center justify-center w-full">
-                  <div className="text-center">
-                    <p className="text-xl mb-2 text-cyan-100">Selecione uma conversa para começar</p>
-                    <p className="text-cyan-300">Ou inicie uma nova conversa clicando no botão +</p>
-                  </div>
+                          ) : availableBanks.length > 0 ? (
+                            <select
+                              value={selectedBank}
+                              onChange={(e) => setSelectedBank(e.target.value)}
+                              className="w-full px-3 py-2 bg-gray-800 border border-gray-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                            >
+                              <option value="">Selecione um banco</option>
+                              {availableBanks.map((bank) => (
+                                <option key={bank.id} value={bank.id}>
+                                  {bank.name} ({bank.partner_type})
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <div className="w-full px-3 py-2 bg-gray-800 border border-red-500 rounded-lg text-red-400">
+                              Nenhum banco disponível. Cadastre credenciais na página de Parceiros.
                 </div>
               )}
             </div>
           </div>
-        )}
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex justify-end gap-3">
+                    <button 
+                      type="button" 
+                      className="inline-flex justify-center rounded-md border border-gray-500 bg-gray-800 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-700 focus:outline-none" 
+                      onClick={() => setCreateProposalModalOpen(false)} 
+                      disabled={isCreatingProposal}
+                    >
+                      Cancelar
+                    </button>
+                    <button 
+                      type="button" 
+                      className={`inline-flex justify-center rounded-md border px-4 py-2 text-sm font-medium focus:outline-none disabled:opacity-60 ${
+                        validateProposalForm() 
+                          ? 'border-gray-500 bg-gray-600 text-gray-300 cursor-not-allowed' 
+                          : 'border-cyan-700 bg-cyan-700 text-white hover:bg-cyan-600'
+                      }`}
+                      onClick={createProposal} 
+                      disabled={isCreatingProposal || !!validateProposalForm()}
+                    >
+                      {isCreatingProposal ? (
+                        <>
+                          <FaSpinner className="animate-spin mr-2 w-4 h-4" />
+                          Criando...
+                        </>
+                      ) : validateProposalForm() ? (
+                        'Preencha todos os campos'
+                      ) : (
+                        'Criar Proposta'
+                      )}
+                    </button>
       </div>
+                </Dialog.Panel>
+              </Transition.Child>
     </div>
-  );
-} 
+          </div>
+        </Dialog>
+      </Transition.Root>
+          </div>
+  )
+
+  // ✅ FUNÇÃO renderContactDataPanel() REMOVIDA - usando apenas o componente ContactPanel 
+}

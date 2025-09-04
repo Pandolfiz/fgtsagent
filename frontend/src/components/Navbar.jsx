@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { Menu, Transition } from '@headlessui/react';
-import { FaBars, FaTimes, FaUser, FaCog, FaSignOutAlt, FaBell, FaGlobe, FaUsers, FaRobot, FaComments, FaWhatsapp, FaKey } from 'react-icons/fa';
+import { FaBars, FaTimes, FaUser, FaCog, FaSignOutAlt, FaBell, FaGlobe, FaUsers, FaRobot, FaComments, FaWhatsapp, FaKey, FaTrophy } from 'react-icons/fa';
 import supabase from '../lib/supabaseClient';
 import { useSessionPersistence } from '../hooks/useSessionPersistence';
 import { ChevronUpDownIcon } from '@heroicons/react/24/solid'
@@ -15,6 +15,7 @@ export default function Navbar({ fullWidth }) {
   const [auth, setAuth] = useState(false);
   const [displayName, setDisplayName] = useState('');
   const [responsiveName, setResponsiveName] = useState('');
+  const [authError, setAuthError] = useState(false); // ✅ NOVO: Flag para evitar loops após erro 401
   
   // ✅ NOVO: Hook de persistência de sessão
   const { forceClearSession } = useSessionPersistence();
@@ -23,6 +24,7 @@ export default function Navbar({ fullWidth }) {
   const links = [
     { label: 'Dashboard', icon: <FaGlobe />, href: '/dashboard' },
     { label: 'Leads', icon: <FaUsers />, href: '/leads' },
+    { label: 'Ads', icon: <FaTrophy />, href: '/ads' },
     { label: 'Agente', icon: <FaRobot />, href: '/agents' },
     { label: 'Chat', icon: <FaComments />, href: '/chat' },
     { label: 'WhatsApp', icon: <FaWhatsapp />, href: '/whatsapp-credentials' },
@@ -75,6 +77,12 @@ export default function Navbar({ fullWidth }) {
     window.addEventListener('resize', handleResize);
 
     async function fetchUserProfile() {
+      // ✅ CORRIGIDO: Não tentar novamente se já houve erro 401
+      if (authError) {
+        console.log('[Navbar] Pulando fetchUserProfile - erro 401 anterior');
+        return;
+      }
+      
       try {
         setIsLoading(true);
         // Tentar obter tokens de várias fontes
@@ -167,7 +175,14 @@ export default function Navbar({ fullWidth }) {
         }
       } catch (error) {
         console.error('Erro ao buscar perfil do usuário:', error);
-        if (isMounted) setAuth(false);
+        if (isMounted) {
+          setAuth(false);
+          // ✅ CORRIGIDO: Marcar erro 401 para evitar loops
+          if (error.message && error.message.includes('401')) {
+            setAuthError(true);
+            console.log('[Navbar] Erro 401 detectado - parando tentativas futuras');
+          }
+        }
       } finally {
         if (isMounted) setIsLoading(false);
       }

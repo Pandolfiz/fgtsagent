@@ -252,6 +252,13 @@ exports.getMessages = async (req, res) => {
     const hasMore = messages?.length === limit;
 
     logger.info(`[CHAT] ✅ ${finalMessages.length} mensagens encontradas para ${conversationId} (página ${page})`);
+    logger.info(`[CHAT] 📊 Debug paginação:`, {
+      page,
+      limit,
+      messagesLength: messages?.length,
+      hasMore,
+      conversationId
+    });
     
     return res.status(200).json({
       success: true,

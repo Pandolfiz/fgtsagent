@@ -22,7 +22,7 @@ class CustomStorage {
 
   getItem(key) {
     const value = this.storage.getItem(key);
-    console.log(`🔍 CustomStorage.getItem(${key}):`, value ? '✅ Presente' : '❌ Ausente');
+    // Removido log excessivo que estava causando spam no console
     return value;
   }
 

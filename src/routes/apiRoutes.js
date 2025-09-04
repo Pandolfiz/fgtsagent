@@ -5,7 +5,7 @@ const router = express.Router();
 const { requireAuth } = require('../middleware/authMiddleware');
 const logger = require('../utils/logger');
 const { supabase, supabaseAdmin } = require('../config/supabase');
-const authMiddleware = require('../middleware/authMiddleware');
+// authMiddleware já importado acima como { requireAuth }
 const jwt = require('jsonwebtoken');
 const dashboardController = require('../controllers/dashboardController');
 const proposalController = require('../controllers/proposalController');
@@ -1024,6 +1024,10 @@ router.post('/agent/upload-kb', requireAuth, uploadRateLimit, uploadSpeedLimiter
 // Rotas de KnowledgeBase
 const knowledgeBaseRoutes = require('./knowledgeBaseRoutes');
 router.use('/knowledge-base', knowledgeBaseRoutes);
+
+// Rotas de Ads
+const adsRoutes = require('./adsRoutes');
+router.use('/ads', adsRoutes);
 
 // Endpoint de desenvolvimento para acesso direto aos dados do cliente
 router.get('/dev/direct-data', async (req, res) => {

@@ -2,6 +2,7 @@ const logger = require('../utils/logger');
 const EvolutionService = require('../services/evolutionService');
 const config = require('../config');
 const { supabaseAdmin } = require('../config/supabase');
+const { formatPhoneNumber } = require('../utils/utils');
 
 class EvolutionCredentialController {
   // Lista credenciais do cliente autenticado
@@ -102,11 +103,14 @@ class EvolutionCredentialController {
       
       const payload = {
         client_id: req.clientId,
-        phone: req.body.phone,
+        phone: formatPhoneNumber(req.body.phone), // Formatar número removendo caracteres especiais
         instance_name: instanceName,
         agent_name: req.body.agent_name,
         connection_type: req.body.connection_type || 'whatsapp_business',
-        metadata: req.body.metadata || {}
+        metadata: {
+          ...req.body.metadata,
+          original_phone: req.body.phone // Salvar número original para referência
+        }
       };
       
       const { data: saved, error } = await supabaseAdmin

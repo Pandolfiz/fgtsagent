@@ -1623,6 +1623,8 @@ export function WhatsappCredentialsPage() {
           return { color: 'bg-red-100 text-red-800 border-red-200', label: 'Suspenso' };
         case 'unverified':
           return { color: 'bg-orange-100 text-orange-800 border-orange-200', label: 'Não Verificado' };
+        case 'app_subscribed':
+          return { color: 'bg-emerald-100 text-emerald-800 border-emerald-200', label: 'App Inscrito' };
         
         default:
           return { color: 'bg-gray-100 text-gray-800 border-gray-200', label: status };
@@ -1776,6 +1778,8 @@ export function WhatsappCredentialsPage() {
     setActivationPin('');
     setShowActivationModal(true);
   };
+
+
 
   // Função para executar ativação com PIN
   const executeActivation = async () => {
@@ -2088,6 +2092,8 @@ export function WhatsappCredentialsPage() {
                           <FaCheck className="mr-1" /> Ativar Número
                         </button>
                       )}
+
+
                       
                       {/* Botão Verificar Status - função específica para cada tipo */}
                       <button

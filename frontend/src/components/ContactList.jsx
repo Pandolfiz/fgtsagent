@@ -26,13 +26,70 @@ const ContactItem = React.memo(({
   // Função para renderizar o nome do contato
   const renderName = () => {
     return (
-      <div className="flex flex-col min-w-0 flex-1">
-        <h4 className="font-medium text-gray-900 truncate">
+      <div className="flex flex-col min-w-0 flex-1 gap-1">
+        <h4 className={`font-semibold truncate ${
+          unreadCount > 0 ? 'text-gray-900' : 'text-gray-700'
+        }`}>
           {contact.name || contact.push_name || 'Contato'}
         </h4>
-        <p className="text-sm text-gray-500 truncate">
-          {contact.remote_jid || 'N/A'}
-        </p>
+        
+        {/* Preview da última mensagem */}
+        {renderLastMessage()}
+      </div>
+    );
+  };
+
+  // Função para formatar timestamp de forma inteligente
+  const formatTimestamp = useCallback((timestamp) => {
+    if (!timestamp) return '';
+    
+    const now = new Date();
+    const messageTime = new Date(timestamp);
+    const diffInHours = (now - messageTime) / (1000 * 60 * 60);
+    
+    if (diffInHours < 1) {
+      return messageTime.toLocaleTimeString('pt-BR', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+    } else if (diffInHours < 24) {
+      return messageTime.toLocaleTimeString('pt-BR', { 
+        hour: '2-digit', 
+        minute: '2-digit' 
+      });
+    } else if (diffInHours < 168) { // 7 dias
+      return messageTime.toLocaleDateString('pt-BR', { 
+        weekday: 'short' 
+      });
+    } else {
+      return messageTime.toLocaleDateString('pt-BR', { 
+        day: '2-digit', 
+        month: '2-digit' 
+      });
+    }
+  }, []);
+
+  // Função para renderizar preview da última mensagem
+  const renderLastMessage = () => {
+    // Se não há last_message, mostrar o remote_jid como fallback
+    if (!contact.last_message) {
+      return (
+        <div className="text-sm text-gray-500 truncate">
+          {contact.remote_jid || 'Sem mensagens'}
+        </div>
+      );
+    }
+    
+    const { type, content } = contact.last_message;
+    
+    return (
+      <div className="text-sm text-gray-600 truncate">
+        {type === 'text' ? content : 
+         type === 'image' ? '📷 Imagem' :
+         type === 'audio' ? '🎵 Áudio' :
+         type === 'video' ? '🎥 Vídeo' :
+         type === 'document' ? '📄 Documento' :
+         type === 'attachment' ? '📎 Anexo' : content}
       </div>
     );
   };
@@ -43,17 +100,16 @@ const ContactItem = React.memo(({
       <div className="flex flex-col items-end gap-1">
         {/* Timestamp da última mensagem */}
         {contact.last_message_time && (
-          <span className="text-xs text-gray-400">
-            {new Date(contact.last_message_time).toLocaleDateString('pt-BR', {
-              month: 'short',
-              day: 'numeric'
-            })}
+          <span className={`text-xs ${
+            unreadCount > 0 ? 'text-blue-600 font-medium' : 'text-gray-400'
+          }`}>
+            {formatTimestamp(contact.last_message_time)}
           </span>
         )}
         
         {/* Contador de mensagens não lidas */}
         {unreadCount > 0 && (
-          <div className="bg-red-500 text-white text-xs rounded-full px-2 py-1 min-w-[1.25rem] h-5 flex items-center justify-center">
+          <div className="bg-blue-500 text-white text-xs rounded-full px-2 py-1 min-w-[1.25rem] h-5 flex items-center justify-center font-medium">
             {unreadCount > 99 ? '99+' : unreadCount}
           </div>
         )}
@@ -110,16 +166,35 @@ const ContactList = React.memo(({
   searchQuery = '',
   onSearchChange
 }) => {
-  // Memoizar contatos filtrados para evitar recálculos desnecessários
+  // Memoizar contatos filtrados e ordenados para evitar recálculos desnecessários
   const filteredContacts = useMemo(() => {
-    if (!searchQuery.trim()) return contacts;
+    let filtered = contacts;
     
-    const query = searchQuery.toLowerCase();
-    return contacts.filter(contact => 
-      (contact.name && contact.name.toLowerCase().includes(query)) ||
-      (contact.push_name && contact.push_name.toLowerCase().includes(query)) ||
-      (contact.remote_jid && contact.remote_jid.includes(query))
-    );
+    // Aplicar filtro de busca se houver query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      filtered = contacts.filter(contact => 
+        (contact.name && contact.name.toLowerCase().includes(query)) ||
+        (contact.push_name && contact.push_name.toLowerCase().includes(query)) ||
+        (contact.remote_jid && contact.remote_jid.includes(query))
+      );
+    }
+    
+    // Ordenar por data da última mensagem (mais recente primeiro)
+    return filtered.sort((a, b) => {
+      // Usar last_message_time, updated_at ou created_at como fallback
+      const dateA = new Date(a.last_message_time || a.updated_at || a.created_at || 0);
+      const dateB = new Date(b.last_message_time || b.updated_at || b.created_at || 0);
+      
+      // Se as datas são iguais, ordenar por nome
+      if (dateA.getTime() === dateB.getTime()) {
+        const nameA = (a.name || a.push_name || a.remote_jid || '').toLowerCase();
+        const nameB = (b.name || b.push_name || b.remote_jid || '').toLowerCase();
+        return nameA.localeCompare(nameB);
+      }
+      
+      return dateB - dateA; // Mais recente primeiro
+    });
   }, [contacts, searchQuery]);
 
   // Função otimizada para seleção de contato
