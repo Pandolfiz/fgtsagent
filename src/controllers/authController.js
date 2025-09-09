@@ -457,11 +457,41 @@ const logout = async (req, res) => {
   try {
     logger.info(`Realizando logout para usuário: ${req.user?.id || 'desconhecido'}`);
     
-    // Limpar todos os cookies relacionados à autenticação
+    // ✅ SOLUÇÃO: Preservar cookies LGPD durante logout
+    const lgpdConsent = req.cookies.lgpd_consent_server;
+    const lgpdConsentClient = req.cookies.lgpd_consent;
+    
+    // Limpar apenas cookies relacionados à autenticação
     res.clearCookie('authToken');
     res.clearCookie('refreshToken');
     res.clearCookie('supabase-auth-token');
     res.clearCookie('js-auth-token');
+    
+    // ✅ SOLUÇÃO: Restaurar cookies LGPD após limpeza de autenticação
+    if (lgpdConsent) {
+      const lgpdCookieOptions = {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 365 * 24 * 60 * 60 * 1000, // 1 ano
+        sameSite: 'lax',
+        path: '/',
+        domain: process.env.NODE_ENV === 'production' ? '.fgtsagent.com.br' : undefined
+      };
+      res.cookie('lgpd_consent_server', lgpdConsent, lgpdCookieOptions);
+      logger.info('✅ Cookies LGPD preservados durante logout');
+    }
+    
+    if (lgpdConsentClient) {
+      const lgpdClientCookieOptions = {
+        httpOnly: false, // Cliente pode acessar
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 365 * 24 * 60 * 60 * 1000, // 1 ano
+        sameSite: 'lax',
+        path: '/',
+        domain: process.env.NODE_ENV === 'production' ? '.fgtsagent.com.br' : undefined
+      };
+      res.cookie('lgpd_consent', lgpdConsentClient, lgpdClientCookieOptions);
+    }
     
     // Limpar qualquer sessão que possa existir
     if (req.session) {

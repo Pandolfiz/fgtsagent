@@ -218,8 +218,12 @@ export default function Navbar({ fullWidth }) {
         console.error('Erro ao fazer logout via Supabase:', error);
       }
 
-      // ✅ PASSO 2: LIMPEZA COMPLETA E FORÇADA
+      // ✅ PASSO 2: LIMPEZA COMPLETA E FORÇADA (PRESERVANDO LGPD)
       console.log('🔄 Limpando todos os dados locais...');
+      
+      // ✅ SOLUÇÃO: Preservar dados LGPD antes da limpeza
+      const lgpdConsent = localStorage.getItem('cookieConsent');
+      const lgpdConsentDate = localStorage.getItem('cookieConsentDate');
       
       // ✅ NOVO: Usar função do hook para limpeza forçada
       forceClearSession();
@@ -227,10 +231,24 @@ export default function Navbar({ fullWidth }) {
       // Limpar localStorage completamente
       localStorage.clear();
       
+      // ✅ SOLUÇÃO: Restaurar dados LGPD após limpeza
+      if (lgpdConsent) {
+        localStorage.setItem('cookieConsent', lgpdConsent);
+        if (lgpdConsentDate) {
+          localStorage.setItem('cookieConsentDate', lgpdConsentDate);
+        }
+        console.log('✅ Dados LGPD preservados durante logout');
+      }
+      
       // Limpar sessionStorage completamente
       sessionStorage.clear();
       
-      // Limpar cookies específicos
+      // ✅ SOLUÇÃO: Preservar cookies LGPD antes da limpeza
+      const lgpdConsentCookie = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('lgpd_consent='));
+      
+      // Limpar apenas cookies de autenticação (preservando LGPD)
       document.cookie = 'supabase-auth-token=; path=/; max-age=0; SameSite=Lax';
       document.cookie = 'js-auth-token=; path=/; max-age=0; SameSite=Lax';
       document.cookie = 'sb-refresh-token=; path=/; max-age=0; SameSite=Lax';
@@ -238,15 +256,27 @@ export default function Navbar({ fullWidth }) {
       document.cookie = 'authToken=; path=/; max-age=0; SameSite=Lax';
       document.cookie = 'refreshToken=; path=/; max-age=0; SameSite=Lax';
       
-      // ✅ PASSO 3: Forçar limpeza de todos os cookies
+      // ✅ SOLUÇÃO: Limpeza seletiva de cookies (preservando LGPD)
       const cookies = document.cookie.split(';');
+      const lgpdCookies = ['lgpd_consent', 'lgpd_consent_server'];
+      
       cookies.forEach(cookie => {
         const eqPos = cookie.indexOf('=');
         const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
-        document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
-        document.cookie = `${name}=; path=/; domain=${window.location.hostname}; max-age=0; SameSite=Lax`;
-        document.cookie = `${name}=; path=/; domain=.${window.location.hostname}; max-age=0; SameSite=Lax`;
+        
+        // ✅ SOLUÇÃO: Não limpar cookies LGPD
+        if (!lgpdCookies.includes(name)) {
+          document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
+          document.cookie = `${name}=; path=/; domain=${window.location.hostname}; max-age=0; SameSite=Lax`;
+          document.cookie = `${name}=; path=/; domain=.${window.location.hostname}; max-age=0; SameSite=Lax`;
+        }
       });
+      
+      // ✅ SOLUÇÃO: Restaurar cookie LGPD se existia
+      if (lgpdConsentCookie) {
+        document.cookie = lgpdConsentCookie;
+        console.log('✅ Cookie LGPD restaurado após limpeza');
+      }
 
       // ✅ PASSO 4: Fazer logout via API do backend como fallback
       console.log('🔄 Fazendo logout via API do backend...');
