@@ -317,3 +317,5 @@ window.unifiedLogout.getDebugInfo() // Logout
 **Versão:** 1.0.0  
 **Autor:** Equipe de Desenvolvimento
 
+
+

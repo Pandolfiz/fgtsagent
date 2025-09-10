@@ -12,24 +12,100 @@ const CookieConsent = () => {
   });
 
   useEffect(() => {
-    // Verificar se já existe consentimento salvo
-    const savedConsent = localStorage.getItem('cookieConsent');
-    if (!savedConsent) {
-      setShowBanner(true);
-    } else {
-      try {
-        const parsedConsent = JSON.parse(savedConsent);
-        setConsent(parsedConsent);
-      } catch (error) {
-        console.error('Erro ao carregar consentimento:', error);
+    // Verificar consentimento em múltiplas fontes para persistência
+    const loadConsent = async () => {
+      let consentData = null;
+      
+      // 1. Tentar carregar do cookie HTTP primeiro (mais confiável)
+      const cookieConsent = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('lgpd_consent='));
+      
+      if (cookieConsent) {
+        try {
+          const decoded = decodeURIComponent(cookieConsent.split('=')[1]);
+          consentData = JSON.parse(decoded);
+        } catch (error) {
+          console.warn('Erro ao decodificar cookie LGPD:', error);
+        }
+      }
+      
+      // 2. Fallback para localStorage
+      if (!consentData) {
+        const savedConsent = localStorage.getItem('cookieConsent');
+        if (savedConsent) {
+          try {
+            consentData = {
+              consent: JSON.parse(savedConsent),
+              date: localStorage.getItem('cookieConsentDate') || new Date().toISOString(),
+              version: '1.0'
+            };
+          } catch (error) {
+            console.warn('Erro ao carregar consentimento do localStorage:', error);
+          }
+        }
+      }
+      
+      // 3. Tentar carregar do servidor como último recurso
+      if (!consentData) {
+        try {
+          const response = await fetch('/api/lgpd/get-consent', {
+            credentials: 'include'
+          });
+          if (response.ok) {
+            const serverResponse = await response.json();
+            if (serverResponse.success && serverResponse.data) {
+              consentData = serverResponse.data;
+            }
+          }
+        } catch (error) {
+          console.warn('Erro ao carregar consentimento do servidor:', error);
+        }
+      }
+      
+      if (consentData && consentData.consent) {
+        setConsent(consentData.consent);
+      } else {
         setShowBanner(true);
       }
-    }
+    };
+    
+    loadConsent();
   }, []);
 
-  const saveConsent = (newConsent) => {
+  const saveConsent = async (newConsent) => {
+    // Salvar em localStorage (para compatibilidade)
     localStorage.setItem('cookieConsent', JSON.stringify(newConsent));
     localStorage.setItem('cookieConsentDate', new Date().toISOString());
+    
+    // Salvar em cookies HTTP (para persistência)
+    const consentData = {
+      consent: newConsent,
+      date: new Date().toISOString(),
+      version: '1.0'
+    };
+    
+    // Definir cookie com configurações adequadas para LGPD
+    const domain = window.location.hostname === 'localhost' ? '' : `.${window.location.hostname}`;
+    const isSecure = window.location.protocol === 'https:';
+    
+    const cookieString = `lgpd_consent=${encodeURIComponent(JSON.stringify(consentData))}; path=/; domain=${domain}; max-age=${365 * 24 * 60 * 60}; SameSite=Lax; Secure=${isSecure}`;
+    document.cookie = cookieString;
+    
+    // Enviar para backend para persistência no servidor
+    try {
+      await fetch('/api/lgpd/save-consent', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify(consentData)
+      });
+    } catch (error) {
+      console.warn('Erro ao salvar consentimento no servidor:', error);
+    }
+    
     setConsent(newConsent);
     setShowBanner(false);
     setShowSettings(false);
