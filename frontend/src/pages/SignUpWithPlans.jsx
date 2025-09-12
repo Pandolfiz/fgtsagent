@@ -744,29 +744,51 @@ const SignUpWithPlans = () => {
         return;
       }
       
-      // ✅ REDIRECIONAR: Para checkout link correto
-      const checkoutLinks = {
-        basic: {
-          monthly: 'https://buy.stripe.com/8x29ATdAo3kLbM8da35EY00',
-          yearly: 'https://buy.stripe.com/dRm28r53SaNdbM82vp5EY07'
-        },
-        pro: {
-          monthly: 'https://buy.stripe.com/fZu8wP9k808z03q7PJ5EY02',
-          yearly: 'https://buy.stripe.com/9B6cN52VKdZp03q8TN5EY06'
-        },
-        premium: {
-          monthly: 'https://buy.stripe.com/3cIbJ1bsg7B12by3zt5EY04',
-          yearly: 'https://buy.stripe.com/eVqeVdeEsaNd6rOda35EY08'
+      // ✅ VERIFICAR: Se é o plano premium (tokens), usar API de checkout
+      if (selectedPlan === 'premium') {
+        console.log('🔄 Criando checkout session para plano de tokens...');
+        
+        try {
+          const response = await axios.post('/api/stripe/create-token-checkout', {
+            customerEmail: userData.email,
+            customerName: `${userData.first_name} ${userData.last_name}`,
+            successUrl: `${window.location.origin}/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancelUrl: `${window.location.origin}/cancel`
+          });
+          
+          if (response.data.success) {
+            console.log('✅ Checkout session criada:', response.data.data.url);
+            window.location.href = response.data.data.url;
+          } else {
+            setError('Erro ao criar sessão de checkout');
+            setLoading(false);
+          }
+        } catch (apiError) {
+          console.error('❌ Erro na API de checkout:', apiError);
+          setError('Erro ao criar sessão de checkout. Tente novamente.');
+          setLoading(false);
         }
-      };
-      
-      const checkoutLink = checkoutLinks[selectedPlan]?.[selectedInterval];
-      if (checkoutLink) {
-        console.log('🚀 Redirecionando para Stripe:', checkoutLink);
-        window.location.href = checkoutLink;
       } else {
-        setError('Link de checkout não encontrado para o plano selecionado');
-        setLoading(false);
+        // ✅ REDIRECIONAR: Para checkout links tradicionais (basic/pro)
+        const checkoutLinks = {
+          basic: {
+            monthly: 'https://buy.stripe.com/8x29ATdAo3kLbM8da35EY00',
+            yearly: 'https://buy.stripe.com/dRm28r53SaNdbM82vp5EY07'
+          },
+          pro: {
+            monthly: 'https://buy.stripe.com/fZu8wP9k808z03q7PJ5EY02',
+            yearly: 'https://buy.stripe.com/9B6cN52VKdZp03q8TN5EY06'
+          }
+        };
+        
+        const checkoutLink = checkoutLinks[selectedPlan]?.[selectedInterval];
+        if (checkoutLink) {
+          console.log('🚀 Redirecionando para Stripe:', checkoutLink);
+          window.location.href = checkoutLink;
+        } else {
+          setError('Link de checkout não encontrado para o plano selecionado');
+          setLoading(false);
+        }
       }
       
     } catch (error) {

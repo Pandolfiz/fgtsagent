@@ -5,6 +5,7 @@ const smsRateLimitService = require('../services/smsRateLimitService');
 const config = require('../config');
 const { supabaseAdmin } = require('../config/supabase');
 const axios = require('axios'); // Adicionado para o novo método
+const { formatPhoneNumber } = require('../utils/utils');
 
 class WhatsappCredentialController {
   // Lista credenciais do cliente autenticado
@@ -204,7 +205,7 @@ class WhatsappCredentialController {
       // Salvar no Supabase com o mesmo nome que será usado na Evolution API
       const payload = {
         client_id: req.clientId,
-        phone: req.body.phone,
+        phone: formatPhoneNumber(req.body.phone), // Formatar número removendo caracteres especiais
         instance_name: instanceName,
         agent_name: req.body.agent_name,
         connection_type: req.body.connection_type || 'whatsapp_business',
@@ -1356,7 +1357,7 @@ class WhatsappCredentialController {
 
         const credentialPayload = {
           client_id: req.clientId,
-          phone: phoneNumber,
+          phone: formatPhoneNumber(phoneNumber), // Formatar número removendo caracteres especiais
           instance_name: instanceName,
           agent_name: wppName,
           connection_type: 'ads',
@@ -2199,7 +2200,7 @@ class WhatsappCredentialController {
 
       const credentialData = {
         client_id: clientId,
-        phone: phone,
+        phone: formatPhoneNumber(phone), // Formatar número removendo caracteres especiais
         instance_name: name || 'WhatsApp Business Account',
         agent_name: name || 'WhatsApp Business Account',
         wpp_access_token: access_token,

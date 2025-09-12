@@ -553,12 +553,35 @@ export default function Chat() {
       if (response.ok) {
         const data = await response.json()
         if (data.success && data.message) {
-          // Substituir mensagem temporária pela real
-          addMessage(data.message)
-              }
-            }
-          } catch (error) {
+          // ✅ CORREÇÃO: Substituir mensagem temporária pela real
+          setMessages(prevMessages => {
+            // Remover mensagem temporária e adicionar a real
+            const withoutTemp = prevMessages.filter(msg => msg.id !== messageId);
+            const realMessage = {
+              ...data.message,
+              id: data.message.id || messageId, // Usar ID real se disponível
+              temp: false
+            };
+            return [...withoutTemp, realMessage].sort((a, b) => {
+              const timeA = new Date(a.timestamp || a.created_at).getTime();
+              const timeB = new Date(b.timestamp || b.created_at).getTime();
+              return timeA - timeB;
+            });
+          });
+        }
+      } else {
+        // ✅ CORREÇÃO: Remover mensagem temporária em caso de erro
+        setMessages(prevMessages => 
+          prevMessages.filter(msg => msg.id !== messageId)
+        );
+        actions.setError('Erro ao enviar mensagem');
+      }
+    } catch (error) {
       console.error('Erro ao enviar mensagem:', error)
+      // ✅ CORREÇÃO: Remover mensagem temporária em caso de erro
+      setMessages(prevMessages => 
+        prevMessages.filter(msg => msg.id !== messageId)
+      );
       actions.setError('Erro ao enviar mensagem')
     } finally {
       setIsSendingMessage(false)
