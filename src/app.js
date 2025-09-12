@@ -402,6 +402,10 @@ app.get('/api/teste', (req, res) => {
 // Rota do webhook (deve vir antes das rotas autenticadas)
 app.use('/api/webhooks/evolution', webhookAuth, chatWebhookRoutes);
 
+// ✅ SOLUÇÃO: Rotas LGPD (devem vir ANTES das rotas autenticadas)
+const lgpdRoutes = require('./routes/lgpdRoutes');
+app.use('/api/lgpd', lgpdRoutes);
+
 // Rotas específicas de mensagens e contatos - devem vir ANTES de app.use('/api', apiRoutes)
 app.use('/api/messages', requireAuth, messagesRoutes);
 app.use('/api/contacts', requireAuth, contactsRoutes);
