@@ -378,6 +378,7 @@ const webRoutes = require('./routes/webRoutes');
 const authRoutes = require('./routes/authRoutes');
 const credentialsRoutes = require('./routes/credentialsRoutes');
 const stripeRoutes = require('./routes/stripeRoutes');
+const tokenBillingRoutes = require('./routes/tokenBillingRoutes');
 
 // Log das rotas registradas para debug
 console.log('Rotas registradas no app:');
@@ -543,6 +544,7 @@ app.use('/api/contacts', requireAuth, contactsRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/admin', requireAuth, adminRoutes);
 app.use('/api/stripe', stripeRoutes);
+app.use('/api/token-billing', tokenBillingRoutes);
 
 // ✅ ADICIONADO: Rotas de leads (necessário para /api/leads/:id/proposals)
 const leadRoutes = require('./routes/leadRoutes');

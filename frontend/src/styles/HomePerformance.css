@@ -1,0 +1,604 @@
+/* 🚀 OTIMIZAÇÕES DE PERFORMANCE - HOME.JSX */
+
+/* ✅ SOLUÇÃO 1: Otimizações de scroll para mobile */
+* {
+  scroll-behavior: auto !important; /* Removido smooth para melhor performance */
+}
+
+html {
+  -webkit-overflow-scrolling: touch;
+}
+
+body {
+  -webkit-overflow-scrolling: touch;
+  overflow-x: hidden;
+}
+
+/* ✅ SOLUÇÃO 2: Otimizar animações para fluidez máxima */
+.motion-div {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ✅ SOLUÇÃO 3: Otimizações ultra-performáticas para Framer Motion */
+[data-framer-motion] {
+  will-change: auto; /* Só ativar quando necessário */
+  backface-visibility: hidden;
+  transform: translateZ(0);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ✅ SOLUÇÃO 4: Reduzir backdrop-blur para melhor performance */
+.backdrop-blur-optimized {
+  backdrop-filter: blur(4px); /* Reduzido de 8px para 4px */
+}
+
+/* ✅ SOLUÇÃO 5: Desabilitar backdrop-blur em dispositivos móveis */
+@media (max-width: 768px) {
+  .backdrop-blur-optimized {
+    backdrop-filter: blur(2px) !important; /* Ainda mais reduzido no mobile */
+  }
+}
+
+/* ✅ SOLUÇÃO 6: Desabilitar backdrop-blur em dispositivos de baixa performance */
+.low-end-device .backdrop-blur-optimized {
+  backdrop-filter: none !important;
+}
+
+/* ✅ SOLUÇÃO 7: Otimizar box-shadows para melhor performance */
+.card-futuristic {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* ✅ SOLUÇÃO 8: Respeitar preferências de movimento reduzido */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ✅ SOLUÇÃO 9: Desabilitar hover effects durante scroll */
+.scrolling * {
+  transition: none !important;
+  animation: none !important;
+}
+
+/* ✅ SOLUÇÃO 10: Otimizações específicas para dispositivos de baixa performance */
+.low-end-device * {
+  transition: none !important;
+  animation: none !important;
+  transform: none !important;
+  will-change: auto !important;
+}
+
+.low-end-device .motion-div {
+  will-change: auto !important;
+  backface-visibility: visible !important;
+  transform: none !important;
+}
+
+/* ✅ SOLUÇÃO 11: Animações otimizadas para performance */
+@keyframes pulse-optimized {
+  0%, 100% { 
+    box-shadow: 0 0 0 0 #00bcd480, 0 0 0 2px #0097a740; 
+  }
+  50% { 
+    box-shadow: 0 0 8px 2px #00bcd4, 0 0 0 2px #0097a780; /* Reduzido de 16px para 8px */
+  }
+}
+
+.animate-pulse-optimized {
+  animation: pulse-optimized 2s ease-in-out infinite;
+  will-change: box-shadow;
+}
+
+/* ✅ SOLUÇÃO 12: Otimizações para elementos específicos */
+.hero-title {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+.feature-card {
+  will-change: transform;
+  transition: transform 0.2s ease-out;
+}
+
+.plan-card {
+  will-change: transform, box-shadow;
+  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+}
+
+/* ✅ SOLUÇÃO 13: Otimizações para mobile */
+@media (max-width: 768px) {
+  .motion-div {
+    will-change: auto;
+  }
+  
+  .feature-card:hover,
+  .plan-card:hover {
+    transform: none; /* Desabilitar hover effects no mobile */
+  }
+}
+
+/* ✅ SOLUÇÃO 14: Otimizações para elementos com animações complexas */
+.premium-card {
+  will-change: transform, box-shadow;
+  transition: transform 0.3s ease-out, box-shadow 0.3s ease-out;
+}
+
+/* ✅ SOLUÇÃO 15: Reduzir complexidade de gradientes */
+.gradient-optimized {
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 50%, #334155 100%);
+  background-attachment: fixed; /* Melhora performance */
+}
+
+/* ✅ SOLUÇÃO 16: Otimizar elementos de texto */
+.text-gradient-optimized {
+  background: linear-gradient(90deg, #06b6d4, #10b981, #3b82f6);
+  background-size: 200% 100%;
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  will-change: background-position;
+}
+
+/* ✅ SOLUÇÃO 17: Otimizar elementos de navegação */
+.nav-optimized {
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+}
+
+/* ✅ SOLUÇÃO 18: Otimizar elementos de menu mobile */
+.mobile-menu-optimized {
+  will-change: transform;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+/* ✅ SOLUÇÃO 19: Otimizar elementos de depoimentos */
+.testimonial-card {
+  will-change: transform;
+  transition: transform 0.2s ease-out;
+}
+
+/* ✅ SOLUÇÃO 20: Otimizar elementos de CTA */
+.cta-optimized {
+  will-change: transform, box-shadow;
+  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+}
+
+/* ✅ SOLUÇÃO 21: Drop shadow otimizado para logos */
+.drop-shadow-cyan {
+  filter: drop-shadow(0 0 8px #00bcd4);
+}
+
+/* ✅ SOLUÇÃO 22: Classes ultra-otimizadas para performance máxima */
+.card-simple {
+  border: 1px solid rgba(6, 182, 212, 0.2);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* ✅ SOLUÇÃO 23: Otimizações de performance aplicadas via Tailwind */
+
+/* ✅ SOLUÇÃO 24: Otimizar elementos de texto */
+.text-gradient-optimized {
+  background: linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #3b82f6 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* ✅ SOLUÇÃO 24.1: Gradiente específico para títulos */
+.title-gradient {
+  background: linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #3b82f6 100%) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+  text-shadow: none !important;
+}
+
+/* ✅ SOLUÇÃO 24.2: Forçar gradiente em elementos específicos */
+h1.title-gradient,
+h2.title-gradient,
+h3.title-gradient {
+  background: linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #3b82f6 100%) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+  text-shadow: none !important;
+}
+
+/* ✅ SOLUÇÃO 24.3: Fallback para navegadores que não suportam background-clip */
+@supports not (background-clip: text) {
+  h1.title-gradient,
+  h2.title-gradient,
+  h3.title-gradient {
+    background: none !important;
+    color: #06b6d4 !important;
+    text-shadow: 0 0 8px #00bcd4 !important;
+  }
+}
+
+/* ✅ SOLUÇÃO 24.4: Teste direto - forçar gradiente com especificidade máxima */
+.motion.h1.title-gradient,
+.motion.h2.title-gradient,
+.motion.h3.title-gradient,
+h1.title-gradient,
+h2.title-gradient,
+h3.title-gradient {
+  background: linear-gradient(135deg, #10b981 0%, #06b6d4 50%, #3b82f6 100%) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+  color: transparent !important;
+  text-shadow: none !important;
+}
+
+/* ✅ SOLUÇÃO 24.5: Melhorar legibilidade de textos importantes */
+.text-readable {
+  color: #e5e7eb !important; /* Cinza claro para melhor contraste */
+}
+
+.text-readable-bright {
+  color: #f3f4f6 !important; /* Branco acinzentado para máximo contraste */
+}
+
+.text-readable-cyan {
+  color: #22d3ee !important; /* Ciano claro para elementos importantes */
+}
+
+.text-readable-emerald {
+  color: #34d399 !important; /* Verde esmeralda claro */
+}
+
+.text-readable-blue {
+  color: #60a5fa !important; /* Azul claro */
+}
+
+/* ✅ SOLUÇÃO 25: Otimizar backdrop-blur sem remover completamente */
+.backdrop-blur-optimized {
+  backdrop-filter: blur(2px) !important; /* Reduzido mas mantido */
+}
+
+/* ✅ SOLUÇÃO 26: Otimizar shadows para melhor performance */
+.shadow-xl, .shadow-lg, .shadow-2xl {
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* ✅ SOLUÇÃO 27: Manter gradientes mas otimizados */
+.bg-gradient-to-r, .bg-gradient-to-br {
+  background-size: 200% 200%;
+  animation: gradientMove 5s ease-in-out infinite;
+}
+
+/* ✅ SOLUÇÃO 28: Otimizar drop-shadows */
+.drop-shadow-neon {
+  filter: drop-shadow(0 0 4px #00bcd4) !important;
+  /* Removido text-shadow para não interferir com text-transparent */
+}
+
+/* ✅ SOLUÇÃO 29: Otimizações específicas para performance */
+.card-futuristic {
+  backdrop-filter: blur(2px) !important; /* Reduzido de 10px */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+}
+
+/* ✅ SOLUÇÃO 30: Otimizar animações de gradiente */
+.animate-gradient-move {
+  animation: gradientMove 5s ease-in-out infinite !important; /* Reduzido de 20s */
+  will-change: background-position;
+}
+
+/* ✅ SOLUÇÃO 31: Otimizar elementos de texto */
+.text-gradient-optimized {
+  background: linear-gradient(135deg, #064e3b 0%, #0c4a6e 50%, #1e3a8a 100%) !important;
+  background-clip: text !important;
+  -webkit-background-clip: text !important;
+  -webkit-text-fill-color: transparent !important;
+}
+
+/* ✅ SOLUÇÃO 32: Otimizações específicas para cards de planos */
+.plan-card-optimized {
+  backdrop-filter: blur(2px) !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out !important;
+}
+
+.plan-card-optimized:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 0 8px 12px -1px rgba(0, 0, 0, 0.15), 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* ✅ SOLUÇÃO 33: Otimizar botões de planos */
+.plan-button-optimized {
+  transition: background-color 0.2s ease-out, transform 0.2s ease-out !important;
+}
+
+.plan-button-optimized:hover {
+  transform: translateY(-1px) !important;
+}
+
+/* ✅ SOLUÇÃO 34: Otimizar tags de planos */
+.plan-tag-optimized {
+  transition: transform 0.2s ease-out !important;
+  box-shadow: 0 2px 4px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* ✅ SOLUÇÃO 35: Otimizações específicas para cards de funcionalidades */
+.feature-card-optimized {
+  backdrop-filter: blur(1px) !important; /* Reduzido de blur-sm */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out !important;
+}
+
+.feature-card-optimized:hover {
+  transform: translateY(-2px) !important; /* Substitui scale por translateY */
+  box-shadow: 0 8px 12px -1px rgba(0, 0, 0, 0.15), 0 4px 6px -1px rgba(0, 0, 0, 0.1) !important;
+}
+
+/* ✅ SOLUÇÃO 36: Otimizar ícones de funcionalidades */
+.feature-icon-optimized {
+  transition: transform 0.2s ease-out !important;
+}
+
+.feature-card-optimized:hover .feature-icon-optimized {
+  transform: scale(1.05) !important; /* Apenas o ícone escala no hover */
+}
+
+/* ✅ SOLUÇÃO 37: Otimizações específicas para cards de depoimentos */
+.testimonial-card-optimized {
+  backdrop-filter: blur(1px) !important; /* Reduzido de blur-sm */
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+  transition: transform 0.3s ease-out, box-shadow 0.3s ease-out, border-color 0.3s ease-out !important;
+}
+
+.testimonial-card-optimized:hover {
+  transform: translateY(-4px) !important; /* Movimento mais pronunciado */
+  box-shadow: 
+    0 12px 20px -1px rgba(0, 0, 0, 0.2), 
+    0 8px 12px -1px rgba(0, 0, 0, 0.15),
+    0 0 20px rgba(0, 188, 212, 0.3),
+    0 0 40px rgba(0, 188, 212, 0.2) !important; /* Efeito neon no hover */
+  border-color: rgba(0, 188, 212, 0.8) !important; /* Borda mais brilhante */
+}
+
+/* ✅ SOLUÇÃO 38: Otimizar avatares de depoimentos */
+.testimonial-avatar-optimized {
+  transition: transform 0.3s ease-out, box-shadow 0.3s ease-out !important;
+}
+
+.testimonial-card-optimized:hover .testimonial-avatar-optimized {
+  transform: scale(1.1) !important; /* Avatar escala no hover */
+  box-shadow: 
+    0 0 15px rgba(0, 188, 212, 0.4),
+    0 0 30px rgba(0, 188, 212, 0.2) !important; /* Efeito neon no avatar */
+}
+
+/* ✅ SOLUÇÃO 39: Efeito neon para nomes dos depoimentos */
+.testimonial-name-optimized {
+  transition: text-shadow 0.3s ease-out, color 0.3s ease-out !important;
+}
+
+.testimonial-card-optimized:hover .testimonial-name-optimized {
+  text-shadow: 0 0 10px rgba(0, 188, 212, 0.8) !important; /* Nome com brilho neon */
+  color: #00bcd4 !important; /* Cor mais vibrante */
+}
+
+/* ✅ SOLUÇÃO 40: Otimizações específicas para frames de conversa */
+.conversation-frame-optimized {
+  backdrop-filter: blur(1px) !important;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06) !important;
+  transition: transform 0.3s ease-out, box-shadow 0.3s ease-out, border-color 0.3s ease-out !important;
+}
+
+.conversation-frame-optimized:hover {
+  transform: translateY(-2px) !important;
+  box-shadow: 
+    0 8px 12px -1px rgba(0, 0, 0, 0.15), 
+    0 4px 6px -1px rgba(0, 0, 0, 0.1),
+    0 0 15px rgba(0, 188, 212, 0.2) !important; /* Efeito neon sutil */
+  border-color: rgba(0, 188, 212, 0.6) !important; /* Borda mais brilhante */
+}
+
+/* ✅ SOLUÇÃO 41: Otimizar mensagens de conversa */
+.conversation-message {
+  transition: background-color 0.2s ease-out !important;
+}
+
+.conversation-message:hover {
+  background-color: rgba(255, 255, 255, 0.08) !important; /* Hover sutil nas mensagens */
+}
+
+/* ✅ SOLUÇÃO 42: Otimizar avatar do agente */
+.conversation-avatar {
+  transition: transform 0.2s ease-out, box-shadow 0.2s ease-out !important;
+}
+
+.conversation-frame-optimized:hover .conversation-avatar {
+  transform: scale(1.05) !important;
+  box-shadow: 0 0 10px rgba(0, 188, 212, 0.3) !important; /* Brilho sutil no avatar */
+}
+
+/* ✅ SOLUÇÃO 46: Estilos específicos para mensagens do WhatsApp */
+.conversation-message {
+  position: relative !important;
+  max-width: 85% !important;
+  word-wrap: break-word !important;
+}
+
+.conversation-message p {
+  margin: 0 !important;
+  line-height: 1.4 !important;
+}
+
+.conversation-message .flex {
+  align-items: flex-end !important;
+  gap: 8px !important;
+}
+
+.conversation-message span {
+  flex-shrink: 0 !important;
+  white-space: nowrap !important;
+  font-size: 11px !important;
+  opacity: 0.8 !important;
+}
+
+/* ✅ SOLUÇÃO 43: Padrão de fundo do WhatsApp Web */
+.whatsapp-background {
+  background-color: #0a0a0a !important;
+  background-image: 
+    radial-gradient(circle at 20% 20%, rgba(0, 188, 212, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 40% 60%, rgba(59, 130, 246, 0.03) 0%, transparent 50%),
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 255, 255, 0.01) 2px,
+      rgba(255, 255, 255, 0.01) 4px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 255, 255, 0.01) 2px,
+      rgba(255, 255, 255, 0.01) 4px
+    ) !important;
+  position: relative !important;
+  min-height: 400px !important;
+  border-radius: 16px !important;
+  padding: 20px !important;
+}
+
+.whatsapp-background::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background-image: 
+    url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.08'%3E%3Cpath d='M30 30c0-11.046-8.954-20-20-20s-20 8.954-20 20 8.954 20 20 20 20-8.954 20-20zm-20-18c9.941 0 18 8.059 18 18s-8.059 18-18 18-18-8.059-18-18 8.059-18 18-18z'/%3E%3Cpath d='M30 30c0-11.046 8.954-20 20-20s20 8.954 20 20-8.954 20-20 20-20-8.954-20-20zm20 18c-9.941 0-18-8.059-18-18s8.059-18 18-18 18 8.059 18 18-8.059 18-18 18z'/%3E%3Cpath d='M15 15c0-8.284 6.716-15 15-15s15 6.716 15 15-6.716 15-15 15-15-6.716-15-15zm15 13c-7.18 0-13-5.82-13-13s5.82-13 13-13 13 5.82 13 13-5.82 13-13 13z'/%3E%3Cpath d='M45 45c0-8.284-6.716-15-15-15s-15 6.716-15 15 6.716 15 15 15 15-6.716 15-15zm-15 13c7.18 0 13-5.82 13-13s-5.82-13-13-13-13 5.82-13 13 5.82 13 13 13z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.06'%3E%3Cpath d='M20 20c0-5.523-4.477-10-10-10s-10 4.477-10 10 4.477 10 10 10 10-4.477 10-10zm-10-8c4.418 0 8 3.582 8 8s-3.582 8-8 8-8-3.582-8-8 3.582-8 8-8z'/%3E%3Cpath d='M20 20c0-5.523 4.477-10 10-10s10 4.477 10 10-4.477 10-10 10-10-4.477-10-10zm10 8c-4.418 0-8-3.582-8-8s3.582-8 8-8 8 3.582 8 8-3.582 8-8 8z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M40 40c0-11.046-8.954-20-20-20s-20 8.954-20 20 8.954 20 20 20 20-8.954 20-20zm-20-18c9.941 0 18 8.059 18 18s-8.059 18-18 18-18-8.059-18-18 8.059-18 18-18z'/%3E%3Cpath d='M40 40c0-11.046 8.954-20 20-20s20 8.954 20 20-8.954 20-20 20-20-8.954-20-20zm20 18c-9.941 0-18-8.059-18-18s8.059-18 18-18 18 8.059 18 18-8.059 18-18 18z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") !important;
+  background-size: 60px 60px, 40px 40px, 80px 80px !important;
+  background-position: 0 0, 30px 30px, 20px 20px !important;
+  opacity: 0.6 !important;
+  pointer-events: none !important;
+}
+
+/* ✅ SOLUÇÃO 44: Ajustar frames para o fundo do WhatsApp */
+.conversation-frame-whatsapp {
+  border: 2px solid rgba(255, 255, 255, 0.3) !important;
+  backdrop-filter: blur(0px) !important;
+  box-shadow: 
+    0 8px 24px rgba(0, 0, 0, 0.5),
+    0 4px 8px rgba(0, 0, 0, 0.3),
+    inset 0 2px 0 rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.2) !important;
+  position: relative !important;
+  z-index: 1 !important;
+  overflow: hidden !important;
+  border-radius: 20px !important;
+  margin: 8px !important;
+}
+
+/* ✅ SOLUÇÃO 45: Garantir que o fundo do WhatsApp seja visível */
+.conversation-frame-whatsapp.whatsapp-background {
+  background-color: #0a0a0a !important;
+  background-image: 
+    radial-gradient(circle at 20% 20%, rgba(0, 188, 212, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 80% 80%, rgba(16, 185, 129, 0.03) 0%, transparent 50%),
+    radial-gradient(circle at 40% 60%, rgba(59, 130, 246, 0.03) 0%, transparent 50%),
+    repeating-linear-gradient(
+      45deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 255, 255, 0.01) 2px,
+      rgba(255, 255, 255, 0.01) 4px
+    ),
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 2px,
+      rgba(255, 255, 255, 0.01) 2px,
+      rgba(255, 255, 255, 0.01) 4px
+    ) !important;
+  min-height: 400px !important;
+}
+
+.conversation-frame-whatsapp.whatsapp-background::before {
+  content: '' !important;
+  position: absolute !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  background-image: 
+    url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.08'%3E%3Cpath d='M30 30c0-11.046-8.954-20-20-20s-20 8.954-20 20 8.954 20 20 20 20-8.954 20-20zm-20-18c9.941 0 18 8.059 18 18s-8.059 18-18 18-18-8.059-18-18 8.059-18 18-18z'/%3E%3Cpath d='M30 30c0-11.046 8.954-20 20-20s20 8.954 20 20-8.954 20-20 20-20-8.954-20-20zm20 18c-9.941 0-18-8.059-18-18s8.059-18 18-18 18 8.059 18 18-8.059 18-18 18z'/%3E%3Cpath d='M15 15c0-8.284 6.716-15 15-15s15 6.716 15 15-6.716 15-15 15-15-6.716-15-15zm15 13c-7.18 0-13-5.82-13-13s5.82-13 13-13 13 5.82 13 13-5.82 13-13 13z'/%3E%3Cpath d='M45 45c0-8.284-6.716-15-15-15s-15 6.716-15 15 6.716 15 15 15 15-6.716 15-15zm-15 13c7.18 0 13-5.82 13-13s-5.82-13-13-13-13 5.82-13 13 5.82 13 13 13z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.06'%3E%3Cpath d='M20 20c0-5.523-4.477-10-10-10s-10 4.477-10 10 4.477 10 10 10 10-4.477 10-10zm-10-8c4.418 0 8 3.582 8 8s-3.582 8-8 8-8-3.582-8-8 3.582-8 8-8z'/%3E%3Cpath d='M20 20c0-5.523 4.477-10 10-10s10 4.477 10 10-4.477 10-10 10-10-4.477-10-10zm10 8c-4.418 0-8-3.582-8-8s3.582-8 8-8 8 3.582 8 8-3.582 8-8 8z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E"),
+    url("data:image/svg+xml,%3Csvg width='80' height='80' viewBox='0 0 80 80' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M40 40c0-11.046-8.954-20-20-20s-20 8.954-20 20 8.954 20 20 20 20-8.954 20-20zm-20-18c9.941 0 18 8.059 18 18s-8.059 18-18 18-18-8.059-18-18 8.059-18 18-18z'/%3E%3Cpath d='M40 40c0-11.046 8.954-20 20-20s20 8.954 20 20-8.954 20-20 20-20-8.954-20-20zm20 18c-9.941 0-18-8.059-18-18s8.059-18 18-18 18 8.059 18 18-8.059 18-18 18z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E") !important;
+  background-size: 60px 60px, 40px 40px, 80px 80px !important;
+  background-position: 0 0, 30px 30px, 20px 20px !important;
+  opacity: 0.6 !important;
+  pointer-events: none !important;
+}
+
+/* ✅ SOLUÇÃO 47: Enquadramento adicional para garantir visibilidade */
+.conversation-frame-whatsapp::after {
+  content: '' !important;
+  position: absolute !important;
+  top: -2px !important;
+  left: -2px !important;
+  right: -2px !important;
+  bottom: -2px !important;
+  border: 1px solid rgba(255, 255, 255, 0.1) !important;
+  border-radius: 22px !important;
+  pointer-events: none !important;
+  z-index: -1 !important;
+}
+
+/* ✅ SOLUÇÃO 48: Estilos personalizados para scrollbar */
+.scrollbar-thin {
+  scrollbar-width: thin !important;
+}
+
+.scrollbar-thin::-webkit-scrollbar {
+  width: 6px !important;
+}
+
+.scrollbar-thin::-webkit-scrollbar-track {
+  background: transparent !important;
+  border-radius: 3px !important;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(75, 85, 99, 0.6) !important; /* gray-600 com opacidade */
+  border-radius: 3px !important;
+  transition: background 0.2s ease !important;
+}
+
+.scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(75, 85, 99, 0.8) !important; /* gray-600 mais escuro no hover */
+}
+
+/* ✅ SOLUÇÃO 49: Ajustar altura dos frames para scroll */
+.conversation-frame-whatsapp {
+  height: 500px !important; /* Altura fixa para permitir scroll */
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.conversation-frame-whatsapp .space-y-3 {
+  flex: 1 !important;
+  overflow-y: auto !important;
+  padding-right: 8px !important;
+}

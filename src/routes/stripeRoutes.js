@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const stripeService = require('../services/stripeService');
 const logger = require('../utils/logger');
 
@@ -80,6 +81,61 @@ router.get('/products', async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Erro ao obter produtos',
+      details: error.message
+    });
+  }
+});
+
+/**
+ * @route POST /api/stripe/create-token-checkout
+ * @desc Criar checkout session para produto de tokens
+ * @access Public
+ */
+router.post('/create-token-checkout', async (req, res) => {
+  try {
+    const { customerEmail, customerName, successUrl, cancelUrl } = req.body;
+    
+    console.log('🔄 Criando checkout para produto de tokens...');
+    
+    // Criar checkout session para produto de tokens
+    const session = await stripe.checkout.sessions.create({
+      payment_method_types: ['card'],
+      line_items: [{
+        price: 'price_1S6NkGH8jGtRbIKFsPlv2Sf8', // ID do preço do produto Premium com metered billing
+        // Não especificar quantity para metered billing
+      }],
+      mode: 'subscription',
+      customer_email: customerEmail,
+      success_url: successUrl || `${process.env.APP_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: cancelUrl || `${process.env.APP_URL}/cancel`,
+      metadata: {
+        product_type: 'token_based',
+        customer_name: customerName
+      }
+    });
+
+    console.log('✅ Checkout session criada:', session.id);
+
+    res.json({
+      success: true,
+      data: {
+        sessionId: session.id,
+        url: session.url
+      }
+    });
+
+  } catch (error) {
+    console.error('❌ Erro ao criar checkout:', error);
+    
+    logger.error('Failed to create token checkout', {
+      error: error.message,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    });
+
+    res.status(500).json({
+      success: false,
+      error: 'Erro ao criar checkout',
       details: error.message
     });
   }

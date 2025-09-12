@@ -1,5 +1,6 @@
 const logger = require('../utils/logger');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
+const TokenBillingService = require('./tokenBillingService');
 
 class WebhookService {
   constructor() {
@@ -131,6 +132,12 @@ class WebhookService {
         timestamp: new Date().toISOString()
       });
 
+      // Salvar dados do Stripe no perfil do usuário
+      await this.updateUserProfileWithStripeData(subscription);
+      
+      // Definir automaticamente o dia de início da assinatura para cobrança de tokens
+      await this.setupTokenBillingForSubscription(subscription);
+      
       // TODO: Implementar lógica de provisionamento de acesso
       // - Ativar conta do usuário
       // - Enviar email de boas-vindas
@@ -376,9 +383,8 @@ class WebhookService {
         timestamp: new Date().toISOString()
       });
 
-      // TODO: Implementar atualização de método padrão
-      // - Atualizar método padrão do customer
-      // - Notificar sobre novo método
+      // Salvar payment_method_id no perfil do usuário
+      await this.updateUserProfileWithPaymentMethod(paymentMethod);
       
     } catch (error) {
       console.error('❌ Erro ao processar payment_method.attached:', error);
@@ -422,10 +428,230 @@ class WebhookService {
   }
 
   /**
+   * Configurar cobrança de tokens para nova assinatura
+   */
+  async setupTokenBillingForSubscription(subscription) {
+    try {
+      const customerId = subscription.customer;
+      const subscriptionId = subscription.id;
+      
+      // Extrair o dia da data de criação da assinatura
+      const subscriptionCreatedDate = new Date(subscription.created * 1000);
+      const subscriptionDay = subscriptionCreatedDate.getDate();
+      
+      console.log(`📅 Configurando cobrança de tokens para cliente ${customerId}`);
+      console.log(`📅 Dia da assinatura: ${subscriptionDay}`);
+      console.log(`📅 Data de criação: ${subscriptionCreatedDate.toISOString()}`);
+      
+      // Buscar client_id baseado no customer_id do Stripe
+      const clientId = await this.findClientIdByStripeCustomerId(customerId);
+      
+      if (!clientId) {
+        console.log(`⚠️ Cliente não encontrado para customer_id: ${customerId}`);
+        logger.warn('Client not found for Stripe customer', {
+          customerId,
+          subscriptionId,
+          subscriptionDay
+        });
+        return;
+      }
+      
+      // Definir o dia de início da assinatura no sistema de cobrança de tokens
+      const tokenBillingService = new TokenBillingService();
+      await tokenBillingService.setSubscriptionStartDay(clientId, subscriptionDay);
+      
+      console.log(`✅ Dia de início da assinatura definido: ${subscriptionDay} para cliente ${clientId}`);
+      
+      logger.info('Token billing subscription day set', {
+        clientId,
+        customerId,
+        subscriptionId,
+        subscriptionDay,
+        subscriptionCreatedDate: subscriptionCreatedDate.toISOString()
+      });
+      
+    } catch (error) {
+      console.error('❌ Erro ao configurar cobrança de tokens:', error);
+      logger.error('Failed to setup token billing for subscription', {
+        error: error.message,
+        stack: error.stack,
+        subscriptionId: subscription.id,
+        customerId: subscription.customer
+      });
+      // Não re-throw para não quebrar o processamento do webhook
+    }
+  }
+
+  /**
+   * Buscar client_id baseado no customer_id do Stripe
+   */
+  async findClientIdByStripeCustomerId(stripeCustomerId) {
+    try {
+      const { createClient } = require('@supabase/supabase-js');
+      const supabase = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_KEY
+      );
+      
+      // Buscar cliente na tabela user_profiles
+      const { data: client, error } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('stripe_customer_id', stripeCustomerId)
+        .single();
+      
+      if (error) {
+        console.log(`⚠️ Erro ao buscar cliente: ${error.message}`);
+        return null;
+      }
+      
+      return client?.id || null;
+      
+    } catch (error) {
+      console.error('❌ Erro ao buscar client_id:', error);
+      return null;
+    }
+  }
+
+  /**
    * Obter lista de eventos suportados
    */
   getSupportedEvents() {
     return this.supportedEvents;
+  }
+
+  /**
+   * Atualizar perfil do usuário com dados da assinatura Stripe
+   */
+  async updateUserProfileWithStripeData(subscription) {
+    try {
+      const customerId = subscription.customer;
+      const subscriptionId = subscription.id;
+      
+      console.log(`💾 Salvando dados do Stripe para customer: ${customerId}`);
+      
+      // Buscar client_id baseado no customer_id do Stripe
+      const clientId = await this.findClientIdByStripeCustomerId(customerId);
+      
+      if (!clientId) {
+        console.log(`⚠️ Cliente não encontrado para customer_id: ${customerId}`);
+        return;
+      }
+      
+      // Buscar método de pagamento padrão do customer
+      const customer = await stripe.customers.retrieve(customerId);
+      const defaultPaymentMethodId = customer.invoice_settings?.default_payment_method;
+      
+      // Atualizar user_profiles com dados do Stripe
+      const { createClient } = require('@supabase/supabase-js');
+      const supabase = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_KEY
+      );
+      
+      const updateData = {
+        stripe_customer_id: customerId,
+        updated_at: new Date().toISOString()
+      };
+      
+      // Adicionar payment_method_id se disponível
+      if (defaultPaymentMethodId) {
+        updateData.stripe_payment_method_id = defaultPaymentMethodId;
+      }
+      
+      const { error } = await supabase
+        .from('user_profiles')
+        .update(updateData)
+        .eq('id', clientId);
+      
+      if (error) {
+        console.error(`❌ Erro ao atualizar perfil: ${error.message}`);
+        logger.error('Failed to update user profile with Stripe data', {
+          error: error.message,
+          clientId,
+          customerId,
+          subscriptionId
+        });
+      } else {
+        console.log(`✅ Perfil atualizado com dados do Stripe para cliente ${clientId}`);
+        logger.info('User profile updated with Stripe data', {
+          clientId,
+          customerId,
+          subscriptionId,
+          defaultPaymentMethodId
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro ao salvar dados do Stripe:', error);
+      logger.error('Failed to save Stripe data to user profile', {
+        error: error.message,
+        stack: error.stack,
+        subscriptionId: subscription.id,
+        customerId: subscription.customer
+      });
+    }
+  }
+
+  /**
+   * Atualizar perfil do usuário com método de pagamento
+   */
+  async updateUserProfileWithPaymentMethod(paymentMethod) {
+    try {
+      const customerId = paymentMethod.customer;
+      const paymentMethodId = paymentMethod.id;
+      
+      console.log(`💳 Salvando método de pagamento ${paymentMethodId} para customer: ${customerId}`);
+      
+      // Buscar client_id baseado no customer_id do Stripe
+      const clientId = await this.findClientIdByStripeCustomerId(customerId);
+      
+      if (!clientId) {
+        console.log(`⚠️ Cliente não encontrado para customer_id: ${customerId}`);
+        return;
+      }
+      
+      // Atualizar user_profiles com payment_method_id
+      const { createClient } = require('@supabase/supabase-js');
+      const supabase = createClient(
+        process.env.SUPABASE_URL,
+        process.env.SUPABASE_SERVICE_KEY
+      );
+      
+      const { error } = await supabase
+        .from('user_profiles')
+        .update({
+          stripe_payment_method_id: paymentMethodId,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', clientId);
+      
+      if (error) {
+        console.error(`❌ Erro ao atualizar método de pagamento: ${error.message}`);
+        logger.error('Failed to update payment method in user profile', {
+          error: error.message,
+          clientId,
+          customerId,
+          paymentMethodId
+        });
+      } else {
+        console.log(`✅ Método de pagamento atualizado para cliente ${clientId}`);
+        logger.info('Payment method updated in user profile', {
+          clientId,
+          customerId,
+          paymentMethodId
+        });
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro ao salvar método de pagamento:', error);
+      logger.error('Failed to save payment method to user profile', {
+        error: error.message,
+        stack: error.stack,
+        paymentMethodId: paymentMethod.id,
+        customerId: paymentMethod.customer
+      });
+    }
   }
 }
 
