@@ -251,6 +251,8 @@ const register = async (req, res) => {
 
     // Log para depuração (remover em produção)
     console.log(`Tentativa de registro para: ${email}`);
+    console.log(`Senha recebida (primeiros 3 caracteres): ${password ? password.substring(0, 3) + '***' : 'undefined'}`);
+    console.log(`Tamanho da senha: ${password ? password.length : 'undefined'}`);
 
     // Se um plano foi especificado, usar o processo de signup com pagamento
     if (planType) {
@@ -282,6 +284,9 @@ const register = async (req, res) => {
 
     // Processo de registro normal (sem plano)
     // Registrar usuário via Admin API do Supabase com email auto-confirmado
+    console.log(`Criando usuário no Supabase com email: ${email}`);
+    console.log(`Senha para criação (primeiros 3 caracteres): ${password ? password.substring(0, 3) + '***' : 'undefined'}`);
+    
     const { data: { user }, error } = await supabaseAdmin.auth.admin.createUser({
       email,
       password,

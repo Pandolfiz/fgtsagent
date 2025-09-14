@@ -6,7 +6,7 @@ import PricingPlans from '../components/PricingPlans';
 import StepIndicator from '../components/StepIndicator';
 import NeuralNetworkBackground from '../NeuralNetworkBackground.jsx';
 import LandingNavbar from '../components/LandingNavbar.jsx';
-import { getPaymentLink } from '../config/paymentLinks';
+import axios from 'axios';
 
 const SignUpWithPlans = () => {
   const navigate = useNavigate();
@@ -201,38 +201,31 @@ const SignUpWithPlans = () => {
     setEmailStatus({ exists: false, message: 'Verificando...' });
     
     try {
-      console.log('📡 Fazendo requisição para:', '/api/check-email');
+                   console.log('📡 Fazendo requisição para:', '/api/check-email');
       console.log('📧 Dados enviados:', { email: email.trim() });
       
-      const response = await fetch('/api/check-email', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ 
-          email: email.trim() 
-        })
+      const response = await axios.post('/api/check-email', { 
+        email: email.trim() 
       });
       
-      const responseData = await response.json();
-      console.log('📥 Resposta da API:', responseData);
+      console.log('📥 Resposta da API:', response.data);
       
-      if (responseData.success && responseData.emailExists) {
-        console.log('❌ Email já está em uso:', responseData.message);
+      if (response.data.success && response.data.emailExists) {
+        console.log('❌ Email já está em uso:', response.data.message);
         setEmailStatus({
           exists: true,
           message: 'Email já está em uso'
         });
         setError('Este email já está em uso. Use outro email ou faça login.');
         return false;
-      } else if (responseData.success && !responseData.emailExists) {
-        console.log('✅ Email disponível:', responseData.message);
+      } else if (response.data.success && !response.data.emailExists) {
+        console.log('✅ Email disponível:', response.data.message);
         setEmailStatus({
           exists: false,
           message: 'Email disponível'
         });
       } else {
-        console.warn('⚠️ Resposta inesperada da API:', responseData);
+        console.warn('⚠️ Resposta inesperada da API:', response.data);
         setEmailStatus({
           exists: false,
           message: 'Resposta inesperada da API'
@@ -257,31 +250,29 @@ const SignUpWithPlans = () => {
           message: 'Verificação offline - email pode estar em uso'
         });
         // Não bloquear o usuário, mas avisar sobre a verificação
-      } else if (!response.ok) {
-        if (response.status === 400) {
-          console.warn('⚠️ Erro de validação na API:', responseData);
-          setEmailStatus({
-            exists: false,
-            message: 'Erro de validação: ' + (responseData.message || 'Formato inválido')
-          });
-          setError('Formato de email inválido. Verifique o email digitado.');
-          return false;
-        } else if (response.status === 500) {
-          console.error('❌ Erro interno do servidor:', responseData);
-          setEmailStatus({
-            exists: false,
-            message: 'Erro interno do servidor'
-          });
-          setError('Erro interno ao verificar email. Tente novamente.');
-          return false;
-        } else {
-          setEmailStatus({
-            exists: false,
-            message: 'Erro ao verificar email'
-          });
-          setError('Erro ao verificar disponibilidade do email. Tente novamente.');
-          return false;
-        }
+      } else if (error.response?.status === 400) {
+        console.warn('⚠️ Erro de validação na API:', error.response.data);
+        setEmailStatus({
+          exists: false,
+          message: 'Erro de validação: ' + (error.response.data.message || 'Formato inválido')
+        });
+        setError('Formato de email inválido. Verifique o email digitado.');
+        return false;
+      } else if (error.response?.status === 500) {
+        console.error('❌ Erro interno do servidor:', error.response.data);
+        setEmailStatus({
+          exists: false,
+          message: 'Erro interno do servidor'
+        });
+        setError('Erro interno ao verificar email. Tente novamente.');
+        return false;
+      } else {
+        setEmailStatus({
+          exists: false,
+          message: 'Erro ao verificar email'
+        });
+        setError('Erro ao verificar disponibilidade do email. Tente novamente.');
+        return false;
       }
     }
 
@@ -753,27 +744,51 @@ const SignUpWithPlans = () => {
         return;
       }
       
-      // ✅ REDIRECIONAR: Para Payment Links de todos os planos usando variáveis de ambiente
-      console.log('🔄 Obtendo Payment Link para:', { plan: selectedPlan, interval: selectedInterval });
-      
-      // ✅ PREPARAR: Dados do cliente para pré-preenchimento no Stripe
-      const customerData = {
-        email: userData.email,
-        firstName: userData.first_name,
-        lastName: userData.last_name,
-        phone: userData.phone
-      };
-      
-      const paymentLink = getPaymentLink(selectedPlan, selectedInterval, customerData);
-      
-      if (paymentLink) {
-        console.log('✅ Payment Link encontrado:', paymentLink);
-        console.log('🚀 Redirecionando para Stripe com dados pré-preenchidos:', customerData);
-        window.location.href = paymentLink;
+      // ✅ VERIFICAR: Se é o plano premium (tokens), usar API de checkout
+      if (selectedPlan === 'premium') {
+        console.log('🔄 Criando checkout session para plano de tokens...');
+        
+        try {
+          const response = await axios.post('/api/stripe/create-token-checkout', {
+            customerEmail: userData.email,
+            customerName: `${userData.first_name} ${userData.last_name}`,
+            successUrl: `${window.location.origin}/success?session_id={CHECKOUT_SESSION_ID}`,
+            cancelUrl: `${window.location.origin}/cancel`
+          });
+          
+          if (response.data.success) {
+            console.log('✅ Checkout session criada:', response.data.data.url);
+            window.location.href = response.data.data.url;
+          } else {
+            setError('Erro ao criar sessão de checkout');
+            setLoading(false);
+          }
+        } catch (apiError) {
+          console.error('❌ Erro na API de checkout:', apiError);
+          setError('Erro ao criar sessão de checkout. Tente novamente.');
+          setLoading(false);
+        }
       } else {
-        console.error('❌ Payment Link não encontrado para:', { plan: selectedPlan, interval: selectedInterval });
-        setError('Link de pagamento não encontrado para o plano selecionado. Verifique a configuração.');
-        setLoading(false);
+        // ✅ REDIRECIONAR: Para checkout links tradicionais (basic/pro)
+        const checkoutLinks = {
+          basic: {
+            monthly: 'https://buy.stripe.com/8x29ATdAo3kLbM8da35EY00',
+            yearly: 'https://buy.stripe.com/dRm28r53SaNdbM82vp5EY07'
+          },
+          pro: {
+            monthly: 'https://buy.stripe.com/fZu8wP9k808z03q7PJ5EY02',
+            yearly: 'https://buy.stripe.com/9B6cN52VKdZp03q8TN5EY06'
+          }
+        };
+        
+        const checkoutLink = checkoutLinks[selectedPlan]?.[selectedInterval];
+        if (checkoutLink) {
+          console.log('🚀 Redirecionando para Stripe:', checkoutLink);
+          window.location.href = checkoutLink;
+        } else {
+          setError('Link de checkout não encontrado para o plano selecionado');
+          setLoading(false);
+        }
       }
       
     } catch (error) {

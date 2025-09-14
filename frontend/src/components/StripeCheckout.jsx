@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import api from '../utils/api';
 
-// ✅ COMPONENTE SIMPLIFICADO: StripeCheckout
+// ✅ COMPONENTE SIMPLIFICADO: StripeCheckout - Usa Payment Links
 const StripeCheckout = ({ 
   selectedPlan, 
   selectedInterval, 
@@ -12,62 +12,45 @@ const StripeCheckout = ({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // ✅ CRIAR CHECKOUT SESSION
-  const openCheckout = useCallback(async () => {
+  // ✅ REDIRECIONAR PARA PAYMENT LINKS
+  const openCheckout = useCallback(() => {
     try {
       setLoading(true);
       setError(null);
 
-      console.log('🔄 Criando Checkout Session...');
+      console.log('🔄 Redirecionando para Payment Link...');
 
-      // ✅ DADOS SIMPLIFICADOS (sem loops circulares)
-      const checkoutData = {
-        planType: selectedPlan,
-        userEmail: userData.email,
-        userName: `${userData.first_name} ${userData.last_name}`,
-        interval: selectedInterval,
-        // ✅ DADOS ESSENCIAIS APENAS
-        userData: {
-          firstName: userData.first_name,
-          lastName: userData.last_name,
-          phone: userData.phone,
-          password: userData.password,
-          planType: selectedPlan,
-          source: 'signup_with_plans'
+      // ✅ PAYMENT LINKS PARA TODOS OS PLANOS
+      const paymentLinks = {
+        basic: {
+          monthly: 'https://buy.stripe.com/8x29ATdAo3kLbM8da35EY00',
+          yearly: 'https://buy.stripe.com/dRm28r53SaNdbM82vp5EY07'
         },
-        // ✅ IMPORTANTE: false para subscription
-        usePopup: false,
-        // ✅ URLs simples (o session_id será armazenado no localStorage)
-        successUrl: `${window.location.origin}/signup/success?plan=${selectedPlan}&status=success`,
-        cancelUrl: `${window.location.origin}/payment/cancel?plan=${selectedPlan}&status=cancelled`
+        pro: {
+          monthly: 'https://buy.stripe.com/fZu8wP9k808z03q7PJ5EY02',
+          yearly: 'https://buy.stripe.com/9B6cN52VKdZp03q8TN5EY06'
+        },
+        premium: {
+          monthly: 'https://buy.stripe.com/aFa00j53S08zdUg0nh5EY0b',
+          yearly: 'https://buy.stripe.com/6oU9AT67W08z17u8TN5EY0c'
+        }
       };
 
-      console.log('📤 Dados sendo enviados:', checkoutData);
+      const paymentLink = paymentLinks[selectedPlan]?.[selectedInterval];
       
-      const response = await api.post('/stripe/create-checkout-session', checkoutData);
-      
-      if (response.data.success && response.data.data?.url) {
-        console.log('✅ Checkout Session criada, redirecionando...');
-        
-        // ✅ ARMAZENAR: session_id no localStorage para a página de sucesso
-        if (response.data.data.sessionId) {
-          localStorage.setItem('stripe_session_id', response.data.data.sessionId);
-          console.log('✅ Session ID armazenado no localStorage:', response.data.data.sessionId);
-        }
-        
-        // ✅ REDIRECIONAR: Para o Stripe
-        window.location.href = response.data.data.url;
+      if (paymentLink) {
+        console.log('✅ Redirecionando para:', paymentLink);
+        window.location.href = paymentLink;
       } else {
-        throw new Error(response.data.message || 'Erro ao criar sessão');
+        throw new Error('Link de pagamento não encontrado para o plano selecionado');
       }
     } catch (err) {
-      console.error('❌ Erro ao criar sessão:', err);
-      setError(err.message || 'Erro ao criar sessão');
+      console.error('❌ Erro ao redirecionar:', err);
+      setError(err.message || 'Erro ao redirecionar para pagamento');
       if (onError) onError(err);
-    } finally {
       setLoading(false);
     }
-  }, [selectedPlan, selectedInterval, userData, onError]);
+  }, [selectedPlan, selectedInterval, onError]);
 
   return (
     <>

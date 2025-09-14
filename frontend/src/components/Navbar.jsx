@@ -17,8 +17,8 @@ export default function Navbar({ fullWidth }) {
   const [responsiveName, setResponsiveName] = useState('');
   const [authError, setAuthError] = useState(false); // ✅ NOVO: Flag para evitar loops após erro 401
   
-  // ✅ NOVO: Hook de persistência de sessão
-  const { forceClearSession } = useSessionPersistence();
+  // ✅ Hook de persistência de sessão (removido forceClearSession para evitar conflitos)
+  // const { forceClearSession } = useSessionPersistence();
 
   const brand = { label: 'FgtsAgent', icon: <FaRobot /> }
   const links = [
@@ -204,108 +204,83 @@ export default function Navbar({ fullWidth }) {
     setResponsiveName(getResponsiveName(displayName));
   }, [screenSize, displayName]);
 
-  // Função para fazer logout
+  // Função para fazer logout (SIMPLIFICADA)
   const handleLogout = async () => {
     try {
       setIsLoading(true);
+      console.log('🔄 Iniciando logout simplificado...');
 
-      console.log('🔄 Iniciando logout completo...');
+      // ✅ PASSO 1: Preservar dados LGPD antes da limpeza
+      const lgpdConsent = localStorage.getItem('cookieConsent');
+      const lgpdConsentDate = localStorage.getItem('cookieConsentDate');
+      const lgpdConsentCookie = document.cookie
+        .split('; ')
+        .find(row => row.startsWith('lgpd_consent='));
 
-      // ✅ PASSO 1: Fazer logout via Supabase
+      // ✅ PASSO 2: Fazer logout via Supabase (o hook detectará automaticamente)
       console.log('🔄 Fazendo logout via Supabase...');
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('Erro ao fazer logout via Supabase:', error);
       }
 
-      // ✅ PASSO 2: LIMPEZA COMPLETA E FORÇADA (PRESERVANDO LGPD)
-      console.log('🔄 Limpando todos os dados locais...');
-      
-      // ✅ SOLUÇÃO: Preservar dados LGPD antes da limpeza
-      const lgpdConsent = localStorage.getItem('cookieConsent');
-      const lgpdConsentDate = localStorage.getItem('cookieConsentDate');
-      
-      // ✅ NOVO: Usar função do hook para limpeza forçada
-      forceClearSession();
-      
-      // Limpar localStorage completamente
-      localStorage.clear();
-      
-      // ✅ SOLUÇÃO: Restaurar dados LGPD após limpeza
-      if (lgpdConsent) {
-        localStorage.setItem('cookieConsent', lgpdConsent);
-        if (lgpdConsentDate) {
-          localStorage.setItem('cookieConsentDate', lgpdConsentDate);
-        }
-        console.log('✅ Dados LGPD preservados durante logout');
-      }
-      
-      // Limpar sessionStorage completamente
-      sessionStorage.clear();
-      
-      // ✅ SOLUÇÃO: Preservar cookies LGPD antes da limpeza
-      const lgpdConsentCookie = document.cookie
-        .split('; ')
-        .find(row => row.startsWith('lgpd_consent='));
-      
-      // Limpar apenas cookies de autenticação (preservando LGPD)
-      document.cookie = 'supabase-auth-token=; path=/; max-age=0; SameSite=Lax';
-      document.cookie = 'js-auth-token=; path=/; max-age=0; SameSite=Lax';
-      document.cookie = 'sb-refresh-token=; path=/; max-age=0; SameSite=Lax';
-      document.cookie = 'sb-access-token=; path=/; max-age=0; SameSite=Lax';
-      document.cookie = 'authToken=; path=/; max-age=0; SameSite=Lax';
-      document.cookie = 'refreshToken=; path=/; max-age=0; SameSite=Lax';
-      
-      // ✅ SOLUÇÃO: Limpeza seletiva de cookies (preservando LGPD)
-      const cookies = document.cookie.split(';');
-      const lgpdCookies = ['lgpd_consent', 'lgpd_consent_server'];
-      
-      cookies.forEach(cookie => {
-        const eqPos = cookie.indexOf('=');
-        const name = eqPos > -1 ? cookie.substr(0, eqPos).trim() : cookie.trim();
-        
-        // ✅ SOLUÇÃO: Não limpar cookies LGPD
-        if (!lgpdCookies.includes(name)) {
-          document.cookie = `${name}=; path=/; max-age=0; SameSite=Lax`;
-          document.cookie = `${name}=; path=/; domain=${window.location.hostname}; max-age=0; SameSite=Lax`;
-          document.cookie = `${name}=; path=/; domain=.${window.location.hostname}; max-age=0; SameSite=Lax`;
-        }
-      });
-      
-      // ✅ SOLUÇÃO: Restaurar cookie LGPD se existia
-      if (lgpdConsentCookie) {
-        document.cookie = lgpdConsentCookie;
-        console.log('✅ Cookie LGPD restaurado após limpeza');
-      }
-
-      // ✅ PASSO 4: Fazer logout via API do backend como fallback
+      // ✅ PASSO 3: Fazer logout via API do backend
       console.log('🔄 Fazendo logout via API do backend...');
       await fetch('/api/auth/logout', {
         method: 'POST',
         credentials: 'include',
       }).catch(e => console.error('Erro ao fazer logout via API:', e));
 
-      // ✅ PASSO 5: Forçar reload da página para limpar estado React
-      console.log('✅ Logout completo realizado, recarregando página...');
+      // ✅ PASSO 4: Limpeza local seletiva (preservando LGPD)
+      console.log('🔄 Limpeza seletiva de dados...');
       
-      // Aguardar um momento para garantir que tudo foi limpo
+      // Limpar apenas dados de autenticação
+      const authKeys = ['authToken', 'supabase-auth', 'supabase.auth.token'];
+      authKeys.forEach(key => {
+        localStorage.removeItem(key);
+        sessionStorage.removeItem(key);
+      });
+
+      // Limpar cookies de autenticação (preservando LGPD)
+      const authCookies = [
+        'supabase-auth-token', 'js-auth-token', 'sb-refresh-token', 
+        'sb-access-token', 'authToken', 'refreshToken'
+      ];
+      authCookies.forEach(cookieName => {
+        document.cookie = `${cookieName}=; path=/; max-age=0; SameSite=Lax`;
+      });
+
+      // ✅ PASSO 5: Restaurar dados LGPD se existiam
+      if (lgpdConsent) {
+        localStorage.setItem('cookieConsent', lgpdConsent);
+        if (lgpdConsentDate) {
+          localStorage.setItem('cookieConsentDate', lgpdConsentDate);
+        }
+        console.log('✅ Dados LGPD preservados');
+      }
+      
+      if (lgpdConsentCookie) {
+        document.cookie = lgpdConsentCookie;
+        console.log('✅ Cookie LGPD preservado');
+      }
+
+      // ✅ PASSO 6: Aguardar um momento e redirecionar
+      console.log('✅ Logout concluído, redirecionando...');
       setTimeout(() => {
-        // Forçar reload completo da página
         window.location.href = '/login?success=true&message=Logout realizado com sucesso';
-      }, 100);
+      }, 500); // Aumentado para 500ms para evitar conflitos
 
     } catch (error) {
       console.error('Erro durante o logout:', error);
-
-      // ✅ MESMO COM ERRO: Forçar limpeza e redirecionamento
-      console.log('⚠️ Erro no logout, forçando limpeza...');
       
-      // Limpeza de emergência
+      // ✅ FALLBACK: Limpeza de emergência
+      console.log('⚠️ Erro no logout, forçando limpeza...');
       localStorage.clear();
       sessionStorage.clear();
       
-      // Forçar reload da página
-      window.location.href = '/login?error=logout_error&message=Erro no logout, mas sessão foi limpa';
+      setTimeout(() => {
+        window.location.href = '/login?error=logout_error&message=Erro no logout, mas sessão foi limpa';
+      }, 100);
     } finally {
       setIsLoading(false);
     }

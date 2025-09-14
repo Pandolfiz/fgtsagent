@@ -141,4 +141,5 @@ supabase/.env.local
 *.log
 logs/*.env
 src/.env
+src/.env.backup
 

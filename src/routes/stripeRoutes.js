@@ -93,24 +93,45 @@ router.get('/products', async (req, res) => {
  */
 router.post('/create-token-checkout', async (req, res) => {
   try {
-    const { customerEmail, customerName, successUrl, cancelUrl } = req.body;
+    const { customerEmail, customerName, successUrl, cancelUrl, interval = 'monthly' } = req.body;
     
-    console.log('🔄 Criando checkout para produto de tokens...');
+    console.log('🔄 Criando checkout para produto de tokens...', { interval });
+    
+    // Selecionar Price ID baseado no intervalo (variáveis de ambiente)
+    const priceIds = {
+      monthly: process.env.STRIPE_PREMIUM_PRICE_ID_MONTHLY, // Mensal
+      yearly: process.env.STRIPE_PREMIUM_PRICE_ID_YEARLY   // Anual
+    };
+    
+    // Validar se as variáveis de ambiente estão definidas
+    if (!priceIds.monthly || !priceIds.yearly) {
+      console.error('❌ Variáveis de ambiente STRIPE_PREMIUM_PRICE_ID_MONTHLY ou STRIPE_PREMIUM_PRICE_ID_YEARLY não definidas');
+      return res.status(500).json({
+        success: false,
+        error: 'Configuração de preços não encontrada'
+      });
+    }
+    
+    const selectedPriceId = priceIds[interval] || priceIds.monthly;
+    console.log('🎯 Price ID selecionado:', selectedPriceId);
     
     // Criar checkout session para produto de tokens
     const session = await stripe.checkout.sessions.create({
       payment_method_types: ['card'],
       line_items: [{
-        price: 'price_1S6NkGH8jGtRbIKFsPlv2Sf8', // ID do preço do produto Premium com metered billing
+        price: selectedPriceId,
+        quantity: 1,
         // Não especificar quantity para metered billing
       }],
       mode: 'subscription',
       customer_email: customerEmail,
-      success_url: successUrl || `${process.env.APP_URL}/success?session_id={CHECKOUT_SESSION_ID}`,
+      success_url: successUrl || `${process.env.APP_URL}/signup/success?session_id={CHECKOUT_SESSION_ID}`,
       cancel_url: cancelUrl || `${process.env.APP_URL}/cancel`,
+      allow_promotion_codes: true,
       metadata: {
         product_type: 'token_based',
-        customer_name: customerName
+        customer_name: customerName,
+        interval: interval
       }
     });
 

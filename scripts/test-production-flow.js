@@ -69,7 +69,7 @@ async function testProductionFlow() {
     const pages = [
       '/',
       '/signup',
-      '/payment/success',
+      '/payment/signup/success',
       '/payment/return'
     ];
     

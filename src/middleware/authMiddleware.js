@@ -207,11 +207,17 @@ const requireAuth = async (req, res, next) => {
 
     // ✅ OTIMIZADO: Verificar token com Supabase (apenas se não foi renovado)
     try {
+      // ✅ DEBUG: Log do token para debug
+      logger.debug(`[AUTH] Validando token: ${token.substring(0, 20)}...`);
+      
       const { data, error } = await supabase.auth.getUser(token);
       
       if (error || !data.user) {
-        
-        logger.warn(`[AUTH] Token inválido: ${error?.message || 'Usuário não encontrado'}`);
+        logger.warn(`[AUTH] Token inválido: ${error?.message || 'Usuário não encontrado'}`, {
+          tokenPrefix: token.substring(0, 20),
+          error: error?.message,
+          hasUser: !!data.user
+        });
         
         if (req.originalUrl.startsWith('/api/')) {
           return res.status(401).json({

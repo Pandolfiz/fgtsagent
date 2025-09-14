@@ -1509,22 +1509,7 @@ router.post('/create-user-after-payment', async (req, res) => {
         logger.warn(`[AUTH] Erro ao criar perfil (ignorando): ${profileError.message}`);
       }
       
-      // ✅ CRIAR: Cliente na tabela clients
-      try {
-        await supabaseAdmin
-          .from('clients')
-          .insert({
-            id: createdUser.user.id,
-            name: fullName,
-            email: email,
-            phone: phone,
-            status: 'active',
-            created_at: new Date().toISOString(),
-            updated_at: new Date().toISOString()
-          });
-      } catch (clientError) {
-        logger.warn(`[AUTH] Erro ao criar cliente (ignorando): ${clientError.message}`);
-      }
+      // Cliente será criado automaticamente via trigger quando o perfil for criado
       
       return res.status(201).json({
         success: true,
@@ -1579,6 +1564,235 @@ router.get('/check-auto-login/:email', async (req, res) => {
   } catch (error) {
     logger.error(`[AUTH] Erro ao verificar login automático: ${error.message}`);
     res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// ✅ ROTA: Criar usuário via Payment Link (sem confirmação de email)
+router.post('/create-user-from-payment-link', async (req, res) => {
+  try {
+    const { userData, plan, interval } = req.body;
+    
+    if (!userData || !userData.email || !userData.password) {
+      return res.status(400).json({
+        success: false,
+        message: 'Dados do usuário são obrigatórios'
+      });
+    }
+
+    logger.info(`[AUTH] Criando usuário via Payment Link: ${userData.email}`);
+    
+    // ✅ VERIFICAR: Se existe pagamento bem-sucedido para este email
+    const { data: stripeCustomer, error: customerError } = await supabaseAdmin
+      .from('stripe_customers')
+      .select('id, email, name, created')
+      .eq('email', userData.email)
+      .order('created', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (customerError || !stripeCustomer) {
+      logger.info(`[AUTH] Nenhum customer encontrado para: ${userData.email}`);
+      return res.status(400).json({
+        success: false,
+        message: 'Nenhum pagamento encontrado para este email'
+      });
+    }
+    
+    // ✅ VERIFICAR: Se existe pagamento bem-sucedido para este customer
+    const { data: successfulPayment, error: paymentError } = await supabaseAdmin
+      .from('stripe_payments')
+      .select('id, amount, currency, created, attrs')
+      .eq('customer', stripeCustomer.id)
+      .eq('attrs->status', 'succeeded')
+      .order('created', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (paymentError || !successfulPayment) {
+      logger.info(`[AUTH] Nenhum pagamento bem-sucedido encontrado para customer: ${stripeCustomer.id}`);
+      return res.status(400).json({
+        success: false,
+        message: 'Nenhum pagamento bem-sucedido encontrado'
+      });
+    }
+    
+    // ✅ VERIFICAR: Se o pagamento foi recente (últimas 24 horas)
+    const paymentDate = new Date(successfulPayment.created);
+    const now = new Date();
+    const hoursDiff = (now - paymentDate) / (1000 * 60 * 60);
+    
+    if (hoursDiff > 24) {
+      logger.info(`[AUTH] Pagamento muito antigo (${hoursDiff.toFixed(1)} horas atrás)`);
+      return res.status(400).json({
+        success: false,
+        message: 'Pagamento muito antigo'
+      });
+    }
+    
+    // ✅ CRIAR: Usuário usando service role (sem confirmação de email)
+    const { data: authUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
+      email: userData.email,
+      password: userData.password,
+      email_confirm: true, // ✅ CONFIRMAR: Email automaticamente
+      user_metadata: {
+        first_name: userData.first_name,
+        last_name: userData.last_name || '',
+        full_name: `${userData.first_name} ${userData.last_name || ''}`.trim(),
+        phone: userData.phone || null,
+        plan_type: plan || 'premium',
+        interval: interval || 'monthly',
+        payment_source: 'payment_link',
+        stripe_customer_id: stripeCustomer.id,
+        stripe_payment_id: successfulPayment.id
+      }
+    });
+    
+    if (createError) {
+      logger.error(`[AUTH] Erro ao criar usuário: ${createError.message}`);
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao criar conta'
+      });
+    }
+    
+    if (authUser.user) {
+      logger.info(`[AUTH] Usuário criado com sucesso: ${authUser.user.id}`);
+      
+      // ✅ RETORNAR: Token de acesso para login imediato
+      const { data: session, error: sessionError } = await supabaseAdmin.auth.admin.generateLink({
+        type: 'magiclink',
+        email: userData.email,
+        options: {
+          redirectTo: `${process.env.APP_URL || 'http://localhost:5174'}/dashboard`
+        }
+      });
+      
+      if (sessionError) {
+        logger.error(`[AUTH] Erro ao gerar link de sessão: ${sessionError.message}`);
+        return res.status(500).json({
+          success: false,
+          message: 'Usuário criado, mas erro ao gerar sessão'
+        });
+      }
+      
+      res.json({
+        success: true,
+        data: {
+          user: authUser.user,
+          sessionUrl: session.properties?.action_link,
+          message: 'Usuário criado com sucesso'
+        }
+      });
+    }
+    
+  } catch (error) {
+    logger.error(`[AUTH] Erro ao criar usuário via Payment Link: ${error.message}`);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno do servidor'
+    });
+  }
+});
+
+// ✅ ROTA: Verificar pagamento por email usando tabelas do Stripe wrapper
+router.post('/check-payment-by-email', async (req, res) => {
+  try {
+    const { email } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({
+        success: false,
+        message: 'Email é obrigatório'
+      });
+    }
+
+    logger.info(`[AUTH] Verificando pagamento por email: ${email}`);
+    
+    // ✅ VERIFICAR: Se existe customer no Stripe com esse email
+    const { data: stripeCustomer, error: customerError } = await supabaseAdmin
+      .from('stripe_customers')
+      .select('id, email, name, created')
+      .eq('email', email)
+      .order('created', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (customerError || !stripeCustomer) {
+      logger.info(`[AUTH] Nenhum customer encontrado para: ${email}`);
+      return res.json({
+        success: true,
+        data: {
+          hasPayment: false,
+          message: 'Nenhum pagamento encontrado para este email'
+        }
+      });
+    }
+    
+    logger.info(`[AUTH] Customer encontrado: ${stripeCustomer.id}`);
+    
+    // ✅ VERIFICAR: Se existe pagamento bem-sucedido para este customer
+    const { data: successfulPayment, error: paymentError } = await supabaseAdmin
+      .from('stripe_payments')
+      .select('id, amount, currency, created, attrs')
+      .eq('customer', stripeCustomer.id)
+      .eq('attrs->status', 'succeeded')
+      .order('created', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (paymentError || !successfulPayment) {
+      logger.info(`[AUTH] Nenhum pagamento bem-sucedido encontrado para customer: ${stripeCustomer.id}`);
+      return res.json({
+        success: true,
+        data: {
+          hasPayment: false,
+          message: 'Nenhum pagamento bem-sucedido encontrado'
+        }
+      });
+    }
+    
+    logger.info(`[AUTH] Pagamento bem-sucedido encontrado: ${successfulPayment.id}`);
+    
+    // ✅ VERIFICAR: Se o pagamento foi recente (últimas 24 horas)
+    const paymentDate = new Date(successfulPayment.created);
+    const now = new Date();
+    const hoursDiff = (now - paymentDate) / (1000 * 60 * 60);
+    
+    if (hoursDiff > 24) {
+      logger.info(`[AUTH] Pagamento muito antigo (${hoursDiff.toFixed(1)} horas atrás)`);
+      return res.json({
+        success: true,
+        data: {
+          hasPayment: false,
+          message: 'Pagamento muito antigo'
+        }
+      });
+    }
+    
+    // ✅ RETORNAR: Dados do pagamento bem-sucedido
+    res.json({
+      success: true,
+      data: {
+        hasPayment: true,
+        payment: {
+          id: successfulPayment.id,
+          amount: successfulPayment.amount,
+          currency: successfulPayment.currency,
+          created: successfulPayment.created,
+          customerId: stripeCustomer.id,
+          customerName: stripeCustomer.name,
+          customerEmail: stripeCustomer.email
+        },
+        message: 'Pagamento bem-sucedido encontrado'
+      }
+    });
+    
+  } catch (error) {
+    logger.error(`[AUTH] Erro ao verificar pagamento por email: ${error.message}`);
+    return res.status(500).json({
       success: false,
       message: 'Erro interno do servidor'
     });

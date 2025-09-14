@@ -189,12 +189,12 @@ CREATE TABLE public.subscriptions (
 
 ### Desenvolvimento
 - **API Base**: `http://localhost:3000/api/stripe`
-- **Success URL**: `http://localhost:5173/success`
+- **Success URL**: `http://localhost:5173/signup/success`
 - **Cancel URL**: `http://localhost:5173/pricing`
 
 ### Produção (Configurar)
 - **API Base**: `https://seudominio.com/api/stripe`
-- **Success URL**: `https://seudominio.com/success`
+- **Success URL**: `https://seudominio.com/signup/success`
 - **Cancel URL**: `https://seudominio.com/pricing`
 
 ## Segurança

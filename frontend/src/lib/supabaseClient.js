@@ -65,12 +65,8 @@ const supabaseOptions = {
     storageKey: 'supabase-auth', // ✅ CORRIGIDO: Usar mesma chave do backend
     site_url: siteUrl,
     clearHashAfterLogin: true,
-    debug: true, // ✅ FORÇAR DEBUG para ver o que está acontecendo
+    debug: false, // ✅ DESABILITAR DEBUG para evitar logs excessivos
     authTimeout: 30000,
-    // ✅ ADICIONAR: Configurações para garantir criação de sessão
-    autoRefreshToken: true,
-    persistSession: true,
-    storageKey: 'supabase-auth',
   },
   global: {
     headers: {
@@ -138,7 +134,8 @@ export const verifySupabaseConnection = async () => {
 
     const checkConnection = async () => {
       try {
-        const { error } = await supabase.from('healthcheck').select('count', { count: 'exact', head: true });
+        // Usar uma tabela que sabemos que existe (user_profiles)
+        const { error } = await supabase.from('user_profiles').select('count', { count: 'exact', head: true });
 
         if (error && error.code !== 'PGRST116') {
           return {
