@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import { apiFetch } from '../utilities/apiFetch'
+import supabase from '../lib/supabaseClient'
+import { handleAuthError } from '../utils/authErrorDetector'
 import Navbar from '../components/Navbar'
 import type { KnowledgeBaseDoc } from '../components/agent/KnowledgeBaseList'
 import { AgentModeForm } from '../components/agent/AgentModeForm'
@@ -32,6 +34,11 @@ export default function AgentsConfigPage() {
       }
     } catch (err) {
       console.error('Erro ao buscar modo atual do agente:', err)
+      
+      // ✅ MAPEAMENTO COMPLETO: Usar função utilitária para detectar todos os tipos de erro de autenticação
+      if (handleAuthError(err)) {
+        return; // Erro de autenticação, redirecionamento já foi feito
+      }
     } finally {
       setInitialLoading(false)
     }
@@ -51,7 +58,10 @@ export default function AgentsConfigPage() {
         setErrorDocs(json.message || 'Erro ao carregar documentos')
       }
     } catch (err: any) {
-      setErrorDocs(err.message || 'Erro ao carregar documentos')
+      // ✅ MAPEAMENTO COMPLETO: Usar função utilitária para detectar todos os tipos de erro de autenticação
+      if (handleAuthError(err, setErrorDocs)) {
+        return; // Erro de autenticação, redirecionamento já foi feito
+      }
     } finally {
       setLoadingDocs(false)
     }
@@ -147,10 +157,26 @@ export default function AgentsConfigPage() {
     }
   }
 
-  // Carregar dados ao montar o componente
-  useEffect(() => { 
-    fetchCurrentMode()
-    fetchDocs() 
+  // ✅ CORREÇÃO: Verificar autenticação antes de carregar dados
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          window.location.href = '/login?error=not_authenticated&message=Faça login para configurar agentes.';
+          return;
+        }
+        
+        // ✅ AUTENTICADO: Carregar dados
+        fetchCurrentMode();
+        fetchDocs();
+      } catch (error) {
+        console.error('❌ Erro ao verificar autenticação:', error);
+        window.location.href = '/login?error=auth_error&message=Erro de autenticação.';
+      }
+    };
+    
+    checkAuth();
   }, [])
 
   return (
