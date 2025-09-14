@@ -1,5 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { api, EvolutionCredential } from '../../utilities/api';
+import supabase from '../../lib/supabaseClient';
+import { handleAuthError } from '../../utils/authErrorDetector';
 import { FaWhatsapp, FaEdit, FaTrash, FaSync, FaPlus, FaCircle, FaCheck, FaExclamation, FaQuestionCircle, FaHourglass, FaBullhorn, FaPhone, FaBroadcastTower, FaBan, FaLink, FaFacebook, FaAd, FaTools, FaClock, FaInfoCircle } from 'react-icons/fa';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
@@ -534,7 +536,11 @@ export function WhatsappCredentialsPage() {
       }
     } catch (err) {
       console.error('❌ Erro geral ao carregar credenciais:', err);
-      setError('Erro ao carregar credenciais: ' + (err instanceof Error ? err.message : String(err)));
+      
+      // ✅ MAPEAMENTO COMPLETO: Usar função utilitária para detectar todos os tipos de erro de autenticação
+      if (handleAuthError(err, setError)) {
+        return; // Erro de autenticação, redirecionamento já foi feito
+      }
     } finally {
       setLoading(false);
     }
@@ -561,13 +567,34 @@ export function WhatsappCredentialsPage() {
       }
     } catch (err) {
       console.error('💥 Erro ao carregar dados do usuário:', err);
+      
+      // ✅ MAPEAMENTO COMPLETO: Usar função utilitária para detectar todos os tipos de erro de autenticação
+      if (handleAuthError(err)) {
+        return; // Erro de autenticação, redirecionamento já foi feito
+      }
     }
   };
 
-  // Carregar dados ao montar o componente
+  // ✅ CORREÇÃO: Verificar autenticação antes de carregar dados
   useEffect(() => {
-    loadCredentials();
-    loadCurrentUser();
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) {
+          window.location.href = '/login?error=not_authenticated&message=Faça login para acessar as credenciais.';
+          return;
+        }
+        
+        // ✅ AUTENTICADO: Carregar dados
+        loadCredentials();
+        loadCurrentUser();
+      } catch (error) {
+        console.error('❌ Erro ao verificar autenticação:', error);
+        window.location.href = '/login?error=auth_error&message=Erro de autenticação.';
+      }
+    };
+    
+    checkAuth();
   }, []);
 
   // Monitorar credenciais com status 'pending' para ativação automática

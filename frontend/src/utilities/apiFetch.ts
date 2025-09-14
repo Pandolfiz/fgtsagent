@@ -8,6 +8,13 @@ export async function apiFetch(input: RequestInfo, init?: RequestInit) {
     if (res.status === 401 || res.status === 403) {
       console.error('Sessão expirada ou autenticação inválida');
 
+      // ✅ EXCEÇÃO: Não interceptar requisições de logout
+      const url = typeof input === 'string' ? input : input.url;
+      if (url && url.includes('/api/auth/logout')) {
+        console.log('⚠️ Interceptor: Ignorando erro 401 em logout (comportamento esperado)');
+        return res; // Retornar a resposta original sem interceptar
+      }
+
       // Tentar renovar o token uma vez (se não estivermos já na página de login)
       if (!window.location.pathname.includes('/login')) {
         // Antes de redirecionar, tente renovar o token uma vez

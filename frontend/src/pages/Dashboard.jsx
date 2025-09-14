@@ -367,6 +367,12 @@ export default function Dashboard() {
 
     // ✅ VERIFICAR: Se está autenticado
     if (!session || !session.access_token) {
+      // ✅ EXCEÇÃO: Não redirecionar se estamos fazendo logout
+      const isLoggingOut = localStorage.getItem('isLoggingOut') === 'true';
+      if (isLoggingOut) {
+        console.log('🔄 Dashboard: Detectado logout em andamento, aguardando redirecionamento...');
+        return;
+      }
       navigate('/login?error=not_authenticated&message=Faça login para continuar.');
       return;
     }

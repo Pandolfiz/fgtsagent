@@ -204,11 +204,14 @@ export default function Navbar({ fullWidth }) {
     setResponsiveName(getResponsiveName(displayName));
   }, [screenSize, displayName]);
 
-  // Função para fazer logout (SIMPLIFICADA)
+  // Função para fazer logout (INTELIGENTE)
   const handleLogout = async () => {
     try {
       setIsLoading(true);
-      console.log('🔄 Iniciando logout simplificado...');
+      console.log('🔄 Iniciando logout inteligente...');
+
+      // ✅ PASSO 0: Marcar que estamos fazendo logout
+      localStorage.setItem('isLoggingOut', 'true');
 
       // ✅ PASSO 1: Preservar dados LGPD antes da limpeza
       const lgpdConsent = localStorage.getItem('cookieConsent');
@@ -217,21 +220,42 @@ export default function Navbar({ fullWidth }) {
         .split('; ')
         .find(row => row.startsWith('lgpd_consent='));
 
-      // ✅ PASSO 2: Fazer logout via Supabase (o hook detectará automaticamente)
+      // ✅ PASSO 2: Verificar se token ainda é válido antes de tentar logout via API
+      console.log('🔄 Verificando se token ainda é válido...');
+      let tokenIsValid = false;
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        tokenIsValid = !!(session?.access_token);
+        console.log('🔍 Token válido:', tokenIsValid);
+      } catch (error) {
+        console.log('⚠️ Erro ao verificar sessão:', error.message);
+        tokenIsValid = false;
+      }
+
+      // ✅ PASSO 3: Fazer logout via Supabase (sempre funciona)
       console.log('🔄 Fazendo logout via Supabase...');
       const { error } = await supabase.auth.signOut();
       if (error) {
         console.error('Erro ao fazer logout via Supabase:', error);
       }
 
-      // ✅ PASSO 3: Fazer logout via API do backend
-      console.log('🔄 Fazendo logout via API do backend...');
-      await fetch('/api/auth/logout', {
-        method: 'POST',
-        credentials: 'include',
-      }).catch(e => console.error('Erro ao fazer logout via API:', e));
+      // ✅ PASSO 4: Logout via API apenas se token for válido
+      if (tokenIsValid) {
+        console.log('🔄 Token válido, fazendo logout via API...');
+        try {
+          await fetch('/api/auth/logout', {
+            method: 'POST',
+            credentials: 'include',
+          });
+          console.log('✅ Logout via API bem-sucedido');
+        } catch (apiError) {
+          console.log('⚠️ Logout via API falhou:', apiError.message);
+        }
+      } else {
+        console.log('⏭️ Token inválido, pulando logout via API');
+      }
 
-      // ✅ PASSO 4: Limpeza local seletiva (preservando LGPD)
+      // ✅ PASSO 5: Limpeza local seletiva (preservando LGPD)
       console.log('🔄 Limpeza seletiva de dados...');
       
       // Limpar apenas dados de autenticação
@@ -250,7 +274,7 @@ export default function Navbar({ fullWidth }) {
         document.cookie = `${cookieName}=; path=/; max-age=0; SameSite=Lax`;
       });
 
-      // ✅ PASSO 5: Restaurar dados LGPD se existiam
+      // ✅ PASSO 6: Restaurar dados LGPD se existiam
       if (lgpdConsent) {
         localStorage.setItem('cookieConsent', lgpdConsent);
         if (lgpdConsentDate) {
@@ -264,10 +288,11 @@ export default function Navbar({ fullWidth }) {
         console.log('✅ Cookie LGPD preservado');
       }
 
-      // ✅ PASSO 6: Aguardar um momento e redirecionar
+      // ✅ PASSO 7: Limpar flag de logout e redirecionar
       console.log('✅ Logout concluído, redirecionando...');
+      localStorage.removeItem('isLoggingOut'); // Limpar flag de logout
       setTimeout(() => {
-        window.location.href = '/login?success=true&message=Logout realizado com sucesso';
+        window.location.href = '/login?success=logout&message=Logout realizado com sucesso';
       }, 500); // Aumentado para 500ms para evitar conflitos
 
     } catch (error) {
@@ -275,6 +300,7 @@ export default function Navbar({ fullWidth }) {
       
       // ✅ FALLBACK: Limpeza de emergência
       console.log('⚠️ Erro no logout, forçando limpeza...');
+      localStorage.removeItem('isLoggingOut'); // Limpar flag de logout
       localStorage.clear();
       sessionStorage.clear();
       

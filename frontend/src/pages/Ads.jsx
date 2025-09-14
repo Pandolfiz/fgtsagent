@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactDOM from 'react-dom';
 import supabase from '../lib/supabaseClient';
+import { handleAuthError } from '../utils/authErrorDetector';
 import Navbar from '../components/Navbar';
 import Button from '../components/Button';
 import { 
@@ -194,7 +195,11 @@ const Ads = () => {
       }
     } catch (err) {
       console.error('Erro ao carregar ranking de anúncios:', err);
-      setError(err.message);
+      
+      // ✅ MAPEAMENTO COMPLETO: Usar função utilitária para detectar todos os tipos de erro de autenticação
+      if (handleAuthError(err, setError)) {
+        return; // Erro de autenticação, redirecionamento já foi feito
+      }
     } finally {
       setLoading(false);
       setIsRefreshing(false);
@@ -258,6 +263,12 @@ const Ads = () => {
       }
     } catch (err) {
       console.error('Erro ao carregar estatísticas de campanhas:', err);
+      
+      // ✅ MAPEAMENTO COMPLETO: Usar função utilitária para detectar todos os tipos de erro de autenticação
+      if (handleAuthError(err)) {
+        return; // Erro de autenticação, redirecionamento já foi feito
+      }
+      
       console.log('[DEBUG] === ERRO em loadCampaignStats ===');
       console.log('[DEBUG] Mantendo campaignStats atual:', campaignStats);
       console.log('[DEBUG] === FINALIZANDO loadCampaignStats com erro ===');
@@ -304,7 +315,11 @@ const Ads = () => {
       }
     } catch (err) {
       console.error('Erro ao carregar detalhes do anúncio:', err);
-      setError(err.message);
+      
+      // ✅ MAPEAMENTO COMPLETO: Usar função utilitária para detectar todos os tipos de erro de autenticação
+      if (handleAuthError(err, setError)) {
+        return; // Erro de autenticação, redirecionamento já foi feito
+      }
     } finally {
       setLoadingDetails(false);
     }
@@ -348,6 +363,12 @@ const Ads = () => {
       }
     } catch (err) {
       console.error('Erro ao carregar dados do gráfico:', err);
+      
+      // ✅ MAPEAMENTO COMPLETO: Usar função utilitária para detectar todos os tipos de erro de autenticação
+      if (handleAuthError(err)) {
+        return; // Erro de autenticação, redirecionamento já foi feito
+      }
+      
       // Em caso de erro, criar dados simulados para demonstração
       setChartData(createMockChartData());
     } finally {
