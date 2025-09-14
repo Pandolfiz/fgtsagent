@@ -54,10 +54,10 @@ const commonSchemas = {
   password: Joi.string()
     .min(8)
     .max(128)
-    .pattern(new RegExp('^(?=.*[a-z])(?=.*[A-Z])(?=.*\\d)(?=.*[@$!%*?&])[A-Za-z\\d@$!%*?&]'))
     .required()
     .messages({
-      'string.pattern.base': 'A senha deve conter pelo menos: 1 letra minúscula, 1 maiúscula, 1 número e 1 caractere especial'
+      'string.min': 'A senha deve ter pelo menos 8 caracteres',
+      'string.max': 'A senha deve ter no máximo 128 caracteres'
     }),
 
   // Validação de telefone brasileiro
@@ -384,8 +384,13 @@ function sanitizeInput(req, res, next) {
     const sanitized = {};
     for (const [key, value] of Object.entries(obj)) {
       if (typeof value === 'string') {
-        // Aplicar sanitização XSS básica
-        sanitized[key] = xss(value.trim(), xssOptions);
+        // Não sanitizar campos de senha para preservar caracteres especiais
+        if (key.toLowerCase().includes('password') || key.toLowerCase().includes('senha')) {
+          sanitized[key] = value; // Manter senha original
+        } else {
+          // Aplicar sanitização XSS básica para outros campos
+          sanitized[key] = xss(value.trim(), xssOptions);
+        }
       } else if (typeof value === 'object') {
         sanitized[key] = sanitizeObject(value);
       } else {

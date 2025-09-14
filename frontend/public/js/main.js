@@ -968,7 +968,7 @@ function checkUrlForMessages() {
     // Remover os parâmetros da URL sem recarregar a página
     const newUrl = window.location.pathname +
                    (urlParams.toString().replace(/message=[^&]*(&|$)/g, '')
-                                        .replace(/success=[^&]*(&|$)/g, '')
+                                        .replace(/signup/success=[^&]*(&|$)/g, '')
                                         .replace(/^&/, '?')
                                         .replace(/(\?|&)$/, ''));
 

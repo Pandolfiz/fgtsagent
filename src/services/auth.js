@@ -56,23 +56,7 @@ class AuthService {
         }
       }
       logger.info(`Novo usuário registrado: ${email}`);
-      try {
-        // Criar registro na tabela clients via Supabase
-        const { error: clientError } = await supabaseAdmin
-          .from('clients')
-          .insert({
-            id: authData.user.id,
-            name: userData.firstName ? `${userData.firstName} ${userData.lastName || ''}`.trim() : email,
-            email: authData.user.email
-          });
-        if (clientError) {
-          logger.warn(`Não foi possível criar cliente para o usuário ${authData.user.id}: ${clientError.message}`);
-        } else {
-          logger.info(`Cliente criado na tabela clients para o usuário ${authData.user.id}`);
-        }
-      } catch (clientError) {
-        logger.warn(`Não foi possível criar cliente para o usuário ${authData.user.id}: ${clientError.message}`);
-      }
+      // Cliente será criado automaticamente via trigger quando o perfil for criado
       return {
         id: authData.user.id,
         email: authData.user.email

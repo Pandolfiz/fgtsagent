@@ -70,6 +70,18 @@ const SignupSuccess = () => {
         return;
       }
       
+      // ✅ PRIORIDADE 3.5: Verificar se veio de Payment Link (sem session_id)
+      const hasStoredUserData = localStorage.getItem('signup_user_data');
+      if (hasStoredUserData) {
+        console.log('✅ Contexto detectado: PAYMENT_LINK (dados salvos encontrados)');
+        setContext('payment_link');
+        setContextData({
+          source: 'payment_link',
+          timestamp: new Date().toISOString()
+        });
+        return;
+      }
+      
       // ✅ PRIORIDADE 4: Dados via location.state (payment)
       if (location.state && location.state.source === 'stripe_checkout') {
         console.log('✅ Contexto detectado: PAYMENT (via state)');
@@ -130,6 +142,14 @@ const SignupSuccess = () => {
           console.log('⏳ Aguardando criação de usuário via webhook...');
           setIsLoggedIn(false);
           setLoading(false);
+          return;
+        }
+        
+        // ✅ PRIORIDADE 3.5: Se não autenticado e contexto é payment_link, verificar pagamento e criar usuário
+        if (context === 'payment_link' && !userCreationAttempted) {
+          console.log('🔄 Verificando pagamento via Payment Link...');
+          setUserCreationAttempted(true);
+          await createUserFromPaymentLink();
           return;
         }
         
@@ -244,6 +264,147 @@ const SignupSuccess = () => {
   };
 
   // ✅ FUNÇÃO: Criar usuário a partir dos dados do signup (PROTEGIDA CONTRA DUPLICAÇÃO)
+  // ✅ FUNÇÃO: Criar usuário a partir de Payment Link
+  const createUserFromPaymentLink = async () => {
+    try {
+      console.log('🔄 Criando usuário a partir de Payment Link...');
+      
+      // ✅ OBTER: Dados salvos do localStorage
+      const storedUserData = localStorage.getItem('signup_user_data');
+      const storedPlan = localStorage.getItem('signup_selected_plan');
+      const storedInterval = localStorage.getItem('signup_selected_interval');
+      
+      if (!storedUserData) {
+        console.error('❌ Dados do usuário não encontrados no localStorage');
+        setError('Dados do cadastro não encontrados. Tente novamente.');
+        setLoading(false);
+        return;
+      }
+      
+      const userData = JSON.parse(storedUserData);
+      console.log('📋 Dados do usuário:', userData);
+      
+      // ✅ VERIFICAR: Se existe pagamento bem-sucedido para este email
+      console.log('🔍 Verificando pagamento para:', userData.email);
+      
+      const response = await fetch('/api/auth/check-payment-by-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: userData.email })
+      });
+      
+      const paymentCheck = await response.json();
+      console.log('📥 Resultado da verificação de pagamento:', paymentCheck);
+      
+      if (!paymentCheck.success || !paymentCheck.data.hasPayment) {
+        console.log('⚠️ Nenhum pagamento encontrado para este email');
+        setError('Nenhum pagamento confirmado encontrado. Aguarde alguns minutos e tente novamente.');
+        setLoading(false);
+        return;
+      }
+      
+      console.log('✅ Pagamento confirmado:', paymentCheck.data.payment);
+      
+      // ✅ CRIAR: Usuário no Supabase (confirmação de email desativada)
+      console.log('🔄 Criando usuário no Supabase...');
+      const { data: { user }, error: signUpError } = await supabase.auth.signUp({
+        email: userData.email,
+        password: userData.password,
+        options: {
+          data: {
+            first_name: userData.first_name,
+            last_name: userData.last_name || '',
+            full_name: `${userData.first_name} ${userData.last_name || ''}`.trim(),
+            phone: userData.phone || null,
+            plan_type: storedPlan || 'premium',
+            interval: storedInterval || 'monthly',
+            payment_source: 'payment_link',
+            stripe_customer_id: paymentCheck.data.payment.customerId,
+            stripe_payment_id: paymentCheck.data.payment.id
+          }
+        }
+      });
+      
+      if (signUpError) {
+        console.error('❌ Erro ao criar usuário:', signUpError);
+        
+        if (signUpError.message.includes('already registered')) {
+          setError('Este email já está cadastrado. Faça login para continuar.');
+          setIsLoggedIn(false);
+          setLoading(false);
+          return;
+        }
+        
+        setError(`Erro ao criar conta: ${signUpError.message}`);
+        setLoading(false);
+        return;
+      }
+      
+      if (user) {
+        console.log('✅ Usuário criado com sucesso:', user.id);
+        
+        // ✅ VERIFICAR: Sessão após signup (confirmação de email desativada)
+        console.log('🔄 Verificando sessão após signup...');
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        
+        if (session?.access_token) {
+          console.log('✅ Sessão criada com sucesso');
+          localStorage.setItem('authToken', session.access_token);
+          setIsLoggedIn(true);
+          setLoading(false);
+          
+          // ✅ LIMPAR: Dados salvos após sucesso
+          localStorage.removeItem('signup_user_data');
+          localStorage.removeItem('signup_selected_plan');
+          localStorage.removeItem('signup_selected_interval');
+          
+          return;
+        } else {
+          // ✅ FALLBACK: Tentar login direto se não há sessão
+          console.log('🔄 Tentando login direto após signup...');
+          const { data: { user: loginUser }, error: signInError } = await supabase.auth.signInWithPassword({
+            email: userData.email,
+            password: userData.password
+          });
+          
+          if (signInError) {
+            console.error('❌ Erro ao fazer login:', signInError);
+            setError('Usuário criado, mas erro ao fazer login. Tente fazer login manualmente.');
+            setLoading(false);
+            return;
+          }
+          
+          if (loginUser) {
+            console.log('✅ Login realizado com sucesso após signup');
+            
+            // ✅ OBTER: Sessão após login
+            const { data: { session: newSession } } = await supabase.auth.getSession();
+            if (newSession?.access_token) {
+              localStorage.setItem('authToken', newSession.access_token);
+            }
+            
+            setIsLoggedIn(true);
+            setLoading(false);
+            
+            // ✅ LIMPAR: Dados salvos após sucesso
+            localStorage.removeItem('signup_user_data');
+            localStorage.removeItem('signup_selected_plan');
+            localStorage.removeItem('signup_selected_interval');
+            
+            return;
+          }
+        }
+      }
+      
+    } catch (error) {
+      console.error('❌ Erro ao criar usuário a partir de Payment Link:', error);
+      setError('Erro ao criar conta. Tente novamente.');
+      setLoading(false);
+    }
+  };
+
   const createUserFromSignupData = async () => {
     try {
       // ✅ PROTEÇÃO: Verificar se já tentou criar usuário

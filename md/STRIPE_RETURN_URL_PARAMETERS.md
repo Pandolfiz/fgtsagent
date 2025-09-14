@@ -115,7 +115,7 @@ router.get('/payment-status/:paymentIntentId', async (req, res) => {
 - Dados ficam disponíveis para a página de sucesso
 
 ### 5. **Redirecionamento**
-- Após processamento, usuário é redirecionado para `/payment/success`
+- Após processamento, usuário é redirecionado para `/payment/signup/success`
 - Todos os dados são passados via `state` do React Router
 
 ## 🎨 Interface do Usuário

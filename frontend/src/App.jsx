@@ -47,8 +47,8 @@ export default function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<SignUpWithPlans />} />
         <Route path="/signup/success" element={<SignupSuccess />} />
-        {/* ✅ UNIFICADO: /payment/success agora redireciona para /signup/success */}
-        <Route path="/payment/success" element={<SignupSuccess />} />
+        {/* ✅ UNIFICADO: /payment/signup/success agora redireciona para /signup/success */}
+        <Route path="/payment/signup/success" element={<SignupSuccess />} />
         <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/chat" element={<Chat />} />
         <Route path="/leads" element={<Leads />} />
