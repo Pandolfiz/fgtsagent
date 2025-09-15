@@ -516,19 +516,44 @@ export default function Chat() {
   const handleSendMessage = async () => {
     if (!newMessage.trim() || !currentContact || isSendingMessage) return
 
+    console.log('[SEND] 🚀 Iniciando envio de mensagem:', { 
+      content: newMessage.trim(), 
+      contactId: currentContact.remote_jid,
+      isSendingMessage,
+      currentMessagesCount: messages.length
+    })
+
     setIsSendingMessage(true)
     
     try {
       const messageId = `temp_${Date.now()}`
+      const messageContent = newMessage.trim()
+      
+      // ✅ CORREÇÃO: Verificar se já existe uma mensagem temporária similar sendo enviada
+      const existingTempMessage = messages.find(msg => 
+        msg.temp && 
+        msg.content === messageContent && 
+        msg.from_me && 
+        Math.abs(new Date(msg.created_at).getTime() - Date.now()) < 2000 // 2 segundos
+      )
+      
+      if (existingTempMessage) {
+        console.log('[SEND] ⚠️ Mensagem similar já sendo enviada, ignorando duplicata')
+        setIsSendingMessage(false)
+        return
+      }
+      
       const tempMessage = {
         id: messageId,
-        content: newMessage,
+        content: messageContent,
         from_me: true,
         role: 'ME', // Definir como ME (mensagem nossa)
         created_at: new Date().toISOString(),
         temp: true
       }
 
+      console.log('[SEND] 📝 Adicionando mensagem temporária:', tempMessage)
+      
       // Adicionar mensagem temporária
       addMessage(tempMessage)
       setNewMessage('')
@@ -543,7 +568,7 @@ export default function Chat() {
         credentials: 'include',
         body: JSON.stringify({
           conversationId: currentContact.remote_jid,
-          content: newMessage,
+          content: messageContent,
           recipientId: currentContact.phone || currentContact.remote_jid,
           role: 'ME',
           messageId: messageId
@@ -553,21 +578,11 @@ export default function Chat() {
       if (response.ok) {
         const data = await response.json()
         if (data.success && data.message) {
-          // ✅ CORREÇÃO: Substituir mensagem temporária pela real
-          setMessages(prevMessages => {
-            // Remover mensagem temporária e adicionar a real
-            const withoutTemp = prevMessages.filter(msg => msg.id !== messageId);
-            const realMessage = {
-              ...data.message,
-              id: data.message.id || messageId, // Usar ID real se disponível
-              temp: false
-            };
-            return [...withoutTemp, realMessage].sort((a, b) => {
-              const timeA = new Date(a.timestamp || a.created_at).getTime();
-              const timeB = new Date(b.timestamp || b.created_at).getTime();
-              return timeA - timeB;
-            });
-          });
+          // ✅ CORREÇÃO: Apenas remover mensagem temporária, deixar o polling adicionar a real
+          setMessages(prevMessages => 
+            prevMessages.filter(msg => msg.id !== messageId)
+          );
+          console.log('[SEND] ✅ Mensagem temporária removida, aguardando polling adicionar a real');
         }
       } else {
         // ✅ CORREÇÃO: Remover mensagem temporária em caso de erro

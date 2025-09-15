@@ -24,6 +24,9 @@ export const useUnifiedPolling = ({
   const pollingIntervalRef = useRef(null);
   const isPollingRef = useRef(false);
   const lastPollTimeRef = useRef(Date.now());
+  const isProcessingMessagesRef = useRef(false);
+  const lastPollingIdRef = useRef(null);
+  const pollingTimeoutRef = useRef(null);
   const [isUpdating, setIsUpdating] = useState({
     messages: false,
     contacts: false,
@@ -56,20 +59,44 @@ export const useUnifiedPolling = ({
 
   // Função unificada de polling
   const unifiedPoll = useCallback(async () => {
+    const pollingId = Math.random().toString(36).substr(2, 9);
+    const startTime = Date.now();
+    
+    console.log(`[UNIFIED-POLLING-${pollingId}] 🚀 Iniciando polling...`, {
+      timestamp: startTime,
+      isPollingRef: isPollingRef.current,
+      lastPollingId: lastPollingIdRef.current
+    });
+    
+    // Log apenas se houver problema
+    if (isPollingRef.current) {
+      console.log(`[UNIFIED-POLLING-${pollingId}] ⚠️ Polling já em andamento`);
+    }
+    
     if (isPollingRef.current || !currentUser?.id) {
       return;
     }
+
+    // ✅ CORREÇÃO: Verificar se já existe um polling em andamento com ID diferente
+    if (lastPollingIdRef.current && lastPollingIdRef.current !== pollingId) {
+      console.log(`[UNIFIED-POLLING-${pollingId}] ⚠️ Polling anterior ainda em andamento`);
+      return;
+    }
+
+    // ✅ CORREÇÃO: Registrar este polling como ativo
+    lastPollingIdRef.current = pollingId;
+    lastPollTimeRef.current = startTime;
 
     isPollingRef.current = true;
     lastPollTimeRef.current = Date.now();
     const config = getPollingConfig();
 
     try {
-      console.log('[UNIFIED-POLLING] 🔄 Executando polling unificado...');
-      console.log('[UNIFIED-POLLING] 📊 Config:', config);
-      console.log('[UNIFIED-POLLING] 👤 Usuário:', currentUser?.id);
-      console.log('[UNIFIED-POLLING] 💬 Contato atual:', currentContact?.name || currentContact?.remote_jid);
-      console.log('[UNIFIED-POLLING] 📋 Painel aberto:', isContactPanelOpen);
+      console.log(`[UNIFIED-POLLING-${pollingId}] 🔄 Executando polling unificado...`);
+      console.log(`[UNIFIED-POLLING-${pollingId}] 📊 Config:`, config);
+      console.log(`[UNIFIED-POLLING-${pollingId}] 👤 Usuário:`, currentUser?.id);
+      console.log(`[UNIFIED-POLLING-${pollingId}] 💬 Contato atual:`, currentContact?.name || currentContact?.remote_jid);
+      console.log(`[UNIFIED-POLLING-${pollingId}] 📋 Painel aberto:`, isContactPanelOpen);
 
       // 1. Atualizar mensagens (sempre que há contato selecionado)
       if (currentContact?.remote_jid) {
@@ -84,14 +111,51 @@ export const useUnifiedPolling = ({
             const data = await response.json();
             
             if (data.success && data.messages && data.messages.length > 0) {
+              // ✅ CORREÇÃO: Evitar processamento duplo de mensagens
+              if (isProcessingMessagesRef.current) {
+                return;
+              }
+              
+              isProcessingMessagesRef.current = true;
+              
               setMessages(prevMessages => {
-                const newMessages = data.messages.filter(newMsg => 
-                  !prevMessages.some(existingMsg => existingMsg.id === newMsg.id)
-                );
+                // ✅ CORREÇÃO: Filtrar mensagens que já existem, incluindo mensagens temporárias
+                const newMessages = data.messages.filter(newMsg => {
+                  // Verificar se já existe uma mensagem com o mesmo ID
+                  const existsById = prevMessages.some(existingMsg => existingMsg.id === newMsg.id);
+                  
+                  // Verificar se já existe uma mensagem temporária com conteúdo similar e timestamp próximo
+                  const existsAsTemp = prevMessages.some(existingMsg => 
+                    existingMsg.temp && 
+                    existingMsg.content === newMsg.content &&
+                    existingMsg.from_me === newMsg.from_me &&
+                    Math.abs(new Date(existingMsg.created_at).getTime() - new Date(newMsg.timestamp || newMsg.created_at).getTime()) < 10000 // 10 segundos
+                  );
+                  
+                  // Verificar se já existe uma mensagem real com conteúdo e timestamp muito próximos
+                  const existsAsReal = prevMessages.some(existingMsg => 
+                    !existingMsg.temp &&
+                    existingMsg.content === newMsg.content &&
+                    existingMsg.from_me === newMsg.from_me &&
+                    Math.abs(new Date(existingMsg.timestamp || existingMsg.created_at).getTime() - new Date(newMsg.timestamp || newMsg.created_at).getTime()) < 5000 // 5 segundos
+                  );
+                  
+                  return !existsById && !existsAsTemp && !existsAsReal;
+                });
+                
+                // Log apenas se houver mensagens novas ou problemas
+                if (newMessages.length > 0) {
+                  console.log(`[UNIFIED-POLLING-${pollingId}] ✅ ${newMessages.length} mensagens novas encontradas`);
+                  console.log(`[UNIFIED-POLLING-${pollingId}] 🔍 DEBUG - Mensagem que passou pelo filtro:`, {
+                    id: newMessages[0].id,
+                    content: newMessages[0].content,
+                    sender: newMessages[0].sender,
+                    timestamp: newMessages[0].timestamp || newMessages[0].created_at,
+                    isTemporary: newMessages[0].isTemporary
+                  });
+                }
                 
                 if (newMessages.length > 0) {
-                  console.log(`[UNIFIED-POLLING] 📝 ${newMessages.length} novas mensagens`);
-                  
                   const updatedMessages = [...prevMessages, ...newMessages];
                   const sortedMessages = updatedMessages.sort((a, b) => {
                     const timeA = new Date(a.timestamp || a.created_at).getTime();
@@ -107,10 +171,14 @@ export const useUnifiedPolling = ({
                 
                 return prevMessages;
               });
+              // ✅ CORREÇÃO: Liberar o lock após processamento
+              setTimeout(() => {
+                isProcessingMessagesRef.current = false;
+              }, 100);
             }
           }
         } catch (error) {
-          console.error('[UNIFIED-POLLING] ❌ Erro ao atualizar mensagens:', error);
+          console.error(`[UNIFIED-POLLING-${pollingId}] ❌ Erro ao atualizar mensagens:`, error);
         } finally {
           setTimeout(() => {
             setIsUpdating(prev => ({ ...prev, messages: false }));
@@ -123,9 +191,8 @@ export const useUnifiedPolling = ({
       
       try {
         await fetchContacts(1, false);
-        console.log('[UNIFIED-POLLING] 📋 Lista de contatos atualizada');
       } catch (error) {
-        console.error('[UNIFIED-POLLING] ❌ Erro ao atualizar contatos:', error);
+          console.error(`[UNIFIED-POLLING-${pollingId}] ❌ Erro ao atualizar contatos:`, error);
       } finally {
         setTimeout(() => {
           setIsUpdating(prev => ({ ...prev, contacts: false }));
@@ -155,17 +222,17 @@ export const useUnifiedPolling = ({
       // ✅ ATUALIZAR LAST SYNC TIME
       if (setLastSyncTime) {
         setLastSyncTime(new Date().toISOString());
-        console.log('[UNIFIED-POLLING] ⏰ LastSyncTime atualizado');
       }
 
     } catch (error) {
-      console.error('[UNIFIED-POLLING] ❌ Erro no polling unificado:', error);
+      console.error(`[UNIFIED-POLLING-${pollingId}] ❌ Erro no polling unificado:`, error);
     } finally {
       isPollingRef.current = false;
+      lastPollingIdRef.current = null;
     }
   }, [
     currentUser?.id,
-    currentContact,
+    currentContact?.remote_jid,
     isContactPanelOpen,
     fetchMessages,
     fetchContacts,
@@ -213,7 +280,7 @@ export const useUnifiedPolling = ({
         pollingIntervalRef.current = null;
       }
     };
-  }, [currentUser?.id, scheduleNextPoll]);
+  }, [currentUser?.id]); // ✅ CORREÇÃO: Remover scheduleNextPoll das dependências
 
   // Parar polling quando componente desmontar
   useEffect(() => {
@@ -237,7 +304,7 @@ export const useUnifiedPolling = ({
     if (!pollingIntervalRef.current && currentUser?.id) {
       scheduleNextPoll();
     }
-  }, [currentUser?.id, scheduleNextPoll]);
+  }, [currentUser?.id]); // ✅ CORREÇÃO: Remover scheduleNextPoll das dependências
 
   // Função para forçar polling imediato
   const forcePoll = useCallback(() => {
