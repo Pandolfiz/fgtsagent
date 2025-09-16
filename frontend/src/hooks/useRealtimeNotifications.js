@@ -30,6 +30,7 @@ const useRealtimeNotifications = (options = {}) => {
   const [connectionStatus, setConnectionStatus] = useState('connecting');
   const setupComplete = useRef(false);
   const listenersRegistered = useRef(false);
+  const hookInstanceId = useRef(`hook-${Date.now()}-${Math.random()}`);
 
   // Hook para notificações do navegador
   const {
@@ -181,7 +182,7 @@ const useRealtimeNotifications = (options = {}) => {
       useEffect(() => {
         if (!enabled || setupComplete.current || listenersRegistered.current) return;
 
-        console.log('🔄 Configurando WebSocket para notificações...');
+        console.log(`🔄 Configurando WebSocket para notificações (instância: ${hookInstanceId.current})...`);
 
         // Conectar ao WebSocket
         websocketClient.connect();

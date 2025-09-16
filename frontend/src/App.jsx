@@ -29,6 +29,7 @@ import AuthRecovery from './pages/AuthRecovery.jsx';
 import NotFound from './pages/NotFound.tsx';
 import ErrorPage from './components/ErrorPage.tsx';
 import SupabaseTest from './pages/SupabaseTest.jsx';
+import { NotificationProvider } from './contexts/NotificationContext.jsx';
 
 import CookieConsent from './components/CookieConsent.jsx';
 import Layout from './components/Layout.jsx';
@@ -42,8 +43,9 @@ export default function App() {
     setupAxiosAuthInterceptor(axios);
   }, []);
   return (
-    <Layout>
-      <Routes>
+    <NotificationProvider>
+      <Layout>
+        <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<SignUpWithPlans />} />
@@ -94,8 +96,9 @@ export default function App() {
         <Route path="*" element={<NotFound />} />
       </Routes>
 
-      {/* Banner de Consentimento de Cookies */}
-      <CookieConsent />
-    </Layout>
+        {/* Banner de Consentimento de Cookies */}
+        <CookieConsent />
+      </Layout>
+    </NotificationProvider>
   );
 }
