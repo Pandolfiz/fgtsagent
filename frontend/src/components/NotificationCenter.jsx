@@ -13,15 +13,11 @@ import {
   DollarSign,
   FileText
 } from 'lucide-react';
-import useRealtimeNotifications from '../hooks/useRealtimeNotifications';
+import { useNotificationContext } from '../contexts/NotificationContext';
 
-const NotificationCenter = ({ isOpen, onClose, notificationHook }) => {
-  // Usar o hook passado como prop ou criar um novo se não fornecido
-  const hookData = notificationHook || useRealtimeNotifications({
-    enabled: true,
-    showBrowserNotifications: true,
-    showToastNotifications: true
-  });
+const NotificationCenter = ({ isOpen, onClose }) => {
+  // Usar o contexto de notificações
+  const hookData = useNotificationContext();
 
   const {
     notifications,

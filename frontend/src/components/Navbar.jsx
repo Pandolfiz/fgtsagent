@@ -4,6 +4,7 @@ import { Menu, Transition } from '@headlessui/react';
 import { FaBars, FaTimes, FaUser, FaCog, FaSignOutAlt, FaBell, FaGlobe, FaUsers, FaRobot, FaComments, FaWhatsapp, FaKey, FaTrophy } from 'react-icons/fa';
 import supabase from '../lib/supabaseClient';
 import { useSessionPersistence } from '../hooks/useSessionPersistence';
+import NotificationButton from './NotificationButton';
 import { ChevronUpDownIcon } from '@heroicons/react/24/solid'
 import { cachedFetch } from '../utils/authCache'
 
@@ -351,6 +352,9 @@ export default function Navbar({ fullWidth }) {
       </ul>
       {/* Container do Hamburger móvel e Dropdown usuário */}
       <div className="flex items-center gap-3">
+        {/* Botão de Notificações */}
+        <NotificationButton />
+        
         {/* Mobile Hamburger */}
         <button
           onClick={() => setMobileMenuOpen(open => !open)}

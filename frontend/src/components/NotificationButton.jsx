@@ -37,7 +37,6 @@ const NotificationButton = () => {
       <NotificationCenter
         isOpen={isNotificationCenterOpen}
         onClose={() => setIsNotificationCenterOpen(false)}
-        notificationHook={notificationHook}
       />
     </>
   );

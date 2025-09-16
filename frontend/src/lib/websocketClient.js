@@ -8,6 +8,8 @@ class WebSocketClient {
     this.reconnectAttempts = 0;
     this.maxReconnectAttempts = 5;
     this.reconnectInterval = 3000;
+    this.connectionAttempts = 0;
+    this.maxConnectionAttempts = 1; // Limitar tentativas de conexão
   }
 
   /**
@@ -19,6 +21,21 @@ class WebSocketClient {
       console.log('✅ WebSocket já está conectado');
       return;
     }
+
+    // Verificar se pode conectar globalmente
+    if (!this.canConnect()) {
+      console.log('⚠️ Máximo de conexões WebSocket atingido globalmente');
+      return;
+    }
+
+    // Limitar tentativas de conexão
+    if (this.connectionAttempts >= this.maxConnectionAttempts) {
+      console.log('⚠️ Máximo de tentativas de conexão atingido');
+      return;
+    }
+
+    this.connectionAttempts++;
+    this.registerConnection();
 
     try {
       // URL do backend (mesmo domínio, porta 3000)
@@ -91,6 +108,7 @@ class WebSocketClient {
       this.socket.disconnect();
       this.socket = null;
       this.isConnected = false;
+      this.unregisterConnection();
     }
   }
 
@@ -158,5 +176,26 @@ class WebSocketClient {
 
 // Instância singleton
 const websocketClient = new WebSocketClient();
+
+// Controle global de instâncias
+let globalConnectionCount = 0;
+const MAX_GLOBAL_CONNECTIONS = 1;
+
+// Função para verificar se pode conectar
+websocketClient.canConnect = () => {
+  return globalConnectionCount < MAX_GLOBAL_CONNECTIONS;
+};
+
+// Função para registrar conexão
+websocketClient.registerConnection = () => {
+  globalConnectionCount++;
+  console.log(`📊 Conexões WebSocket ativas: ${globalConnectionCount}`);
+};
+
+// Função para desregistrar conexão
+websocketClient.unregisterConnection = () => {
+  globalConnectionCount = Math.max(0, globalConnectionCount - 1);
+  console.log(`📊 Conexões WebSocket ativas: ${globalConnectionCount}`);
+};
 
 export default websocketClient;
