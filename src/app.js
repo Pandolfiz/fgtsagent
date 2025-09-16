@@ -570,6 +570,10 @@ app.use('/api/webhooks', webhookRoutes);
 const notificationRoutes = require('./routes/notificationRoutes');
 app.use('/api/notifications', requireAuth, notificationRoutes);
 
+// ✅ ADICIONADO: Rotas de feedback
+const feedbackRoutes = require('./routes/feedbackRoutes');
+app.use('/api/feedback', feedbackRoutes);
+
 // ✅ ADICIONADO: Rotas de teste (apenas em desenvolvimento)
 if (process.env.NODE_ENV === 'development') {
   const testRoutes = require('./routes/testRoutes');
