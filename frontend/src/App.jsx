@@ -31,6 +31,7 @@ import ErrorPage from './components/ErrorPage.tsx';
 import SupabaseTest from './pages/SupabaseTest.jsx';
 
 import CookieConsent from './components/CookieConsent.jsx';
+import Layout from './components/Layout.jsx';
 import { setupAxiosAuthInterceptor } from './utils/authUtils';
 
 
@@ -41,7 +42,7 @@ export default function App() {
     setupAxiosAuthInterceptor(axios);
   }, []);
   return (
-    <>
+    <Layout>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/login" element={<Login />} />
@@ -95,6 +96,6 @@ export default function App() {
 
       {/* Banner de Consentimento de Cookies */}
       <CookieConsent />
-    </>
+    </Layout>
   );
 }

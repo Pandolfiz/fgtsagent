@@ -104,10 +104,7 @@ router.use('/api/stripe', require('./stripeRoutes'));
 // Rotas de consentimentos LGPD
 router.use('/api/consent', require('./consentRoutes'));
 
-module.exports = router; 
-// router.use('/api/settings', require('./settingsRoutes'));
-
-// Rotas de consentimentos LGPD
-router.use('/api/consent', require('./consentRoutes'));
+// Rotas de feedback
+router.use('/api/feedback', require('./feedbackRoutes'));
 
 module.exports = router; 
