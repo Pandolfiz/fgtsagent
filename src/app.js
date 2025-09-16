@@ -566,6 +566,10 @@ app.use('/api/settings', requireAuth, settingsRoutes);
 const webhookRoutes = require('./routes/webhookRoutes');
 app.use('/api/webhooks', webhookRoutes);
 
+// ✅ ADICIONADO: Rotas de notificações
+const notificationRoutes = require('./routes/notificationRoutes');
+app.use('/api/notifications', requireAuth, notificationRoutes);
+
 // ✅ ADICIONADO: Rotas de teste (apenas em desenvolvimento)
 if (process.env.NODE_ENV === 'development') {
   const testRoutes = require('./routes/testRoutes');

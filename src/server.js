@@ -6,6 +6,7 @@ const { checkDatabaseSetup } = require('./utils/databaseChecker');
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
+const { Server } = require('socket.io');
 const { applyAllMigrations } = require('./utils/applyMigrations');
 const { validateJwtEnvironment } = require('./utils/jwtSecurity');
 
@@ -102,6 +103,40 @@ async function startServer() {
       logger.info('Servidor HTTP iniciado (certificados SSL não encontrados)');
     }
     
+    // Configurar Socket.io
+    const io = new Server(server, {
+      cors: {
+        origin: [
+          process.env.FRONTEND_URL || "http://localhost:5173",
+          "https://localhost:5173",
+          "http://localhost:5173"
+        ],
+        methods: ["GET", "POST"],
+        credentials: true
+      }
+    });
+    
+    // Tornar io disponível globalmente para outros módulos
+    global.io = io;
+    
+    // Configurar eventos do Socket.io
+    io.on('connection', (socket) => {
+      logger.info(`🔌 Cliente conectado via WebSocket: ${socket.id}`);
+      
+      // Evento para autenticação do usuário
+      socket.on('authenticate', (data) => {
+        if (data && data.userId) {
+          socket.userId = data.userId;
+          socket.join(`user_${data.userId}`);
+          logger.info(`👤 Usuário ${data.userId} autenticado no WebSocket`);
+        }
+      });
+      
+      socket.on('disconnect', () => {
+        logger.info(`🔌 Cliente desconectado: ${socket.id}`);
+      });
+    });
+    
     // Verificar se a porta já está em uso
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
@@ -128,6 +163,17 @@ async function startServer() {
       } catch (error) {
         logger.error('Erro ao iniciar MessageReprocessor:', error.message);
       }
+
+      // Iniciar serviço de notificações
+      (async () => {
+        try {
+          const notificationService = require('./services/notificationService');
+          await notificationService.start();
+          logger.info('Serviço de notificações iniciado com sucesso');
+        } catch (error) {
+          logger.error('Erro ao iniciar serviço de notificações:', error.message);
+        }
+      })();
     });
   } catch (err) {
     logger.error(`Erro fatal ao iniciar servidor: ${err.message}`);
@@ -138,15 +184,31 @@ async function startServer() {
 // Cleanup quando o servidor é encerrado
 const { stopCacheCleanup } = require('./middleware/requestLogger');
 
-process.on('SIGINT', () => {
-  logger.info('Recebido SIGINT. Limpando recursos...');
+const cleanup = async () => {
+  logger.info('Limpando recursos...');
+  
+  // Parar cache cleanup
   stopCacheCleanup();
+  
+  // Parar serviço de notificações
+  try {
+    const notificationService = require('./services/notificationService');
+    await notificationService.stop();
+    logger.info('Serviço de notificações parado');
+  } catch (error) {
+    logger.error('Erro ao parar serviço de notificações:', error.message);
+  }
+};
+
+process.on('SIGINT', async () => {
+  logger.info('Recebido SIGINT. Limpando recursos...');
+  await cleanup();
   process.exit(0);
 });
 
-process.on('SIGTERM', () => {
+process.on('SIGTERM', async () => {
   logger.info('Recebido SIGTERM. Limpando recursos...');
-  stopCacheCleanup();
+  await cleanup();
   process.exit(0);
 });
 
