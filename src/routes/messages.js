@@ -530,4 +530,192 @@ router.get('/:conversationId/status-updates', requireAuth, async (req, res) => {
   }
 });
 
+/**
+ * @route POST /api/messages/template
+ * @desc Enviar uma mensagem template
+ * @access Private
+ */
+router.post('/template', 
+  requireAuth, 
+  sanitizeInput, 
+  validateCSRF,
+  async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { conversationId, templateId, templateName, recipientId, role, messageId } = req.body;
+    
+    if (!conversationId || !templateId || !templateName) {
+      return res.status(400).json({
+        success: false,
+        message: 'ID da conversa, templateId e templateName são obrigatórios'
+      });
+    }
+    
+    // Verificar se o usuário tem acesso a esta conversa
+    const { data: contactData, error: contactError } = await supabase
+      .from('contacts')
+      .select('*')
+      .eq('remote_jid', conversationId)
+      .eq('client_id', userId)
+      .single();
+    
+    if (contactError || !contactData) {
+      logger.error(`Usuário ${userId} tentou enviar template para conversa não autorizada: ${conversationId}`);
+      return res.status(403).json({
+        success: false,
+        message: 'Acesso negado a esta conversa'
+      });
+    }
+    
+    const msgTimestamp = new Date().toISOString();
+    const content = `[TEMPLATE] ${templateName}`;
+    
+    const newMsg = {
+      conversation_id: conversationId,
+      sender_id: userId,
+      recipient_id: recipientId || contactData.phone,
+      content: content,
+      timestamp: msgTimestamp,
+      status: 'pending',
+      metadata: {
+        template_id: templateId,
+        template_name: templateName,
+        is_template: true
+      },
+      client_id: userId,
+      contact: contactData.phone,
+      role: role || 'ME'
+    };
+
+    // Inserir a mensagem no banco de dados
+    const { data, error } = await supabase
+      .from('messages')
+      .insert(newMsg)
+      .select();
+    
+    if (error) {
+      logger.error(`Erro ao inserir template no banco: ${error.message}`, { error });
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao enviar template',
+        error: error.message
+      });
+    }
+
+    // Enviar template via WhatsApp
+    try {
+      const recipientPhone = recipientId || contactData.phone;
+      const clientId = contactData.client_id || userId;
+      const formattedPhone = recipientPhone.replace(/\D/g, '');
+      
+      logger.info(`Enviando template ${templateName} para ${formattedPhone} pelo usuário ${userId}`);
+      
+      // Obter instanceId do contato
+      let instanceId = contactData.instance_id;
+      if (!instanceId) {
+        logger.warn('InstanceId não encontrado no contato para envio de template');
+      }
+
+      // Enviar template via WhatsApp (usando o serviço existente)
+      const whatsappResponse = await whatsappService.sendTemplateMessage(
+        formattedPhone, 
+        templateId, 
+        templateName, 
+        clientId, 
+        instanceId
+      );
+      
+      if (whatsappResponse.success) {
+        logger.info(`Template enviado com sucesso. ID: ${whatsappResponse.data?.messages?.[0]?.id || 'N/A'}`);
+        const messageMetadata = {
+          template_id: templateId,
+          template_name: templateName,
+          is_template: true,
+          whatsapp_message_id: whatsappResponse.data?.messages?.[0]?.id,
+          response_data: whatsappResponse.data
+        };
+        
+        // Atualizar status para sent
+        await supabase
+          .from('messages')
+          .update({ status: 'sent', metadata: messageMetadata })
+          .eq('conversation_id', conversationId)
+          .eq('timestamp', msgTimestamp);
+      } else {
+        const errorMessage = whatsappResponse.error || 'Erro desconhecido';
+        logger.error(`Erro ao enviar template: ${errorMessage}`);
+        
+        const messageMetadata = { 
+          template_id: templateId,
+          template_name: templateName,
+          is_template: true,
+          error: errorMessage, 
+          error_details: whatsappResponse.error_details
+        };
+        
+        await supabase
+          .from('messages')
+          .update({ status: 'failed', metadata: messageMetadata })
+          .eq('conversation_id', conversationId)
+          .eq('timestamp', msgTimestamp);
+          
+        return res.status(500).json({
+          success: false,
+          message: 'Erro ao enviar template para o WhatsApp',
+          error: errorMessage,
+          error_details: whatsappResponse.error_details
+        });
+      }
+    } catch (err) {
+      logger.error(`Exceção ao enviar template: ${err.message}`);
+      await supabase
+        .from('messages')
+        .update({ 
+          status: 'failed', 
+          metadata: { 
+            template_id: templateId,
+            template_name: templateName,
+            is_template: true,
+            error: err.message 
+          } 
+        })
+        .eq('conversation_id', conversationId)
+        .eq('timestamp', msgTimestamp);
+        
+      return res.status(500).json({
+        success: false,
+        message: 'Erro ao enviar template para o WhatsApp',
+        error: err.message
+      });
+    }
+    
+    // Formatar para retornar ao cliente
+    const formattedMessage = {
+      id: data[0].id,
+      content: data[0].content,
+      sender_id: data[0].sender_id,
+      receiver_id: data[0].recipient_id,
+      created_at: data[0].timestamp,
+      is_read: false,
+      role: data[0].role || 'ME',
+      status: data[0].status || 'sent'
+    };
+
+    logger.info(`Template processado: ${data[0].id}`);
+
+    return res.status(201).json({
+      success: true,
+      message: formattedMessage,
+      feedback: 'Template enviado com sucesso.'
+    });
+  } catch (error) {
+    logger.error('Erro ao processar envio de template:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Erro interno ao processar solicitação',
+      error: error.message
+    });
+  }
+});
+
 module.exports = router; 

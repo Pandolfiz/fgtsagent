@@ -7,7 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
  * @param {string} params.selectedInstanceId - ID da instância selecionada
  * @returns {Object} - Estado e funções para gerenciar contatos
  */
-export const useContacts = ({ currentUser, selectedInstanceId }) => {
+export const useContacts = ({ currentUser, selectedInstanceId, searchTerm = '' }) => {
   const [contacts, setContacts] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -43,6 +43,10 @@ export const useContacts = ({ currentUser, selectedInstanceId }) => {
 
       if (selectedInstanceId && selectedInstanceId !== 'all') {
         params.append('instance', selectedInstanceId);
+      }
+
+      if (searchTerm && searchTerm.trim()) {
+        params.append('search', searchTerm.trim());
       }
 
       const url = `/api/contacts?${params.toString()}`;
@@ -100,7 +104,7 @@ export const useContacts = ({ currentUser, selectedInstanceId }) => {
     } finally {
       setLoading(false);
     }
-  }, [currentUser?.id, selectedInstanceId, pagination.limit]);
+  }, [currentUser?.id, selectedInstanceId, searchTerm, pagination.limit]);
 
   /**
    * Carrega mais contatos (scroll infinito)
@@ -173,13 +177,13 @@ export const useContacts = ({ currentUser, selectedInstanceId }) => {
     }));
   }, []);
 
-  // Efeito para carregar contatos quando usuário ou instância mudam
+  // Efeito para carregar contatos quando usuário, instância ou busca mudam
   useEffect(() => {
     if (currentUser?.id) {
-      console.log(`[CONTACTS] 🔄 Instância mudou, recarregando contatos: ${selectedInstanceId}`);
+      console.log(`[CONTACTS] 🔄 Parâmetros mudaram, recarregando contatos: {instanceId: '${selectedInstanceId}', searchTerm: '${searchTerm}'}`);
       fetchContacts(1, true);
     }
-  }, [currentUser?.id, selectedInstanceId, fetchContacts]);
+  }, [currentUser?.id, selectedInstanceId, searchTerm, fetchContacts]);
 
   // ✅ POLLING AUTOMÁTICO: Agora gerenciado pelo useUnifiedPolling
 

@@ -5,6 +5,7 @@ const config = require('../config');
 const fetch = require('node-fetch');
 const { supabaseAdmin } = require('../config/supabase');
 const logger = require('../utils/logger');
+const metaTemplateControlService = require('../services/metaTemplateControlService');
 
 // Recebe webhooks do Evolution API (via n8n)
 exports.handleWebhook = async (req, res) => {
@@ -104,6 +105,24 @@ exports.sendMessage = async (req, res) => {
     console.log(`[DEBUG] Enviando mensagem com role=${role}, to=${to}, conversationId=${conversationId}, user_id=${req.user.id}`);
     const senderId = req.user.id;
     logger.info(`Enviando mensagem como usuário: ${senderId} (${typeof senderId})`);
+    
+    // Verificar se é instância Meta API e se precisa de template
+    const sendStatus = await metaTemplateControlService.checkMessageSendStatus(conversationId, instanceId);
+    if (sendStatus.requiresTemplate) {
+      logger.warn(`[META_TEMPLATE] Tentativa de envio de mensagem livre bloqueada - precisa de template`);
+      return res.status(400).json({
+        success: false,
+        error: 'Mensagem livre não permitida',
+        details: {
+          reason: sendStatus.reason,
+          requiresTemplate: true,
+          lastUserMessage: sendStatus.lastUserMessage,
+          hoursSinceLastMessage: sendStatus.hoursSinceLastMessage,
+          message: 'Para instâncias da Meta API, você deve usar um template aprovado quando a última mensagem do usuário tiver mais de 24 horas.'
+        }
+      });
+    }
+    
     // Buscar Nome do Agente via Supabase
     const { data: creds, error } = await supabaseAdmin
       .from('whatsapp_credentials')

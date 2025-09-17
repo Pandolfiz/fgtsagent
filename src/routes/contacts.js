@@ -14,26 +14,37 @@ router.get('/', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
     const instanceId = req.query.instance;
+    const searchTerm = req.query.search;
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 15;
     const offset = (page - 1) * limit;
     
-    logger.info(`[CONTACTS] Página ${page} (${limit} contatos) para usuário: ${userId}${instanceId ? `, instância: ${instanceId}` : ', todas as instâncias'}`);
-    logger.info(`[CONTACTS] 🔍 Query parameters recebidos:`, { instanceId, page, limit, userId });
+    logger.info(`[CONTACTS] Página ${page} (${limit} contatos) para usuário: ${userId}${instanceId ? `, instância: ${instanceId}` : ', todas as instâncias'}${searchTerm ? `, busca: "${searchTerm}"` : ''}`);
+    logger.info(`[CONTACTS] 🔍 Query parameters recebidos:`, { instanceId, page, limit, userId, searchTerm });
     
     const startTime = Date.now();
     let query = supabase
       .from('contacts')
       .select('*')
-      .eq('client_id', userId)
-      .order('update_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .eq('client_id', userId);
     
     // Se uma instância específica foi solicitada, filtrar diretamente por instance_id
     if (instanceId) {
       query = query.eq('instance_id', instanceId);
       logger.info(`[CONTACTS] Filtrando por instância: ${instanceId}`);
     }
+    
+    // Se há termo de busca, aplicar filtro
+    if (searchTerm && searchTerm.trim()) {
+      const searchPattern = `%${searchTerm.trim()}%`;
+      query = query.or(`push_name.ilike.${searchPattern},phone.ilike.${searchPattern}`);
+      logger.info(`[CONTACTS] Aplicando busca por: "${searchTerm}"`);
+    }
+    
+    // Aplicar ordenação e paginação
+    query = query
+      .order('update_at', { ascending: false })
+      .range(offset, offset + limit - 1);
     
     const { data: contactsData, error } = await query;
     

@@ -1,6 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react'
 import Navbar from '../components/Navbar'
 import MessageInputOptimized from '../components/MessageInputOptimized'
+import MetaTemplateWarning from '../components/MetaTemplateWarning'
+import MetaTemplateWarningTest from '../components/MetaTemplateWarningTest'
 import { FaSearch, FaEllipsisV, FaPhone, FaVideo, FaPlus, FaArrowLeft, FaSpinner, FaExclamationTriangle, FaWallet, FaCalculator, FaFileAlt, FaTimesCircle, FaCheckCircle, FaInfoCircle, FaIdCard, FaRegCopy, FaChevronDown, FaCheck, FaClock } from 'react-icons/fa'
 import { useNavigate } from 'react-router-dom'
 import { apiFetch } from '../utilities/apiFetch'
@@ -391,7 +393,12 @@ export default function ChatOptimized() {
           throw new Error(data.error || 'Erro ao enviar mensagem');
         }
       } else {
-        throw new Error('Erro na resposta do servidor');
+        const errorData = await response.json();
+        if (errorData.details?.requiresTemplate) {
+          setError(`Mensagem livre não permitida: ${errorData.details.message}`);
+        } else {
+          throw new Error(errorData.error || 'Erro na resposta do servidor');
+        }
       }
     } catch (error) {
       console.error('Erro ao enviar mensagem:', error);
@@ -764,6 +771,22 @@ export default function ChatOptimized() {
                     </div>
                   )}
                 </div>
+
+                {/* Aviso de template Meta API - TESTE */}
+                {console.log('[ChatOptimized] Current contact:', currentContact)}
+                <MetaTemplateWarningTest
+                  conversationId={currentContact?.remote_jid}
+                  instanceId={currentContact?.instance_id}
+                />
+                <MetaTemplateWarning
+                  conversationId={currentContact?.remote_jid}
+                  instanceId={currentContact?.instance_id}
+                  onTemplateSelect={(template) => {
+                    console.log('Template selecionado:', template);
+                    // Aqui você pode implementar a lógica para enviar template
+                  }}
+                  className="mb-4"
+                />
 
                 {/* Input de mensagem otimizado */}
                 <MessageInputOptimized

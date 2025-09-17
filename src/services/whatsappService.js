@@ -1537,6 +1537,233 @@ class WhatsappService {
       throw error;
     }
   }
+
+  /**
+   * Envia uma mensagem template via WhatsApp
+   * @param {string} to - Número de telefone do destinatário
+   * @param {string} templateId - ID do template
+   * @param {string} templateName - Nome do template
+   * @param {string} userId - ID do usuário que está enviando
+   * @param {string} instanceId - ID da instância (opcional)
+   * @returns {Promise<object>} - Resposta da API
+   */
+  async sendTemplateMessage(to, templateId, templateName, userId, instanceId = null) {
+    try {
+      if (!userId) {
+        logger.error('ID do usuário não fornecido para enviar template');
+        return {
+          success: false,
+          error: 'ID do usuário é obrigatório para enviar template'
+        };
+      }
+
+      logger.info(`Enviando template ${templateName} (${templateId}) para ${to} pelo usuário ${userId}${instanceId ? `, instância: ${instanceId}` : ''}`);
+      
+      // Obter credenciais do usuário
+      let credentials;
+      try {
+        credentials = await credentialsService.getWhatsappCredentials(userId, instanceId);
+        logger.info('Credenciais obtidas com sucesso para template');
+        logger.info(`Tipo de conexão: ${credentials.connectionType}`);
+      } catch (credError) {
+        logger.error(`Erro ao obter credenciais para template: ${credError.message}`);
+        return {
+          success: false,
+          error: 'Credenciais do WhatsApp não encontradas',
+          error_details: credError.message
+        };
+      }
+      
+      // Decidir qual API usar baseado no tipo de conexão
+      if (credentials.connectionType === 'whatsapp_business') {
+        // Usar Evolution API
+        logger.info('Usando Evolution API para envio de template');
+        return await this._sendTemplateViaEvolutionAPI(to, templateId, templateName, credentials);
+      } else {
+        // Usar API oficial da Meta
+        logger.info('Usando API oficial da Meta para envio de template');
+        return await this._sendTemplateViaMetaAPI(to, templateId, templateName, credentials);
+      }
+    } catch (error) {
+      logger.error(`Erro ao enviar template: ${error.message}`);
+      return {
+        success: false,
+        error: error.message
+      };
+    }
+  }
+
+  // Método privado para envio de template via Evolution API
+  async _sendTemplateViaEvolutionAPI(to, templateId, templateName, credentials) {
+    try {
+      logger.info('Iniciando envio de template via Evolution API');
+      
+      // Importar EvolutionService dinamicamente para evitar dependência circular
+      const EvolutionService = require('./evolutionService');
+      
+      // Criar instância do EvolutionService
+      const evolutionService = new EvolutionService({
+        baseUrl: credentials.evolutionApiUrl,
+        apiKey: credentials.evolutionApiKey,
+        instanceName: credentials.instanceName,
+        instanceId: credentials.instanceId
+      });
+      
+      // Formatar número para Evolution API (deve terminar com @c.us)
+      let formattedTo = to.replace(/\D/g, '');
+      if (!formattedTo.endsWith('@c.us')) {
+        formattedTo = formattedTo + '@c.us';
+      }
+      
+      logger.info(`Enviando template via Evolution API para: ${formattedTo}`);
+      
+      // Enviar template via Evolution API
+      const result = await evolutionService.sendTemplateMessage(formattedTo, templateId, templateName);
+      
+      if (result.success) {
+        logger.info('Template enviado com sucesso via Evolution API');
+        return {
+          success: true,
+          data: {
+            messages: [{
+              id: `evolution_template_${Date.now()}`,
+              to: formattedTo
+            }]
+          }
+        };
+      } else {
+        throw new Error(`Evolution API falhou: ${result.error}`);
+      }
+    } catch (error) {
+      logger.error(`Erro ao enviar template via Evolution API: ${error.message}`);
+      
+      // Verificar se é erro de conectividade
+      if (error.message && typeof error.message === 'string' && (error.message.includes('ECONNREFUSED') || error.message.includes('ENOTFOUND'))) {
+        logger.warn('Evolution API está offline. Template será salvo como pending para reenvio posterior.');
+        return {
+          success: false,
+          error: 'Evolution API temporariamente indisponível',
+          error_details: 'O template foi salvo e será reenviado quando a API estiver online',
+          should_retry: true,
+          status: 'pending'
+        };
+      }
+      
+      return {
+        success: false,
+        error: `Erro Evolution API: ${error.message}`,
+        should_retry: false
+      };
+    }
+  }
+
+  // Método privado para envio de template via Meta API
+  async _sendTemplateViaMetaAPI(to, templateId, templateName, credentials) {
+    try {
+      logger.info('Iniciando envio de template via Meta API');
+      
+      // Verificar se todas as credenciais necessárias estão presentes
+      if (!credentials.accessToken) {
+        const errorMsg = 'Credenciais incompletas: Token de acesso não encontrado';
+        logger.error(errorMsg);
+        
+        return {
+          success: false,
+          error: errorMsg,
+          error_details: `Verifique se a variável WHATSAPP_ACCESS_TOKEN está configurada no arquivo .env`
+        };
+      }
+
+      if (!credentials.phoneNumberId) {
+        const errorMsg = 'phoneNumberId não encontrado nas credenciais';
+        logger.error(errorMsg);
+        
+        return {
+          success: false,
+          error: errorMsg,
+          error_details: `Verifique se existe o campo wpp_number_id na tabela whatsapp_credentials para este usuário`
+        };
+      }
+
+      if (!credentials.businessAccountId) {
+        const errorMsg = 'businessAccountId não encontrado nas credenciais';
+        logger.error(errorMsg);
+        
+        return {
+          success: false,
+          error: errorMsg,
+          error_details: `Verifique se existe o campo wpp_business_account_id na tabela whatsapp_credentials para este usuário`
+        };
+      }
+      
+      // Criar o cliente HTTP
+      const client = this._createClient(credentials);
+      
+      // Garantir que o número de telefone tenha o formato correto
+      const formattedTo = this._formatPhoneNumber(to);
+      logger.info(`Número de telefone formatado: ${formattedTo}`);
+      
+      // Construir o payload para template conforme a documentação oficial da Meta
+      const payload = {
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: formattedTo,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: {
+            code: 'pt_BR' // Idioma padrão do Brasil
+          }
+        }
+      };
+      
+      logger.info(`Payload do template: ${JSON.stringify(payload)}`);
+      logger.info(`Endpoint de envio: ${credentials.baseUrl}/${credentials.apiVersion}/${credentials.phoneNumberId}/messages`);
+      
+      // Enviar a requisição para a API do WhatsApp
+      let response;
+      try {
+        response = await client.post(
+          `/${credentials.phoneNumberId}/messages`,
+          payload
+        );
+        logger.info(`Template enviado com sucesso: ${JSON.stringify(response.data)}`);
+      } catch (apiError) {
+        logger.error(`Erro na API do WhatsApp: ${apiError.message}`, {
+          error: apiError.response ? apiError.response.data : apiError
+        });
+        
+        let errorDetails = 'Erro desconhecido ao enviar template';
+        if (apiError.response && apiError.response.data) {
+          errorDetails = JSON.stringify(apiError.response.data);
+          logger.error(`Detalhes do erro da API: ${errorDetails}`);
+        } else if (apiError.message) {
+          errorDetails = apiError.message;
+        }
+        
+        return {
+          success: false,
+          error: 'Erro ao chamar a API do WhatsApp',
+          error_details: errorDetails
+        };
+      }
+      
+      return {
+        success: true,
+        data: response.data
+      };
+    } catch (error) {
+      logger.error(`Erro ao enviar template para ${to}: ${error.message}`, {
+        error: error.response ? error.response.data : error
+      });
+      
+      return {
+        success: false,
+        error: error.response ? error.response.data : error.message,
+        error_details: error.message
+      };
+    }
+  }
 }
 
 // Exporta uma instância do serviço

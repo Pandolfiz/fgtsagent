@@ -107,4 +107,7 @@ router.use('/api/consent', require('./consentRoutes'));
 // Rotas de feedback
 router.use('/api/feedback', require('./feedbackRoutes'));
 
+// Rotas de controle de templates Meta API
+router.use('/api/meta-template', require('./metaTemplate'));
+
 module.exports = router; 

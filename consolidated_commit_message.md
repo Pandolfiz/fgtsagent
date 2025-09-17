@@ -1,98 +1,72 @@
-# feat: implementar sistema completo de cobrança de tokens e otimizações de UI
+feat: Implementar controle de templates Meta API e busca global de contatos
 
-## 🚀 Principais Funcionalidades Implementadas
+## 🚀 Funcionalidades Implementadas
 
-### Sistema de Webhooks Stripe
-- **Salvamento automático de dados Stripe** via webhooks
-- Implementa `updateUserProfileWithStripeData()` no webhook `customer.subscription.created`
-- Implementa `updateUserProfileWithPaymentMethod()` no webhook `payment_method.attached`
-- Busca automática de `client_id` baseado em `stripe_customer_id`
-- Sincronização bidirecional entre Stripe e banco de dados
-- Logs detalhados para auditoria e debugging
+### Controle de Templates Meta API
+- ✅ Criar serviço para verificar se instância é Meta API e controlar envio de mensagens
+- ✅ Implementar verificação de tempo da última mensagem do usuário (24h)
+- ✅ Criar endpoint para verificar status de envio de mensagem (livre vs template)
+- ✅ Implementar interface no frontend para mostrar aviso de template necessário
+- ✅ Integrar controle no fluxo de envio de mensagens existente
+- ✅ Integrar componente MetaTemplateWarning no Chat.jsx (componente principal usado)
 
-### Checkout Dinâmico para Metered Billing
-- **Correção crítica**: Payment Links não suportam cobrança baseada em uso
-- Implementação de checkout condicional no `SignUpWithPlans.jsx`
-- Para plano Premium: usa API `/api/stripe/create-token-checkout`
-- Para planos Basic/Pro: mantém Payment Links tradicionais
-- Checkout Sessions dinâmicos para produtos com tiered pricing
+### Interface de Templates
+- ✅ Corrigir altura da lista de templates para mostrar todos os templates sem cortar
+- ✅ Implementar modal de seleção de templates que abre embutido no container da conversa
+- ✅ Adicionar botão para abrir seleção de templates quando necessário
+- ✅ Implementar envio de templates via endpoint dedicado
 
-### Correções de Interface e UX
-- **Formatação de números de telefone** padronizada na tabela `whatsapp_credentials`
-- Aplicação de `formatPhoneNumber()` em todos os pontos de inserção
-- **Eliminação de duplicação de mensagens** no chat
-- Substituição correta da mensagem temporária pela real
-- **Layout centralizado** do plano premium após remoção do plano pro
+### Busca Global de Contatos
+- ✅ Implementar busca global que busca em todos os contatos do banco de dados, não apenas nos carregados
+- ✅ Adicionar suporte ao parâmetro 'search' no endpoint /api/contacts
+- ✅ Implementar debounce de 500ms para evitar muitas requisições durante digitação
+- ✅ Conectar campo de busca do frontend com busca no backend
 
-## 🎯 Melhorias de Interface
-
-### Correções de Preços e Visual
-- Substituição de busca da API por dados estáticos no `PricingPlans.jsx`
-- Preços corretos exibidos: R$ 400,00/mês e R$ 360,00/mês (anual)
-- Informações de cobrança variável (8M tokens grátis + R$ 100/8M extras)
-- Remoção de efeito hover indesejado durante cadastro
-- Ajuste de posicionamento da tag "Ganhe 2 meses grátis" para diagonal
-- Escurecimento da tag de emerald-400 para emerald-600
-
-### Layout Responsivo
-- Grid alterado para Flex com centralização
-- Container reduzido de `max-w-4xl` para `max-w-2xl`
-- Card com `w-full max-w-md mx-auto` para controle centralizado
-- Título atualizado: "Escolha seu Plano" → "Nosso Plano Premium"
-- Descrição atualizada para refletir plano único
+### Correções e Melhorias
+- ✅ Corrigir endpoint /api/meta-template que estava retornando 404
+- ✅ Corrigir importação do AppError no metaTemplateController
+- ✅ Corrigir funcionalidade de busca na lista de conversas/contatos
+- ✅ Remover ícones de pessoa, telefone e vídeo do cabeçalho da conversa
+- ✅ Corrigir problema de mensagem de template aparecer e sumir
+- ✅ Corrigir lógica para que contatos sem mensagens do usuário também exijam template
 
 ## 🔧 Arquivos Modificados
 
 ### Backend
-- `src/services/webhookService.js`: Funções de salvamento automático
-- `src/controllers/whatsappCredentialController.js`: Formatação de telefone
-- `src/routes/stripeRoutes.js`: Checkout dinâmico
+- `src/services/metaTemplateControlService.js` - Serviço principal de controle de templates
+- `src/controllers/metaTemplateController.js` - Controller para endpoints de template
+- `src/routes/metaTemplate.js` - Rotas de API para templates
+- `src/routes/contacts.js` - Adicionado suporte a busca global
+- `src/routes/messages.js` - Endpoint para envio de templates
+- `src/controllers/chatController.js` - Integração com controle de templates
+- `src/app.js` - Registro das novas rotas
 
 ### Frontend
-- `frontend/src/pages/SignUpWithPlans.jsx`: Lógica de checkout condicional
-- `frontend/src/components/PricingPlans.jsx`: Dados estáticos e interface
-- `frontend/src/pages/Home.jsx`: Layout centralizado e ajustes visuais
-- `frontend/src/pages/Chat.jsx`: Correção de duplicação de mensagens
+- `frontend/src/pages/Chat.jsx` - Interface principal com controle de templates
+- `frontend/src/hooks/useMetaTemplateControl.js` - Hook para controle de templates
+- `frontend/src/hooks/useContacts.js` - Adicionado suporte a busca global
+- `frontend/src/hooks/useChatState.js` - Estado de busca integrado
 
-## 📊 Impacto e Benefícios
+## 🎯 Funcionalidades Principais
 
-### Funcionalidades
-- ✅ Sincronização automática de dados Stripe
-- ✅ Sistema reativo baseado em webhooks
-- ✅ Checkout funcional para todos os tipos de planos
-- ✅ Dados sempre atualizados em tempo real
-- ✅ Rastreabilidade completa via logs
+1. **Controle de 24h Meta API**: Instâncias Meta API só permitem mensagens livres dentro de 24h da última mensagem do usuário
+2. **Templates Obrigatórios**: Fora da janela de 24h, apenas templates aprovados podem ser enviados
+3. **Busca Global**: Campo de busca agora pesquisa em todos os contatos do banco de dados
+4. **Interface Intuitiva**: Modal de seleção de templates integrado ao fluxo da conversa
+5. **Sincronização**: Mensagens de template aparecem e permanecem na conversa
 
-### UX/UI
-- ✅ Interface consistente entre landing page e cadastro
-- ✅ Experiência de usuário melhorada
-- ✅ Layout centralizado e focado
-- ✅ Eliminação de bugs visuais
-- ✅ Conformidade com limitações técnicas da Stripe
+## 🧪 Como Testar
 
-### Técnico
-- ✅ Código mais robusto e confiável
-- ✅ Tratamento adequado de erros
-- ✅ Performance otimizada
-- ✅ Responsividade preservada
+1. Selecione um contato antigo (sem mensagens recentes)
+2. Verifique se aparece o botão de seleção de templates
+3. Teste a busca global de contatos
+4. Envie um template e verifique se permanece na conversa
+5. Teste com contatos recentes (deve permitir envio livre)
 
-## 🧪 Testes Realizados
-- [x] Testado com cliente real (cus_T2j2aKcjreWPJ3)
-- [x] Verificado salvamento de customer_id e payment_method_id
-- [x] Confirmado funcionamento do fluxo de webhooks
-- [x] Layout responsivo (mobile/desktop/tablet)
-- [x] Animações Framer Motion preservadas
-- [x] Lint sem erros
+## 📋 Regras de Negócio
 
-## 📋 Breaking Changes
-- Nenhuma
-
-## 🔗 Referências
-- Closes: #token-billing-stripe-integration
-- Baseado na documentação oficial da Stripe para metered billing
-- Payment Links não suportam cobrança baseada em uso (documentado)
-
-## 📝 Migration Notes
-- Nenhuma migração necessária
-- Colunas `stripe_customer_id` e `stripe_payment_method_id` já existem
-- Mudanças puramente visuais/estruturais que não afetam funcionalidades
+- **Instâncias Evolution API**: Sempre permitem envio livre
+- **Instâncias Meta API**: 
+  - Sem mensagens do usuário → Template obrigatório
+  - Última mensagem < 24h → Envio livre permitido  
+  - Última mensagem > 24h → Template obrigatório

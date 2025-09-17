@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef, useCallback, Fragment } from 'react
 import { Dialog, Transition } from '@headlessui/react'
 import Navbar from '../components/Navbar'
 import ContactPanel from '../components/ContactPanel'
-import { FaSearch, FaEllipsisV, FaPaperclip, FaMicrophone, FaSmile, FaPhone, FaVideo, FaPlus, FaArrowLeft, FaSpinner, FaExclamationTriangle, FaWallet, FaCalculator, FaFileAlt, FaTimesCircle, FaCheckCircle, FaInfoCircle, FaIdCard, FaRegCopy, FaChevronDown, FaCheck, FaClock, FaUser, FaEdit, FaRedo } from 'react-icons/fa'
+import { useMetaTemplateControl } from '../hooks/useMetaTemplateControl'
+import { FaSearch, FaEllipsisV, FaPaperclip, FaMicrophone, FaSmile, FaPlus, FaArrowLeft, FaSpinner, FaExclamationTriangle, FaWallet, FaCalculator, FaFileAlt, FaTimesCircle, FaCheckCircle, FaInfoCircle, FaIdCard, FaRegCopy, FaChevronDown, FaCheck, FaClock, FaEdit, FaRedo } from 'react-icons/fa'
 import { IoSend } from 'react-icons/io5'
 import { useNavigate } from 'react-router-dom'
 import { useClipboard } from '../hooks/useClipboard'
@@ -92,6 +93,29 @@ export default function Chat() {
   const [isCreatingProposal, setIsCreatingProposal] = useState(false)
   const [createProposalError, setCreateProposalError] = useState('')
   
+  // Estados para controle de templates Meta API
+  const [requiresTemplate, setRequiresTemplate] = useState(false)
+  const [availableTemplates, setAvailableTemplates] = useState([])
+  const [selectedTemplate, setSelectedTemplate] = useState(null)
+  const [isLoadingTemplates, setIsLoadingTemplates] = useState(false)
+  const [showTemplateModal, setShowTemplateModal] = useState(false)
+
+  // Estado para busca com debounce
+  const [searchInput, setSearchInput] = useState('')
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('')
+  
+  // Hook para controle de templates Meta API
+  const { checkSendStatus, getApprovedTemplates } = useMetaTemplateControl()
+
+  // Debounce para busca (500ms de atraso)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchInput)
+    }, 500)
+
+    return () => clearTimeout(timer)
+  }, [searchInput])
+  
   // ✅ ESTADOS PARA FUNCIONALIDADES DA VERSÃO ANTERIOR
   const [instances, setInstances] = useState([])
   const [selectedInstanceId, setSelectedInstanceId] = useState('all')
@@ -127,7 +151,7 @@ export default function Chat() {
     loadMoreContacts,
     syncContacts: refreshContacts,
     updateContact // ✅ ADICIONADO: Para atualizar estado do contato após toggle AI
-  } = useContacts({ currentUser, selectedInstanceId })
+  } = useContacts({ currentUser, selectedInstanceId, searchTerm: debouncedSearchTerm })
 
   const { 
     messages, 
@@ -603,6 +627,93 @@ export default function Chat() {
     }
   }
 
+  // Função para enviar template
+  const handleSendTemplate = async () => {
+    if (!selectedTemplate || !currentContact || isSendingMessage) return
+
+    console.log('[SEND-TEMPLATE] 🚀 Enviando template:', selectedTemplate)
+
+    setIsSendingMessage(true)
+    
+    try {
+      const messageId = `temp_${Date.now()}`
+      const messageContent = `[TEMPLATE] ${selectedTemplate.template_name}`
+      
+      const tempMessage = {
+        id: messageId,
+        content: messageContent,
+        from_me: true,
+        role: 'ME',
+        created_at: new Date().toISOString(),
+        temp: true
+      }
+
+      // Adicionar mensagem temporária
+      addMessage(tempMessage)
+      setSelectedTemplate(null)
+      setShowTemplateModal(false)
+      
+      // Scroll automático
+      setTimeout(() => scrollToBottom(true), 50)
+
+      // Enviar template para API
+      const response = await fetch('/api/messages/template', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          conversationId: currentContact.remote_jid,
+          templateId: selectedTemplate.template_id,
+          templateName: selectedTemplate.template_name,
+          recipientId: currentContact.phone || currentContact.remote_jid,
+          role: 'ME',
+          messageId: messageId
+        })
+      })
+
+      if (response.ok) {
+        const data = await response.json()
+        if (data.success && data.message) {
+          // Remover mensagem temporária e adicionar a mensagem real
+          setMessages(prevMessages => {
+            const withoutTemp = prevMessages.filter(msg => msg.id !== messageId);
+            // Adicionar a mensagem real retornada pelo backend
+            const realMessage = {
+              id: data.message.id,
+              content: data.message.content,
+              from_me: true,
+              role: data.message.role || 'ME',
+              created_at: data.message.created_at,
+              status: data.message.status || 'sent',
+              timestamp: data.message.created_at
+            };
+            return [...withoutTemp, realMessage].sort((a, b) => {
+              const timeA = new Date(a.timestamp || a.created_at).getTime();
+              const timeB = new Date(b.timestamp || b.created_at).getTime();
+              return timeA - timeB;
+            });
+          });
+          console.log('[SEND-TEMPLATE] ✅ Template enviado com sucesso');
+        }
+      } else {
+        // Remover mensagem temporária em caso de erro
+        setMessages(prevMessages => 
+          prevMessages.filter(msg => msg.id !== messageId)
+        );
+        actions.setError('Erro ao enviar template');
+      }
+    } catch (error) {
+      console.error('Erro ao enviar template:', error)
+      // Remover mensagem temporária em caso de erro
+      setMessages(prevMessages => 
+        prevMessages.filter(msg => msg.id !== messageId)
+      );
+      actions.setError('Erro ao enviar template')
+    } finally {
+      setIsSendingMessage(false)
+    }
+  }
+
   const handleCopyMessage = useCallback((content) => {
     copyToClipboard(content)
   }, [copyToClipboard])
@@ -801,7 +912,53 @@ export default function Chat() {
     } else {
       console.log('[DEBUG] ⚠️ Não há telefone no contato atual');
     }
+
+    // Verificar status de template para Meta API
+    checkTemplateStatus();
   }, [currentContact?.phone, currentContact?.remote_jid, fetchLeadData]);
+
+  // Função para verificar status de template
+  const checkTemplateStatus = async () => {
+    console.log('[TEMPLATE_DEBUG] 🔍 Verificando status de template...', {
+      currentContact: currentContact?.remote_jid,
+      instanceId: currentContact?.instance_id
+    });
+
+    if (!currentContact?.remote_jid || !currentContact?.instance_id) {
+      console.log('[TEMPLATE_DEBUG] ❌ Dados insuficientes para verificar template');
+      setRequiresTemplate(false);
+      setAvailableTemplates([]);
+      setSelectedTemplate(null);
+      return;
+    }
+
+    try {
+      setIsLoadingTemplates(true);
+      console.log('[TEMPLATE_DEBUG] 📡 Chamando checkSendStatus...');
+      const status = await checkSendStatus(currentContact.remote_jid, currentContact.instance_id);
+      
+      console.log('[TEMPLATE_DEBUG] 📊 Status recebido:', status);
+      
+      if (status.requiresTemplate) {
+        console.log('[TEMPLATE_DEBUG] ✅ Template necessário! Buscando templates...');
+        setRequiresTemplate(true);
+        const templates = await getApprovedTemplates(currentContact.instance_id);
+        console.log('[TEMPLATE_DEBUG] 📋 Templates encontrados:', templates);
+        setAvailableTemplates(templates);
+      } else {
+        console.log('[TEMPLATE_DEBUG] ❌ Template não necessário');
+        setRequiresTemplate(false);
+        setAvailableTemplates([]);
+        setSelectedTemplate(null);
+      }
+    } catch (error) {
+      console.error('[TEMPLATE_DEBUG] ❌ Erro ao verificar status de template:', error);
+      setRequiresTemplate(false);
+      setAvailableTemplates([]);
+    } finally {
+      setIsLoadingTemplates(false);
+    }
+  };
 
   // ✅ POLLING AUTOMÁTICO: Agora gerenciado pelo useUnifiedPolling
 
@@ -1344,8 +1501,8 @@ export default function Chat() {
                       <input
                         type="text"
                       placeholder="Buscar conversas..."
-                        value={searchTerm}
-                      onChange={(e) => actions.setSearchTerm(e.target.value)}
+                        value={searchInput}
+                      onChange={(e) => setSearchInput(e.target.value)}
                       className="w-full pl-10 pr-4 py-2 bg-cyan-900/30 border border-cyan-800/50 rounded-lg text-cyan-100 placeholder-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
                     />
                     </div>
@@ -1522,26 +1679,6 @@ export default function Chat() {
                       </p>
                   </div>
                 </div>
-                  
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        console.log('[DEBUG-BUTTON] 🖱️ Botão clicado!');
-                        console.log('[DEBUG-BUTTON] 📊 currentContact:', currentContact);
-                        handleOpenContactPanel(currentContact);
-                      }}
-                      className="text-cyan-300 hover:text-cyan-100 p-2"
-                      title="Ver dados do contato"
-                    >
-                      <FaUser />
-                    </button>
-                    <button className="text-cyan-300 hover:text-cyan-100 p-2">
-                      <FaPhone />
-                    </button>
-                    <button className="text-cyan-300 hover:text-cyan-100 p-2">
-                      <FaVideo />
-                    </button>
-                  </div>
                 </div>
 
                 {/* Mensagens */}
@@ -1550,7 +1687,7 @@ export default function Chat() {
                       className="flex-1 overflow-y-auto p-3 bg-gradient-to-br from-emerald-950/20 via-cyan-950/20 to-blue-950/20 relative"
                       style={{ 
                         height: '100%',
-                        maxHeight: 'calc(100vh - 12rem)',
+                        maxHeight: requiresTemplate ? 'calc(100vh - 20rem)' : 'calc(100vh - 12rem)',
                         minHeight: '300px',
                         display: 'flex',
                     flexDirection: 'column',
@@ -1621,48 +1758,175 @@ export default function Chat() {
                           </div>
                                     </div>
                   
-                {/* Input de mensagem */}
-                <div className="p-3 border-t border-cyan-800/50 bg-white/5">
-                  <div className="flex items-center gap-2">
-                    <button className="text-cyan-300 hover:text-cyan-100 p-2">
-                      <FaPaperclip />
-                      </button>
-                    <button className="text-cyan-300 hover:text-cyan-100 p-2">
-                      <FaSmile />
-                      </button>
-                    
-                    <div className="flex-1 relative">
-                          <input
-                        ref={messageInputRef}
-                            type="text"
-                            value={newMessage}
-                        onChange={(e) => setNewMessage(e.target.value)}
-                        onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
-                        placeholder="Digite sua mensagem..."
-                        className="w-full px-4 py-2 bg-cyan-900/30 border border-cyan-800/50 rounded-lg text-cyan-100 placeholder-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
-                        disabled={isSendingMessage}
-                      />
-                    </div>
-                    
-                            <button
-                      onClick={handleSendMessage}
-                      disabled={!newMessage.trim() || isSendingMessage}
-                      className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:from-gray-500 disabled:to-gray-600 text-white p-2 rounded-lg transition-all duration-200"
-                    >
-                      {isSendingMessage ? (
-                        <FaSpinner className="animate-spin" />
-                      ) : (
+
+                {/* Input de mensagem ou seleção de template */}
+                <div className="p-3 border-t border-cyan-800/50 bg-white/5 relative">
+                  {requiresTemplate ? (
+                    /* Botão para abrir seleção de Template */
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <h4 className="text-cyan-200 text-sm font-medium">
+                          Mensagem template necessária:
+                        </h4>
+                        {isLoadingTemplates && (
+                          <FaSpinner className="animate-spin text-cyan-400" />
+                        )}
+                      </div>
+                      
+                      <button
+                        onClick={() => setShowTemplateModal(true)}
+                        className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white py-3 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
+                      >
                         <IoSend />
-                      )}
-                    </button>
-                              </div>
+                        Selecionar Template ({availableTemplates.length} disponíveis)
+                      </button>
+                    </div>
+                  ) : (
+                    /* Input Normal */
+                    <div className="flex items-center gap-2">
+                      <button className="text-cyan-300 hover:text-cyan-100 p-2">
+                        <FaPaperclip />
+                      </button>
+                      <button className="text-cyan-300 hover:text-cyan-100 p-2">
+                        <FaSmile />
+                      </button>
+                      
+                      <div className="flex-1 relative">
+                        <input
+                          ref={messageInputRef}
+                          type="text"
+                          value={newMessage}
+                          onChange={(e) => setNewMessage(e.target.value)}
+                          onKeyPress={(e) => e.key === 'Enter' && handleSendMessage()}
+                          placeholder="Digite sua mensagem..."
+                          className="w-full px-4 py-2 bg-cyan-900/30 border border-cyan-800/50 rounded-lg text-cyan-100 placeholder-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-500"
+                          disabled={isSendingMessage}
+                        />
+                      </div>
+                      
+                      <button
+                        onClick={handleSendMessage}
+                        disabled={!newMessage.trim() || isSendingMessage}
+                        className="bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:from-gray-500 disabled:to-gray-600 text-white p-2 rounded-lg transition-all duration-200"
+                      >
+                        {isSendingMessage ? (
+                          <FaSpinner className="animate-spin" />
+                        ) : (
+                          <IoSend />
+                        )}
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Overlay de Seleção de Templates - DENTRO do container da conversa */}
+                {showTemplateModal && (
+                  <div className="absolute inset-0 z-20 bg-black/30 flex items-end">
+                    <Transition
+                      show={showTemplateModal}
+                      as={Fragment}
+                      enter="transform transition ease-out duration-300"
+                      enterFrom="translate-y-full"
+                      enterTo="translate-y-0"
+                      leave="transform transition ease-in duration-200"
+                      leaveFrom="translate-y-0"
+                      leaveTo="translate-y-full"
+                    >
+                      <div className="w-full bg-gradient-to-br from-cyan-950 to-blue-950 border-t border-cyan-800/50 rounded-t-lg shadow-xl max-h-[60vh] flex flex-col">
+                        <div className="px-4 py-3 border-b border-cyan-800/50">
+                          <div className="flex items-center justify-between">
+                            <h3 className="text-lg font-medium text-cyan-100">
+                              Selecionar Template
+                            </h3>
+                            <button
+                              onClick={() => setShowTemplateModal(false)}
+                              className="text-cyan-400 hover:text-cyan-300 p-1"
+                            >
+                              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" strokeWidth="1.5" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                              </svg>
+                            </button>
+                          </div>
+                          <p className="text-sm text-cyan-300 mt-1">
+                            Selecione um template aprovado para enviar
+                          </p>
+                        </div>
+                        
+                        <div className="flex-1 overflow-y-auto p-4">
+                          {availableTemplates.length > 0 ? (
+                            <div className="space-y-2">
+                              {availableTemplates.map((template) => (
+                                <button
+                                  key={template.template_id}
+                                  onClick={() => setSelectedTemplate(template)}
+                                  className={`w-full text-left p-3 rounded-lg border transition-all ${
+                                    selectedTemplate?.template_id === template.template_id
+                                      ? 'bg-cyan-600/30 border-cyan-500 text-cyan-100'
+                                      : 'bg-cyan-900/20 border-cyan-800/50 text-cyan-300 hover:bg-cyan-800/30'
+                                  }`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <div>
+                                      <div className="font-medium text-sm">
+                                        {template.template_name}
+                                      </div>
+                                      <div className="text-xs text-cyan-400 mt-1">
+                                        {template.template_language} • {template.template_category}
+                                      </div>
+                                    </div>
+                                    {selectedTemplate?.template_id === template.template_id && (
+                                      <FaCheckCircle className="h-4 w-4 text-green-400" />
+                                    )}
+                                  </div>
+                                </button>
+                              ))}
                             </div>
+                          ) : (
+                            <div className="text-center py-8 text-cyan-400">
+                              Nenhum template aprovado encontrado
+                            </div>
+                          )}
+                        </div>
+                        
+                        {selectedTemplate && (
+                          <div className="px-4 py-3 border-t border-cyan-800/50">
+                            <div className="flex items-center gap-2">
+                              <button
+                                onClick={handleSendTemplate}
+                                disabled={isSendingMessage}
+                                className="flex-1 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 disabled:from-gray-500 disabled:to-gray-600 text-white py-2 px-4 rounded-lg transition-all duration-200 flex items-center justify-center gap-2"
+                              >
+                                {isSendingMessage ? (
+                                  <>
+                                    <FaSpinner className="animate-spin" />
+                                    Enviando...
+                                  </>
+                                ) : (
+                                  <>
+                                    <IoSend />
+                                    Enviar Template
+                                  </>
+                                )}
+                              </button>
+                              <button
+                                onClick={() => setSelectedTemplate(null)}
+                                className="px-4 py-2 text-cyan-400 hover:text-cyan-200 transition-colors"
+                              >
+                                Cancelar
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </Transition>
+                  </div>
+                )}
                           </div>
                         ) : (
               /* ✅ TELA INICIAL - Quando nenhum contato está selecionado */
               <div className="flex-1 flex items-center justify-center bg-gradient-to-br from-emerald-950/20 via-cyan-950/20 to-blue-950/20">
                 <div className="text-center text-cyan-300">
-                  <FaPhone className="text-6xl mx-auto mb-4 opacity-50" />
+                  <FaSearch className="text-6xl mx-auto mb-4 opacity-50" />
                   <h2 className="text-2xl font-semibold mb-2">Selecione uma conversa</h2>
                   <p>Escolha um contato para começar a conversar</p>
                                       </div>
@@ -2353,6 +2617,7 @@ export default function Chat() {
           </div>
         </Dialog>
       </Transition.Root>
+
           </div>
   )
 

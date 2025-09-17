@@ -600,6 +600,10 @@ if (process.env.NODE_ENV === 'development') {
 // Middleware para aplicar tokens renovados na resposta (ANTES das rotas)
 app.use(applyRefreshedTokens);
 
+// ✅ ADICIONADO: Rotas de controle de templates Meta API
+const metaTemplateRoutes = require('./routes/metaTemplate');
+app.use('/api/meta-template', requireAuth, metaTemplateRoutes);
+
 // ✅ CORRIGIDO: Rota genérica /api por ÚLTIMO com middleware de refresh
 app.use('/api', refreshTokens, apiRoutes);
 
